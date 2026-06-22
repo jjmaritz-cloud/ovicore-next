@@ -1,0 +1,1204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>OviCore Premium Frontend Mockups</title>
+<style>
+:root{
+  --bg0:#071c18;
+  --bg1:#0a2822;
+  --bg2:#0f3d35;
+  --panel:#ffffff;
+  --paper:#f6f8fb;
+  --ink:#0f172a;
+  --muted:#64748b;
+  --muted2:#94a3b8;
+  --line:#d9e1ea;
+  --line2:#edf1f5;
+  --green:#1f8f68;
+  --green2:#55c99f;
+  --mint:#e8f8f1;
+  --gold:#e5b64c;
+  --gold2:#fff2cf;
+  --red:#e5484d;
+  --red2:#fff1f2;
+  --orange:#f59e0b;
+  --orange2:#fff7ed;
+  --blue:#2563eb;
+  --blue2:#eef5ff;
+  --purple:#6d5dfc;
+  --purple2:#f1efff;
+  --shadow:0 24px 80px rgba(2,8,23,.18);
+  --soft-shadow:0 12px 32px rgba(15,23,42,.08);
+  --radius:22px;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  color:var(--ink);
+  background:
+    radial-gradient(circle at top left, rgba(85,201,159,.18), transparent 32%),
+    radial-gradient(circle at top right, rgba(229,182,76,.16), transparent 32%),
+    linear-gradient(135deg,#eef4f7 0%, #f8fafc 48%, #edf4ef 100%);
+}
+.app{
+  min-height:100vh;
+  display:grid;
+  grid-template-columns: 292px minmax(0,1fr);
+}
+.sidebar{
+  position:sticky;
+  top:0;
+  height:100vh;
+  background:linear-gradient(180deg,#061a16 0%,#0b3129 62%,#102b27 100%);
+  color:#fff;
+  padding:22px 18px;
+  border-right:1px solid rgba(255,255,255,.08);
+  box-shadow:16px 0 45px rgba(2,8,23,.24);
+  overflow:hidden;
+}
+.sidebar:before{
+  content:"";
+  position:absolute;
+  width:240px;height:240px;
+  border-radius:50%;
+  background:rgba(85,201,159,.16);
+  top:-70px;left:-80px;
+  filter:blur(4px);
+}
+.brand{
+  position:relative;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  margin-bottom:26px;
+}
+.logo{
+  width:46px;height:46px;border-radius:16px;
+  background:linear-gradient(135deg,#6be7b7 0%,#eac45a 100%);
+  color:#06251f;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-weight:1000;
+  font-size:23px;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.45), 0 12px 26px rgba(85,201,159,.16);
+}
+.brand h1{margin:0;font-size:25px;letter-spacing:-.045em}
+.brand p{margin:2px 0 0;color:rgba(255,255,255,.58);font-size:12px}
+.module-card{
+  position:relative;
+  padding:14px;
+  border-radius:22px;
+  background:linear-gradient(145deg,rgba(255,255,255,.13),rgba(255,255,255,.06));
+  border:1px solid rgba(255,255,255,.11);
+  margin-bottom:20px;
+}
+.module-card .tiny{font-size:11px;color:rgba(255,255,255,.58);font-weight:800;text-transform:uppercase;letter-spacing:.09em}
+.module-card .company{font-size:15px;font-weight:900;margin-top:6px}
+.module-pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:11px}
+.module-pills span{
+  font-size:11px;
+  font-weight:900;
+  padding:5px 8px;
+  border-radius:999px;
+  background:rgba(255,255,255,.11);
+  border:1px solid rgba(255,255,255,.1);
+}
+.nav-section{
+  position:relative;
+  margin:18px 0 8px;
+  color:rgba(255,255,255,.42);
+  font-size:11px;
+  font-weight:900;
+  text-transform:uppercase;
+  letter-spacing:.12em;
+  padding-left:10px;
+}
+.nav{
+  position:relative;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+.nav button{
+  width:100%;
+  border:0;
+  background:transparent;
+  color:rgba(255,255,255,.72);
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:11px 12px;
+  border-radius:14px;
+  cursor:pointer;
+  font:inherit;
+  font-weight:760;
+  text-align:left;
+  transition:.18s ease;
+}
+.nav button:hover{background:rgba(255,255,255,.08);color:#fff}
+.nav button.active{
+  background:linear-gradient(90deg,rgba(107,231,183,.22),rgba(255,255,255,.06));
+  color:#fff;
+  box-shadow:inset 3px 0 0 #6be7b7;
+}
+.ico{
+  width:28px;height:28px;border-radius:10px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:rgba(255,255,255,.09);
+  color:#dffcf2;
+}
+.sidebar-footer{
+  position:absolute;
+  bottom:18px;
+  left:18px;
+  right:18px;
+  color:rgba(255,255,255,.56);
+  font-size:12px;
+  padding:13px;
+  border-radius:18px;
+  background:rgba(0,0,0,.14);
+  border:1px solid rgba(255,255,255,.08);
+}
+.main{
+  min-width:0;
+  padding:20px;
+}
+.topbar{
+  height:72px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:18px;
+  margin-bottom:18px;
+}
+.page-title .eyebrow{
+  font-size:12px;
+  font-weight:900;
+  text-transform:uppercase;
+  letter-spacing:.14em;
+  color:#16775c;
+}
+.page-title h2{
+  margin:4px 0 0;
+  font-size:31px;
+  letter-spacing:-.055em;
+}
+.top-actions{
+  display:flex;
+  gap:10px;
+  align-items:center;
+}
+.search{
+  width:320px;
+  height:44px;
+  border:1px solid var(--line);
+  border-radius:16px;
+  background:rgba(255,255,255,.74);
+  box-shadow:var(--soft-shadow);
+  padding:0 14px;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  color:var(--muted);
+  font-weight:700;
+}
+.action-btn{
+  height:44px;
+  border:1px solid var(--line);
+  background:#fff;
+  color:#0f3d35;
+  border-radius:15px;
+  padding:0 14px;
+  font-weight:900;
+  box-shadow:var(--soft-shadow);
+  cursor:pointer;
+}
+.action-btn.primary{
+  background:linear-gradient(135deg,#0f3d35,#1c765b);
+  color:#fff;
+  border:0;
+}
+.avatar{
+  width:44px;height:44px;border-radius:15px;
+  background:#ddf8ef;
+  color:#0f3d35;
+  display:flex;align-items:center;justify-content:center;
+  font-weight:1000;
+  box-shadow:var(--soft-shadow);
+}
+.screen{display:none;animation:fade .22s ease}
+.screen.active{display:block}
+@keyframes fade{from{opacity:.25;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.hero-grid{
+  display:grid;
+  grid-template-columns: 1.35fr .65fr;
+  gap:18px;
+  margin-bottom:18px;
+}
+.hero{
+  border-radius:30px;
+  min-height:230px;
+  background:
+    radial-gradient(circle at 88% 16%, rgba(229,182,76,.30), transparent 25%),
+    radial-gradient(circle at 70% 80%, rgba(107,231,183,.22), transparent 27%),
+    linear-gradient(135deg,#08251f 0%,#0f3d35 58%,#164b3e 100%);
+  color:white;
+  padding:28px;
+  box-shadow:var(--shadow);
+  position:relative;
+  overflow:hidden;
+}
+.hero:after{
+  content:"";
+  position:absolute;
+  right:-90px;bottom:-150px;
+  width:420px;height:420px;border-radius:50%;
+  border:1px solid rgba(255,255,255,.12);
+  box-shadow:inset 0 0 0 70px rgba(255,255,255,.025);
+}
+.hero .tag{
+  display:inline-flex;gap:8px;align-items:center;
+  padding:7px 11px;border-radius:999px;
+  background:rgba(255,255,255,.11);
+  border:1px solid rgba(255,255,255,.15);
+  color:rgba(255,255,255,.78);
+  font-size:12px;font-weight:900;
+}
+.hero h3{
+  margin:18px 0 8px;
+  font-size:42px;
+  line-height:1;
+  letter-spacing:-.07em;
+  max-width:780px;
+}
+.hero p{
+  margin:0;
+  max-width:690px;
+  color:rgba(255,255,255,.72);
+  font-size:15px;
+  line-height:1.55;
+}
+.hero-metrics{
+  display:flex;gap:12px;margin-top:24px;flex-wrap:wrap;
+}
+.hero-metric{
+  background:rgba(255,255,255,.10);
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:18px;
+  padding:12px 14px;
+  min-width:134px;
+}
+.hero-metric span{display:block;color:rgba(255,255,255,.56);font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:900}
+.hero-metric strong{display:block;margin-top:5px;font-size:23px;letter-spacing:-.04em}
+.ai-card{
+  border-radius:30px;
+  background:rgba(255,255,255,.84);
+  backdrop-filter:blur(18px);
+  border:1px solid rgba(255,255,255,.72);
+  box-shadow:var(--shadow);
+  padding:20px;
+  overflow:hidden;
+}
+.ai-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.ai-head h3{margin:0;font-size:17px;letter-spacing:-.03em}
+.ai-dot{
+  width:11px;height:11px;border-radius:50%;
+  background:#22c55e;
+  box-shadow:0 0 0 7px rgba(34,197,94,.12);
+}
+.ai-item{
+  border:1px solid var(--line2);
+  background:#fff;
+  border-radius:18px;
+  padding:13px;
+  margin-bottom:10px;
+}
+.ai-item strong{font-size:13px}
+.ai-item p{margin:5px 0 0;color:var(--muted);font-size:12px;line-height:1.45}
+.kpi-grid{
+  display:grid;
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  gap:14px;
+  margin-bottom:18px;
+}
+.kpi{
+  background:rgba(255,255,255,.86);
+  border:1px solid rgba(255,255,255,.78);
+  border-radius:24px;
+  padding:17px;
+  box-shadow:var(--soft-shadow);
+}
+.kpi .label{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.09em;font-weight:1000}
+.kpi .value{font-size:29px;font-weight:1000;letter-spacing:-.055em;margin-top:5px}
+.kpi .foot{font-size:12px;margin-top:7px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.up{color:#15803d;font-weight:900}
+.down{color:#be123c;font-weight:900}
+.content-grid{
+  display:grid;
+  grid-template-columns: 1.1fr .9fr;
+  gap:18px;
+}
+.card{
+  background:rgba(255,255,255,.88);
+  border:1px solid rgba(255,255,255,.72);
+  border-radius:26px;
+  box-shadow:var(--soft-shadow);
+  overflow:hidden;
+}
+.card-pad{padding:18px}
+.card-head{
+  display:flex;justify-content:space-between;align-items:center;gap:12px;
+  padding:18px 18px 12px;
+}
+.card-head h3{margin:0;font-size:18px;letter-spacing:-.035em}
+.card-head p{margin:4px 0 0;font-size:12px;color:var(--muted)}
+.pill{
+  display:inline-flex;align-items:center;gap:6px;
+  border-radius:999px;
+  padding:6px 10px;
+  font-size:11px;
+  font-weight:1000;
+  border:1px solid var(--line);
+  background:#fff;
+  color:#334155;
+}
+.pill.green{background:var(--mint);border-color:#bdebd7;color:#166534}
+.pill.amber{background:var(--orange2);border-color:#fed7aa;color:#9a3412}
+.pill.red{background:var(--red2);border-color:#fecdd3;color:#9f1239}
+.pill.blue{background:var(--blue2);border-color:#bfdbfe;color:#1d4ed8}
+.chart{
+  height:260px;
+  padding:0 18px 18px;
+}
+.svg-chart{width:100%;height:100%}
+.axis{stroke:#d8e0e8;stroke-width:1}
+.grid-line{stroke:#e8eef4;stroke-width:1}
+.line-a{fill:none;stroke:#1f8f68;stroke-width:4;stroke-linecap:round}
+.line-b{fill:none;stroke:#e5b64c;stroke-width:4;stroke-linecap:round}
+.area{fill:url(#areaGradient)}
+.dot-point{fill:#fff;stroke:#1f8f68;stroke-width:3}
+.bar{rx:8}
+.table-wrap{overflow:auto}
+.smart-table{
+  width:100%;
+  border-collapse:separate;
+  border-spacing:0;
+  font-size:12.5px;
+}
+.smart-table th{
+  text-align:left;
+  background:#f8fafc;
+  color:#64748b;
+  font-size:10.5px;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  padding:11px 12px;
+  border-bottom:1px solid var(--line2);
+}
+.smart-table td{
+  padding:12px;
+  border-bottom:1px solid var(--line2);
+  font-weight:700;
+}
+.smart-table tr:hover td{background:#fbfefd}
+.farm-cell{display:flex;align-items:center;gap:10px}
+.farm-icon{
+  width:34px;height:34px;border-radius:12px;
+  background:#e8f8f1;color:#0f3d35;
+  display:flex;align-items:center;justify-content:center;
+  font-weight:1000;
+}
+.progressbar{
+  height:8px;
+  background:#e8eef4;
+  border-radius:999px;
+  overflow:hidden;
+}
+.progressbar > div{
+  height:100%;
+  border-radius:999px;
+  background:linear-gradient(90deg,#1f8f68,#55c99f);
+}
+.command-grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:14px;
+}
+.command-card{
+  border-radius:24px;
+  padding:18px;
+  background:linear-gradient(180deg,#fff,#f8fafc);
+  border:1px solid var(--line2);
+  min-height:150px;
+}
+.command-card .icon{
+  width:42px;height:42px;border-radius:15px;
+  display:flex;align-items:center;justify-content:center;
+  margin-bottom:12px;
+  background:#e8f8f1;color:#0f3d35;font-size:19px;
+}
+.command-card h4{margin:0;font-size:16px;letter-spacing:-.03em}
+.command-card p{margin:7px 0 12px;color:var(--muted);font-size:12.5px;line-height:1.45}
+.command-card .mini-link{font-size:12px;font-weight:1000;color:#16775c}
+
+/* Excel screen */
+.sheet-card{
+  border-radius:28px;
+  overflow:hidden;
+  background:#fff;
+  box-shadow:var(--shadow);
+  border:1px solid rgba(255,255,255,.78);
+}
+.sheet-head{
+  background:linear-gradient(135deg,#07241f,#0f3d35 70%,#155c49);
+  color:#fff;
+  padding:17px 18px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+}
+.sheet-head h3{margin:0;font-size:22px;letter-spacing:-.04em}
+.sheet-head p{margin:4px 0 0;color:rgba(255,255,255,.65);font-size:13px}
+.sheet-buttons{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.sheet-btn{
+  border:1px solid rgba(255,255,255,.18);
+  background:rgba(255,255,255,.10);
+  color:white;
+  border-radius:12px;
+  padding:8px 10px;
+  font-weight:900;
+  font-size:12px;
+}
+.sheet-btn.light{background:#fff;color:#0f3d35;border:0}
+.sheet-toolbar{
+  display:grid;
+  grid-template-columns:repeat(6,minmax(0,1fr));
+  gap:8px;
+  padding:10px;
+  background:#f8fafc;
+  border-bottom:1px solid var(--line);
+}
+.sheet-field{
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:8px 10px;
+}
+.sheet-field span{
+  display:block;
+  color:var(--muted);
+  font-size:10px;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  font-weight:1000;
+}
+.sheet-field strong{display:block;font-size:13px;margin-top:2px}
+.sheet-kpis{
+  display:grid;
+  grid-template-columns:repeat(6,minmax(0,1fr));
+  border-bottom:1px solid var(--line);
+}
+.sheet-kpi{padding:11px 13px;border-right:1px solid var(--line)}
+.sheet-kpi:last-child{border-right:0}
+.sheet-kpi span{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:1000}
+.sheet-kpi strong{display:block;font-size:20px;letter-spacing:-.045em;margin-top:2px}
+.formula-bar{
+  display:grid;
+  grid-template-columns:54px 1fr;
+  height:36px;
+  border-bottom:1px solid var(--line);
+  background:#fbfcfe;
+}
+.name-box{border-right:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-weight:1000;color:#64748b;font-size:12px}
+.formula{display:flex;align-items:center;padding:0 12px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;color:#334155}
+.excel-wrap{
+  max-height:590px;
+  overflow:auto;
+}
+.excel{
+  width:1740px;
+  border-collapse:separate;
+  border-spacing:0;
+  font-size:12px;
+}
+.excel th,.excel td{
+  border-right:1px solid #d9e1ea;
+  border-bottom:1px solid #d9e1ea;
+  height:35px;
+  white-space:nowrap;
+  padding:0;
+}
+.excel thead th{
+  position:sticky;
+  z-index:4;
+  background:#f6f8fb;
+  color:#475569;
+  text-align:center;
+  font-size:10.5px;
+  text-transform:uppercase;
+  letter-spacing:.07em;
+  font-weight:1000;
+}
+.excel thead tr:first-child th{top:0;background:#dfe8f0;height:31px}
+.excel thead tr:nth-child(2) th{top:31px}
+.excel .rownum{position:sticky;left:0;z-index:3;width:40px;background:#f8fafc;text-align:center;color:#64748b;font-weight:1000}
+.excel thead .rownum{z-index:7}
+.excel .sticky-a{position:sticky;left:40px;z-index:3;width:110px;background:#fff;padding:0 8px;font-weight:1000}
+.excel .sticky-b{position:sticky;left:150px;z-index:3;width:96px;background:#fff;padding:0 8px;font-weight:1000}
+.excel .sticky-c{position:sticky;left:246px;z-index:3;width:94px;background:#fff;padding:0 8px;font-weight:1000}
+.excel thead .sticky-a,.excel thead .sticky-b,.excel thead .sticky-c{z-index:7;background:#f6f8fb}
+.excel thead tr:first-child .sticky-a{background:#dfe8f0}
+.calc{
+  padding:0 8px;
+  text-align:right;
+  font-weight:900;
+  background:#fbfcfe;
+}
+.entry{
+  width:100%;height:34px;
+  border:0;outline:0;
+  background:#fffced;
+  padding:0 8px;
+  text-align:right;
+  font:inherit;
+  font-weight:850;
+}
+.entry:focus{background:#fff;box-shadow:inset 0 0 0 2px #1f8f68}
+.entry.text{text-align:left}
+.warn-cell{background:#fff1d6!important}
+.bad-cell{background:#ffe4e6!important}
+.statusbox{
+  height:100%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:10.5px;
+  font-weight:1000;
+  text-transform:uppercase;
+}
+.statusbox.saved{background:#e8f8f1;color:#166534}
+.statusbox.review{background:#fff7ed;color:#9a3412}
+.statusbox.missing{background:#fff1f2;color:#9f1239}
+.excel tr:hover td,.excel tr:hover .sticky-a,.excel tr:hover .sticky-b,.excel tr:hover .sticky-c{background:#f7fdf9}
+.group-id{background:#dfe8f0!important}
+.group-bird{background:#e4f5ed!important}
+.group-prod{background:#eaf2ff!important}
+.group-review{background:#fff4dc!important}
+
+/* Insights */
+.insight-layout{
+  display:grid;
+  grid-template-columns: 1fr 340px;
+  gap:18px;
+}
+.big-graph{
+  height:420px;
+}
+.compare-row{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:14px;
+  margin-top:14px;
+}
+.metric-card{
+  padding:16px;
+  border-radius:22px;
+  background:#fff;
+  border:1px solid var(--line2);
+}
+.metric-card span{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:1000}
+.metric-card strong{display:block;font-size:30px;letter-spacing:-.055em;margin-top:4px}
+.metric-card p{margin:6px 0 0;color:var(--muted);font-size:12px}
+.side-panel{
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+}
+.timeline{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+.timeline-item{
+  display:grid;
+  grid-template-columns:24px 1fr;
+  gap:10px;
+}
+.timeline-dot{
+  width:14px;height:14px;border-radius:50%;
+  background:#1f8f68;
+  margin-top:3px;
+  box-shadow:0 0 0 6px rgba(31,143,104,.12);
+}
+.timeline-item h4{margin:0;font-size:13px}
+.timeline-item p{margin:4px 0 0;color:var(--muted);font-size:12px;line-height:1.4}
+
+/* Breeder */
+.breeder-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:18px;
+}
+.pen-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+}
+.pen-card{
+  border-radius:24px;
+  background:#fff;
+  border:1px solid var(--line2);
+  overflow:hidden;
+}
+.pen-top{
+  padding:13px;
+  background:linear-gradient(135deg,#f8fafc,#edf7f2);
+  display:flex;justify-content:space-between;align-items:center;
+  border-bottom:1px solid var(--line2);
+}
+.pen-top h4{margin:0}
+.pen-body{padding:12px;display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.pen-field{
+  border:1px solid var(--line2);
+  border-radius:14px;
+  padding:10px;
+}
+.pen-field span{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:1000}
+.pen-field strong{display:block;margin-top:2px;font-size:17px;letter-spacing:-.035em}
+.hatch-card{
+  background:
+    radial-gradient(circle at top right,rgba(229,182,76,.22),transparent 24%),
+    linear-gradient(135deg,#fff,#f9fbfc);
+}
+.fertility-ring{
+  width:210px;height:210px;border-radius:50%;
+  margin:18px auto;
+  background:conic-gradient(#1f8f68 0 88%, #e8eef4 88% 100%);
+  display:flex;align-items:center;justify-content:center;
+  position:relative;
+}
+.fertility-ring:after{
+  content:"";
+  position:absolute;
+  width:148px;height:148px;border-radius:50%;
+  background:#fff;
+}
+.ring-text{
+  position:relative;z-index:2;text-align:center;
+}
+.ring-text strong{display:block;font-size:42px;letter-spacing:-.07em}
+.ring-text span{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:1000}
+
+/* Feed / planning */
+.feed-grid{
+  display:grid;
+  grid-template-columns: .95fr 1.05fr;
+  gap:18px;
+}
+.price-cards{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+}
+.price-card{
+  background:#fff;
+  border:1px solid var(--line2);
+  border-radius:22px;
+  padding:16px;
+}
+.price-card span{font-size:11px;color:var(--muted);font-weight:1000;text-transform:uppercase;letter-spacing:.08em}
+.price-card strong{display:block;font-size:30px;letter-spacing:-.06em;margin-top:5px}
+.price-card p{margin:6px 0 0;color:var(--muted);font-size:12px}
+.map-card{
+  height:336px;
+  background:
+    radial-gradient(circle at 25% 35%,rgba(31,143,104,.22),transparent 5%),
+    radial-gradient(circle at 55% 50%,rgba(229,182,76,.28),transparent 5%),
+    radial-gradient(circle at 75% 68%,rgba(37,99,235,.20),transparent 5%),
+    linear-gradient(135deg,#f8fafc,#eaf2ef);
+  position:relative;
+}
+.site{
+  position:absolute;
+  border-radius:999px;
+  padding:8px 10px;
+  background:#fff;
+  box-shadow:var(--soft-shadow);
+  border:1px solid var(--line2);
+  font-size:12px;
+  font-weight:1000;
+}
+.site:before{
+  content:"";
+  display:inline-block;
+  width:8px;height:8px;border-radius:50%;
+  background:#1f8f68;
+  margin-right:6px;
+}
+.coverage-grid{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:12px;
+}
+.month-card{
+  padding:14px;
+  border-radius:20px;
+  border:1px solid var(--line2);
+  background:#fff;
+}
+.month-card h4{margin:0 0 10px;font-size:14px}
+.month-card span{font-size:12px;color:var(--muted);font-weight:800}
+.month-card strong{display:block;margin-top:4px;font-size:24px;letter-spacing:-.05em}
+@media(max-width:1250px){
+  .app{grid-template-columns:88px minmax(0,1fr)}
+  .sidebar{padding:18px 12px}
+  .brand h1,.brand p,.module-card,.nav-section,.nav button span.label,.sidebar-footer{display:none}
+  .brand{justify-content:center}
+  .nav button{justify-content:center;padding:11px}
+  .ico{width:38px;height:38px}
+  .hero-grid,.content-grid,.insight-layout,.breeder-grid,.feed-grid{grid-template-columns:1fr}
+}
+@media(max-width:800px){
+  .app{display:block}
+  .sidebar{display:none}
+  .main{padding:12px}
+  .topbar{height:auto;align-items:flex-start}
+  .search,.avatar{display:none}
+  .kpi-grid{grid-template-columns:repeat(2,1fr)}
+  .hero h3{font-size:34px}
+  .sheet-toolbar{grid-template-columns:repeat(2,1fr)}
+  .sheet-kpis{grid-template-columns:repeat(2,1fr)}
+  .command-grid,.compare-row,.coverage-grid,.pen-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo">O</div>
+      <div>
+        <h1>OviCore</h1>
+        <p>Plan with confidence. Forecast with precision.</p>
+      </div>
+    </div>
+
+    <div class="module-card">
+      <div class="tiny">Active workspace</div>
+      <div class="company">Pace Farms Operations</div>
+      <div class="module-pills">
+        <span>Layers</span><span>Feed</span><span>Planning</span><span>Insights</span>
+      </div>
+    </div>
+
+    <div class="nav-section">Command</div>
+    <div class="nav">
+      <button class="active" onclick="showScreen('dashboard', this)"><span class="ico">⌂</span><span class="label">Command Centre</span></button>
+      <button onclick="showScreen('entry', this)"><span class="ico">▦</span><span class="label">Daily Production</span></button>
+      <button onclick="showScreen('insights', this)"><span class="ico">⌁</span><span class="label">Insights & Graphs</span></button>
+      <button onclick="showScreen('breeders', this)"><span class="ico">♞</span><span class="label">Breeder Production</span></button>
+      <button onclick="showScreen('feed', this)"><span class="ico">◇</span><span class="label">Feed & Grain</span></button>
+      <button onclick="showScreen('planning', this)"><span class="ico">↗</span><span class="label">Planning</span></button>
+    </div>
+
+    <div class="nav-section">Control</div>
+    <div class="nav">
+      <button><span class="ico">☑</span><span class="label">Manager Briefing</span></button>
+      <button><span class="ico">⚙</span><span class="label">Admin Setup</span></button>
+    </div>
+
+    <div class="sidebar-footer">
+      <strong>OviCore AI</strong><br/>
+      7 support opportunities detected across production and feed today.
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div class="page-title">
+        <div class="eyebrow" id="eyebrow">Command Centre</div>
+        <h2 id="pageTitle">Executive farm operating view</h2>
+      </div>
+      <div class="top-actions">
+        <div class="search">⌕ Search farm, flock, shed or report</div>
+        <button class="action-btn">Export</button>
+        <button class="action-btn primary">New entry</button>
+        <div class="avatar">JJ</div>
+      </div>
+    </div>
+
+    <!-- DASHBOARD -->
+    <section id="dashboard" class="screen active">
+      <div class="hero-grid">
+        <div class="hero">
+          <div class="tag">● Live production command centre</div>
+          <h3>Every flock, feed risk and performance signal in one control room.</h3>
+          <p>OviCore turns daily entries, feed movement and planning data into a clear operating picture — built for production teams, service managers and executives.</p>
+          <div class="hero-metrics">
+            <div class="hero-metric"><span>Active birds</span><strong>4.82M</strong></div>
+            <div class="hero-metric"><span>Eggs today</span><strong>3.91M</strong></div>
+            <div class="hero-metric"><span>Hen day</span><strong>89.4%</strong></div>
+            <div class="hero-metric"><span>Risk items</span><strong>7</strong></div>
+          </div>
+        </div>
+        <div class="ai-card">
+          <div class="ai-head"><h3>Manager briefing</h3><div class="ai-dot"></div></div>
+          <div class="ai-item"><strong>Feed intake review suggested</strong><p>Shed 02 is tracking above expected kg/bird for age. Check feed delivery and bin reading before final review.</p></div>
+          <div class="ai-item"><strong>Production recovery detected</strong><p>Shed 10 improved hen day by 2.1 points over the last 7 days after ration change.</p></div>
+          <div class="ai-item"><strong>Planning pressure</strong><p>Rearing transfer window is tight from 8–21 July. Consider depop timing adjustment.</p></div>
+        </div>
+      </div>
+
+      <div class="kpi-grid">
+        <div class="kpi"><div class="label">Production health</div><div class="value">92%</div><div class="foot"><span class="up">▲ 3%</span> vs last week</div></div>
+        <div class="kpi"><div class="label">Feed variance</div><div class="value">1.8%</div><div class="foot"><span class="down">▲</span> 4 sheds to review</div></div>
+        <div class="kpi"><div class="label">Mortality</div><div class="value">0.09%</div><div class="foot"><span class="up">●</span> within range</div></div>
+        <div class="kpi"><div class="label">Recon readiness</div><div class="value">84%</div><div class="foot"><span class="down">▼</span> 9 farms incomplete</div></div>
+        <div class="kpi"><div class="label">Coverage</div><div class="value">74%</div><div class="foot"><span class="up">●</span> wheat to Sep</div></div>
+      </div>
+
+      <div class="content-grid">
+        <div class="card">
+          <div class="card-head">
+            <div><h3>Production trend</h3><p>Hen day % vs target across the current cycle</p></div>
+            <span class="pill green">On track</span>
+          </div>
+          <div class="chart">
+            <svg class="svg-chart" viewBox="0 0 760 260" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="areaGradient" x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0%" stop-color="#1f8f68" stop-opacity=".28"/>
+                  <stop offset="100%" stop-color="#1f8f68" stop-opacity="0"/>
+                </linearGradient>
+              </defs>
+              <line class="grid-line" x1="36" y1="30" x2="740" y2="30"/><line class="grid-line" x1="36" y1="80" x2="740" y2="80"/><line class="grid-line" x1="36" y1="130" x2="740" y2="130"/><line class="grid-line" x1="36" y1="180" x2="740" y2="180"/><line class="axis" x1="36" y1="220" x2="740" y2="220"/>
+              <path class="area" d="M36 180 C110 145, 150 120, 210 94 C280 62, 350 70, 420 82 C500 95, 580 90, 660 72 C700 64, 725 68, 740 66 L740 220 L36 220 Z"/>
+              <path class="line-a" d="M36 180 C110 145, 150 120, 210 94 C280 62, 350 70, 420 82 C500 95, 580 90, 660 72 C700 64, 725 68, 740 66"/>
+              <path class="line-b" d="M36 165 C120 125, 180 100, 250 78 C320 60, 390 65, 470 70 C540 75, 620 77, 740 79"/>
+              <circle class="dot-point" cx="660" cy="72" r="5"/><circle class="dot-point" cx="740" cy="66" r="5"/>
+            </svg>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div><h3>Farms requiring support</h3><p>Neutral action-focused review language</p></div>
+            <span class="pill amber">7 items</span>
+          </div>
+          <div class="table-wrap">
+            <table class="smart-table">
+              <thead><tr><th>Farm</th><th>Focus</th><th>Readiness</th><th>Status</th></tr></thead>
+              <tbody>
+                <tr><td><div class="farm-cell"><div class="farm-icon">B</div>Bridgewater</div></td><td>Closing stock</td><td><div class="progressbar"><div style="width:62%"></div></div></td><td><span class="pill amber">Review</span></td></tr>
+                <tr><td><div class="farm-cell"><div class="farm-icon">K</div>Kinglake</div></td><td>Feed variance</td><td><div class="progressbar"><div style="width:78%"></div></div></td><td><span class="pill amber">Review</span></td></tr>
+                <tr><td><div class="farm-cell"><div class="farm-icon">H</div>Hanwood 2</div></td><td>Production entry</td><td><div class="progressbar"><div style="width:94%"></div></div></td><td><span class="pill green">Ready</span></td></tr>
+                <tr><td><div class="farm-cell"><div class="farm-icon">L</div>LPC Young</div></td><td>Feed price</td><td><div class="progressbar"><div style="width:55%"></div></div></td><td><span class="pill red">Support</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="card card-pad" style="margin-top:18px">
+        <div class="card-head" style="padding:0 0 14px">
+          <div><h3>System command modules</h3><p>How OviCore would feel as a full operating system</p></div>
+        </div>
+        <div class="command-grid">
+          <div class="command-card"><div class="icon">▦</div><h4>Daily farm operations</h4><p>Production entry, mortality, egg counts, feed, shed status and row-level audit logs.</p><div class="mini-link">Open production →</div></div>
+          <div class="command-card"><div class="icon">◇</div><h4>Feed intelligence</h4><p>Delivered vs consumed price, grain cover, receivals, and reconciliation readiness.</p><div class="mini-link">Open feed →</div></div>
+          <div class="command-card"><div class="icon">↗</div><h4>Planning engine</h4><p>Rearer pressure, transfer timing, depletion windows, breeder and broiler expansion.</p><div class="mini-link">Open planning →</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ENTRY -->
+    <section id="entry" class="screen">
+      <div class="sheet-card">
+        <div class="sheet-head">
+          <div><h3>Daily Production Entry</h3><p>Professional Excel-like screen with frozen flock identity, grouped fields and live validation.</p></div>
+          <div class="sheet-buttons">
+            <button class="sheet-btn">Copy yesterday</button>
+            <button class="sheet-btn">Missing only</button>
+            <button class="sheet-btn">Review only</button>
+            <button class="sheet-btn light">Save all rows</button>
+          </div>
+        </div>
+        <div class="sheet-toolbar">
+          <div class="sheet-field"><span>Company</span><strong>Pace Farms</strong></div>
+          <div class="sheet-field"><span>Farm</span><strong>Beresfield Farm 1</strong></div>
+          <div class="sheet-field"><span>Entry date</span><strong>19 Jun 2026</strong></div>
+          <div class="sheet-field"><span>Week ending</span><strong>21 Jun 2026</strong></div>
+          <div class="sheet-field"><span>Type</span><strong>Layers</strong></div>
+          <div class="sheet-field"><span>View</span><strong>All active sheds</strong></div>
+        </div>
+        <div class="sheet-kpis">
+          <div class="sheet-kpi"><span>Progress</span><strong>10 / 12</strong></div>
+          <div class="sheet-kpi"><span>Total eggs</span><strong>362,020</strong></div>
+          <div class="sheet-kpi"><span>Avg hen day</span><strong>86.8%</strong></div>
+          <div class="sheet-kpi"><span>Avg FCR/doz</span><strong>1.57</strong></div>
+          <div class="sheet-kpi"><span>Review</span><strong>3</strong></div>
+          <div class="sheet-kpi"><span>Missing</span><strong>2</strong></div>
+        </div>
+        <div class="formula-bar"><div class="name-box">J6</div><div class="formula">Hen day % = Total eggs ÷ Closing birds × 100</div></div>
+        <div class="excel-wrap">
+          <table class="excel">
+            <thead>
+              <tr>
+                <th class="rownum" rowspan="2">#</th>
+                <th class="sticky-a group-id" colspan="3">Flock identity</th>
+                <th class="group-bird" colspan="5">Bird movement</th>
+                <th class="group-prod" colspan="4">Production</th>
+                <th class="group-review" colspan="4">Calculated review</th>
+                <th colspan="3">Workflow</th>
+              </tr>
+              <tr>
+                <th class="sticky-a">Farm</th><th class="sticky-b">Shed</th><th class="sticky-c">Flock</th>
+                <th>Age</th><th>Opening</th><th>Mort.</th><th>Transfers</th><th>Closing</th>
+                <th>Feed kg</th><th>Eggs</th><th>Rejects</th><th>Seconds</th>
+                <th>Hen day %</th><th>FCR/doz</th><th>Eggs/bird</th><th>Review flag</th>
+                <th>Status</th><th>Notes</th><th>Last saved</th>
+              </tr>
+            </thead>
+            <tbody id="excelRows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- INSIGHTS -->
+    <section id="insights" class="screen">
+      <div class="insight-layout">
+        <div>
+          <div class="card">
+            <div class="card-head">
+              <div><h3>Flock performance insights</h3><p>Actuals versus standard curves with production signals highlighted</p></div>
+              <span class="pill blue">L2401 / Shed 01</span>
+            </div>
+            <div class="chart big-graph">
+              <svg class="svg-chart" viewBox="0 0 860 420" preserveAspectRatio="none">
+                <defs><linearGradient id="insightArea" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#1f8f68" stop-opacity=".22"/><stop offset="100%" stop-color="#1f8f68" stop-opacity="0"/></linearGradient></defs>
+                <line class="grid-line" x1="50" y1="45" x2="830" y2="45"/><line class="grid-line" x1="50" y1="115" x2="830" y2="115"/><line class="grid-line" x1="50" y1="185" x2="830" y2="185"/><line class="grid-line" x1="50" y1="255" x2="830" y2="255"/><line class="grid-line" x1="50" y1="325" x2="830" y2="325"/><line class="axis" x1="50" y1="365" x2="830" y2="365"/>
+                <path class="area" fill="url(#insightArea)" d="M50 330 C120 260 155 190 230 112 C310 62 395 72 470 84 C550 98 640 85 730 72 C780 66 812 70 830 68 L830 365 L50 365 Z"/>
+                <path class="line-a" d="M50 330 C120 260 155 190 230 112 C310 62 395 72 470 84 C550 98 640 85 730 72 C780 66 812 70 830 68"/>
+                <path class="line-b" d="M50 310 C130 235 190 160 270 92 C350 60 430 65 520 72 C610 80 700 78 830 82"/>
+                <circle class="dot-point" cx="730" cy="72" r="6"/><circle class="dot-point" cx="830" cy="68" r="6"/>
+              </svg>
+            </div>
+          </div>
+          <div class="compare-row">
+            <div class="metric-card"><span>Current hen day</span><strong>91.2%</strong><p>1.8 points above site average</p></div>
+            <div class="metric-card"><span>FCR / dozen</span><strong>1.54</strong><p>Within target range</p></div>
+            <div class="metric-card"><span>Cum mortality</span><strong>2.1%</strong><p>Actual vs standard tracking well</p></div>
+          </div>
+        </div>
+        <div class="side-panel">
+          <div class="card card-pad">
+            <div class="card-head" style="padding:0 0 14px"><div><h3>AI commentary</h3><p>Plain-English production interpretation</p></div></div>
+            <div class="ai-item"><strong>Performance is stable</strong><p>The flock is above standard for hen day while feed conversion remains controlled.</p></div>
+            <div class="ai-item"><strong>Watch the next 10 days</strong><p>Age-related egg mass decline normally starts building from this point. Keep feed texture consistent.</p></div>
+          </div>
+          <div class="card card-pad">
+            <div class="card-head" style="padding:0 0 14px"><div><h3>Recent events</h3><p>Audit trail and production context</p></div></div>
+            <div class="timeline">
+              <div class="timeline-item"><div class="timeline-dot"></div><div><h4>Ration changed</h4><p>Layer 3 110 Mash started 4 days ago.</p></div></div>
+              <div class="timeline-item"><div class="timeline-dot" style="background:#e5b64c;box-shadow:0 0 0 6px rgba(229,182,76,.16)"></div><div><h4>Rejects reviewed</h4><p>Service manager note added for Shed 04.</p></div></div>
+              <div class="timeline-item"><div class="timeline-dot" style="background:#2563eb;box-shadow:0 0 0 6px rgba(37,99,235,.12)"></div><div><h4>Feed delivery</h4><p>4.7t received from Beresfield mill.</p></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- BREEDERS -->
+    <section id="breeders" class="screen">
+      <div class="breeder-grid">
+        <div class="card card-pad">
+          <div class="card-head" style="padding:0 0 16px">
+            <div><h3>Breeder daily entry</h3><p>Female pens and separate male data per pen</p></div>
+            <span class="pill green">Daily capture</span>
+          </div>
+          <div class="pen-grid">
+            <div class="pen-card"><div class="pen-top"><h4>Pen 1</h4><span class="pill green">Saved</span></div><div class="pen-body"><div class="pen-field"><span>Females</span><strong>5,920</strong></div><div class="pen-field"><span>Males</span><strong>590</strong></div><div class="pen-field"><span>Eggs</span><strong>5,180</strong></div><div class="pen-field"><span>Male %</span><strong>9.9%</strong></div></div></div>
+            <div class="pen-card"><div class="pen-top"><h4>Pen 2</h4><span class="pill amber">Review</span></div><div class="pen-body"><div class="pen-field"><span>Females</span><strong>5,880</strong></div><div class="pen-field"><span>Males</span><strong>571</strong></div><div class="pen-field"><span>Eggs</span><strong>4,940</strong></div><div class="pen-field"><span>Male %</span><strong>9.7%</strong></div></div></div>
+            <div class="pen-card"><div class="pen-top"><h4>Pen 3</h4><span class="pill green">Saved</span></div><div class="pen-body"><div class="pen-field"><span>Females</span><strong>5,910</strong></div><div class="pen-field"><span>Males</span><strong>584</strong></div><div class="pen-field"><span>Eggs</span><strong>5,110</strong></div><div class="pen-field"><span>Male %</span><strong>9.8%</strong></div></div></div>
+            <div class="pen-card"><div class="pen-top"><h4>Pen 4</h4><span class="pill red">Missing</span></div><div class="pen-body"><div class="pen-field"><span>Females</span><strong>—</strong></div><div class="pen-field"><span>Males</span><strong>—</strong></div><div class="pen-field"><span>Eggs</span><strong>—</strong></div><div class="pen-field"><span>Male %</span><strong>—</strong></div></div></div>
+          </div>
+        </div>
+        <div class="card card-pad hatch-card">
+          <div class="card-head" style="padding:0 0 10px">
+            <div><h3>Breeder performance</h3><p>Fertility, hatchability and chick availability signal</p></div>
+          </div>
+          <div class="fertility-ring"><div class="ring-text"><strong>88%</strong><span>Fertility</span></div></div>
+          <table class="smart-table">
+            <tbody>
+              <tr><td>Hatchability</td><td><strong>82.4%</strong></td><td><span class="pill green">On track</span></td></tr>
+              <tr><td>Settable eggs</td><td><strong>18,760</strong></td><td><span class="pill blue">Today</span></td></tr>
+              <tr><td>Chick forecast</td><td><strong>15,455</strong></td><td><span class="pill amber">5 day view</span></td></tr>
+              <tr><td>Male mortality</td><td><strong>0.04%</strong></td><td><span class="pill green">Normal</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- FEED -->
+    <section id="feed" class="screen">
+      <div class="feed-grid">
+        <div class="card card-pad">
+          <div class="card-head" style="padding:0 0 16px"><div><h3>Feed & grain command</h3><p>Delivered price, consumed price, stock recon and cover position</p></div></div>
+          <div class="price-cards">
+            <div class="price-card"><span>Delivered price</span><strong>$554.84</strong><p>Current weighted delivered price</p></div>
+            <div class="price-card"><span>Consumed price</span><strong>$571.92</strong><p>Includes on-farm stock movement</p></div>
+            <div class="price-card"><span>Recon readiness</span><strong>84%</strong><p>Monday 12 pm cutoff view</p></div>
+            <div class="price-card"><span>Support items</span><strong>9</strong><p>Closing stock / EndCalc review</p></div>
+          </div>
+          <div class="card" style="margin-top:14px">
+            <div class="card-head"><div><h3>Price progression</h3><p>Delivered vs consumed price over 5 weeks</p></div></div>
+            <div class="chart">
+              <svg class="svg-chart" viewBox="0 0 680 250" preserveAspectRatio="none">
+                <line class="grid-line" x1="36" y1="45" x2="650" y2="45"/><line class="grid-line" x1="36" y1="95" x2="650" y2="95"/><line class="grid-line" x1="36" y1="145" x2="650" y2="145"/><line class="axis" x1="36" y1="205" x2="650" y2="205"/>
+                <path class="line-a" d="M50 170 C160 150, 230 122, 330 130 C430 138, 520 110, 640 98"/>
+                <path class="line-b" d="M50 158 C150 146, 240 132, 330 112 C430 116, 530 90, 640 76"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <div><h3>Mill and site view</h3><p>Where cost pressure and stock risk are sitting</p></div>
+            <span class="pill blue">Live map concept</span>
+          </div>
+          <div class="map-card">
+            <div class="site" style="left:20%;top:28%">Beresfield</div>
+            <div class="site" style="left:55%;top:44%">Hanwood</div>
+            <div class="site" style="left:70%;top:66%">Kinglake</div>
+            <div class="site" style="left:36%;top:70%">LPC Young</div>
+          </div>
+          <div class="table-wrap">
+            <table class="smart-table">
+              <thead><tr><th>Site</th><th>Focus</th><th>Position</th></tr></thead>
+              <tbody>
+                <tr><td>Beresfield</td><td>Wheat cover</td><td><span class="pill green">Strong</span></td></tr>
+                <tr><td>Hanwood</td><td>Delivered price</td><td><span class="pill amber">Pressure</span></td></tr>
+                <tr><td>Kinglake</td><td>ASW1 basis</td><td><span class="pill blue">Monitor</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PLANNING -->
+    <section id="planning" class="screen">
+      <div class="card card-pad">
+        <div class="card-head" style="padding:0 0 16px">
+          <div><h3>Planning engine</h3><p>Transfer pressure, shed utilisation and depletion timing</p></div>
+          <span class="pill green">Scenario: Balanced plan</span>
+        </div>
+        <div class="kpi-grid">
+          <div class="kpi"><div class="label">Rearing sheds</div><div class="value">51</div><div class="foot">Active planning capacity</div></div>
+          <div class="kpi"><div class="label">Layer sheds</div><div class="value">114</div><div class="foot">Commercial layer capacity</div></div>
+          <div class="kpi"><div class="label">Transfer age</div><div class="value">17w</div><div class="foot">Pullets to layer</div></div>
+          <div class="kpi"><div class="label">Balanced depop</div><div class="value">59.2w</div><div class="foot">Current model output</div></div>
+          <div class="kpi"><div class="label">Utilisation risk</div><div class="value">Low</div><div class="foot">Current scenario</div></div>
+        </div>
+        <div class="card" style="margin-top:16px">
+          <div class="card-head">
+            <div><h3>12-month shed pressure</h3><p>Rearing output versus layer placement demand</p></div>
+          </div>
+          <div class="chart big-graph">
+            <svg class="svg-chart" viewBox="0 0 900 410" preserveAspectRatio="none">
+              <line class="grid-line" x1="45" y1="55" x2="860" y2="55"/><line class="grid-line" x1="45" y1="125" x2="860" y2="125"/><line class="grid-line" x1="45" y1="195" x2="860" y2="195"/><line class="grid-line" x1="45" y1="265" x2="860" y2="265"/><line class="axis" x1="45" y1="340" x2="860" y2="340"/>
+              <rect class="bar" x="70" y="150" width="38" height="190" fill="#1f8f68"/><rect class="bar" x="120" y="130" width="38" height="210" fill="#e5b64c"/>
+              <rect class="bar" x="190" y="120" width="38" height="220" fill="#1f8f68"/><rect class="bar" x="240" y="150" width="38" height="190" fill="#e5b64c"/>
+              <rect class="bar" x="310" y="95" width="38" height="245" fill="#1f8f68"/><rect class="bar" x="360" y="112" width="38" height="228" fill="#e5b64c"/>
+              <rect class="bar" x="430" y="132" width="38" height="208" fill="#1f8f68"/><rect class="bar" x="480" y="120" width="38" height="220" fill="#e5b64c"/>
+              <rect class="bar" x="550" y="145" width="38" height="195" fill="#1f8f68"/><rect class="bar" x="600" y="165" width="38" height="175" fill="#e5b64c"/>
+              <rect class="bar" x="670" y="112" width="38" height="228" fill="#1f8f68"/><rect class="bar" x="720" y="105" width="38" height="235" fill="#e5b64c"/>
+            </svg>
+          </div>
+        </div>
+        <div class="coverage-grid" style="margin-top:14px">
+          <div class="month-card"><h4>July</h4><span>Transfer demand</span><strong>18 sheds</strong></div>
+          <div class="month-card"><h4>August</h4><span>Rearing output</span><strong>21 sheds</strong></div>
+          <div class="month-card"><h4>September</h4><span>Empty shed risk</span><strong>Low</strong></div>
+          <div class="month-card"><h4>October</h4><span>Decision point</span><strong>Depop</strong></div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+function showScreen(id, btn){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  const titles = {
+    dashboard:["Command Centre","Executive farm operating view"],
+    entry:["Daily Production","Excel-like production entry"],
+    insights:["Insights & Graphs","Performance intelligence"],
+    breeders:["Breeder Production","Pens, males, fertility and hatchability"],
+    feed:["Feed & Grain","Feed price, recon and coverage"],
+    planning:["Planning","Capacity, transfers and depletion"]
+  };
+  document.getElementById('eyebrow').textContent=titles[id][0];
+  document.getElementById('pageTitle').textContent=titles[id][1];
+}
+
+const rows = [
+ ["Ber Farm 1","Shed 01","L2401","42.3","38,420","12","0","38,408","4,820","35,910","420","160","93.5%","1.61","0.94","Within range","saved","Normal production","08:42"],
+ ["Ber Farm 1","Shed 02","L2402","39.1","39,100","8","0","39,092","6,900","28,100","390","110","71.9%","2.95","0.72","Hen day low, FCR high","review","Feed intake high","08:43"],
+ ["Ber Farm 1","Shed 03","L2403","31.4","40,000","","0","—","","","","","—","—","—","Data required","missing","","—"],
+ ["Ber Farm 1","Shed 04","L2404","57.8","37,250","22","0","37,228","4,675","33,120","690","180","89.0%","1.69","0.89","Rejects high","review","Rejects above normal","08:50"],
+ ["Ber Farm 1","Shed 05","L2405","28.2","40,500","5","0","40,495","4,210","32,280","270","95","79.7%","1.57","0.80","Within range","saved","","08:51"],
+ ["Ber Farm 1","Shed 06","L2406","64.5","35,900","18","0","35,882","4,480","30,140","520","210","84.0%","1.78","0.84","Within range","saved","Older flock","08:52"],
+ ["Ber Farm 1","Shed 07","L2407","23.7","41,000","","0","—","","","","","—","—","—","Data required","missing","","—"],
+ ["Ber Farm 1","Shed 08","L2408","46.6","38,200","10","0","38,190","4,735","35,100","360","145","91.9%","1.62","0.92","Within range","saved","","08:58"],
+ ["Ber Farm 1","Shed 09","L2409","51.2","37,680","16","0","37,664","4,710","33,680","410","170","89.4%","1.68","0.89","Within range","saved","","09:01"],
+ ["Ber Farm 1","Shed 10","L2410","35.6","39,720","9","0","39,711","4,550","35,400","330","120","89.1%","1.54","0.89","Within range","saved","Good recovery","09:03"],
+ ["Ber Farm 1","Shed 11","L2411","67.8","34,820","24","0","34,796","4,460","27,250","575","230","78.3%","1.96","0.78","FCR high","review","Monitor age decline","09:05"],
+ ["Ber Farm 1","Shed 12","L2412","21.1","41,200","4","0","41,196","3,980","23,800","220","80","57.8%","2.01","0.58","Young flock ramp up","review","Coming into lay","09:07"]
+];
+
+function buildRows(){
+  const tbody = document.getElementById('excelRows');
+  tbody.innerHTML = rows.map((r,i)=>{
+    const s=r[16];
+    const warnFlag = s==='review' ? 'warn-cell' : '';
+    const badHd = r[12].includes('57') || r[12].includes('71') ? 'bad-cell' : '';
+    const cells = `
+      <td class="rownum">${i+1}</td>
+      <td class="sticky-a">${r[0]}</td>
+      <td class="sticky-b">${r[1]}</td>
+      <td class="sticky-c">${r[2]}</td>
+      <td class="calc">${r[3]}</td><td class="calc">${r[4]}</td>
+      <td><input class="entry" value="${r[5]}"></td>
+      <td><input class="entry" value="${r[6]}"></td>
+      <td class="calc">${r[7]}</td>
+      <td><input class="entry ${r[8]=='6,900'?'warn-cell':''}" value="${r[8]}"></td>
+      <td><input class="entry" value="${r[9]}"></td>
+      <td><input class="entry ${r[10]=='690'?'warn-cell':''}" value="${r[10]}"></td>
+      <td><input class="entry" value="${r[11]}"></td>
+      <td class="calc ${badHd}">${r[12]}</td>
+      <td class="calc ${r[13]=='2.95'||r[13]=='2.01'||r[13]=='1.96'?'bad-cell':''}">${r[13]}</td>
+      <td class="calc">${r[14]}</td>
+      <td class="calc ${warnFlag}" style="text-align:left">${r[15]}</td>
+      <td><div class="statusbox ${s}">${s==='saved'?'Saved':s==='review'?'Review':"Missing"}</div></td>
+      <td><input class="entry text" value="${r[17]}"></td>
+      <td class="calc" style="text-align:left">${r[18]}</td>
+    `;
+    return `<tr>${cells}</tr>`;
+  }).join('');
+}
+buildRows();
+</script>
+</body>
+</html>

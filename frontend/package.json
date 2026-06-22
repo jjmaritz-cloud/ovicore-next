@@ -1,0 +1,28 @@
+{
+  "name": "ovicore-broiler-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start -p 3000",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@ag-grid-community/client-side-row-model": "32.3.3",
+    "@ag-grid-community/core": "32.3.3",
+    "@ag-grid-community/react": "32.3.3",
+    "@ag-grid-community/styles": "32.3.3",
+    "ag-grid-community": "^35.3.1",
+    "ag-grid-react": "^35.3.1",
+    "next": "14.2.20",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "typescript": "5.7.2"
+  }
+}
