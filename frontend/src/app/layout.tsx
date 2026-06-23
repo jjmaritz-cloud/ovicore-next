@@ -4,8 +4,13 @@ import "@ag-grid-community/styles/ag-theme-quartz.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "OviCore Broiler Module",
-  description: "Broiler Demand Planner starter pack",
+  title: "OviCore",
+  description: "Plan with confidence. Forecast with precision.",
+  icons: {
+    icon: "/OviCore_egg_icon.png",
+    shortcut: "/OviCore_egg_icon.png",
+    apple: "/OviCore_egg_icon.png",
+  },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

@@ -36,7 +36,9 @@ export default function BroilerSidebar() {
   return (
     <aside className="sidebar">
       <div className="brand-row">
-        <div className="brand-logo">O</div>
+        <div className="brand-logo">
+					<img src="/OviCore_egg_icon.png" alt="OviCore" />
+				</div>
         <div>
           <h1>OviCore</h1>
           <p>Plan with confidence. Forecast with precision.</p>

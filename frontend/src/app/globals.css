@@ -66,16 +66,21 @@ button {
 }
 
 .brand-logo {
-  width: 42px;
-  height: 42px;
-  border-radius: 15px;
-  background: linear-gradient(135deg, #6be7b7 0%, #eac45a 100%);
-  color: #06251f;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 1000;
-  font-size: 22px;
+  overflow: visible;
+  background: transparent;
+}
+
+.brand-logo img {
+  width: 60px;
+  height: 60px;
+  object-fit: contain;
+  display: block;
 }
 
 .brand-row h1 {
