@@ -15,6 +15,7 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-quartz.css";
+import BroilerSidebar from "@/components/BroilerSidebar";
 
 type BroilerCycleRow = {
   id: number;
@@ -503,50 +504,7 @@ export default function BroilerCycleRegisterPage() {
 
   return (
     <main className="page-shell">
-      <aside className="sidebar">
-        <div className="brand-row">
-          <div className="brand-logo">O</div>
-          <div>
-            <h1>OviCore</h1>
-            <p>Plan with confidence. Forecast with precision.</p>
-          </div>
-        </div>
-
-        <div className="workspace-card">
-          <span>Active workspace</span>
-          <strong>Broiler Operations</strong>
-          <div className="workspace-pills">
-            <b>Broilers</b>
-            <b>Cycles</b>
-            <b>Register</b>
-          </div>
-        </div>
-
-        <nav className="nav-list">
-          <button onClick={() => (window.location.href = "/broilers/demand-planner")}>
-            Demand Planner
-          </button>
-
-          <button onClick={() => (window.location.href = "/broilers/farms")}>
-            Farm Register
-          </button>
-
-          <button onClick={() => (window.location.href = "/broilers/sheds")}>
-            Shed Register
-          </button>
-
-          <button className="active">Cycle Register</button>
-
-          <button>Performance</button>
-          <button>Processing</button>
-        </nav>
-
-        <div className="sidebar-note">
-          <strong>Broiler cycles</strong>
-          <br />
-          Cycles are generated from placement demand and later receive actual performance data.
-        </div>
-      </aside>
+			<BroilerSidebar />
 
       <section className="main-panel">
         <header className="topbar">
