@@ -34,6 +34,45 @@ class BroilerShed(Base):
     farm = relationship("BroilerFarm", back_populates="sheds")
     plans = relationship("BroilerPlacementPlan", back_populates="shed")
 
+from sqlalchemy import Column, Integer, String, Float, Date, Text, ForeignKey
+from sqlalchemy.orm import relationship
+
+# Existing imports above should already include Base
+
+
+class BroilerProcessing(Base):
+    __tablename__ = "broiler_processing"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    broiler_cycle_id = Column(Integer, nullable=False)
+
+    processing_date = Column(Date, nullable=True)
+    processor = Column(String, nullable=True)
+    plant_location = Column(String, nullable=True)
+
+    planned_birds = Column(Integer, nullable=True)
+    actual_birds_processed = Column(Integer, nullable=True)
+
+    average_live_weight_kg = Column(Float, nullable=True)
+    total_live_weight_kg = Column(Float, nullable=True)
+
+    average_dressed_weight_kg = Column(Float, nullable=True)
+    total_dressed_weight_kg = Column(Float, nullable=True)
+
+    processing_yield_pct = Column(Float, nullable=True)
+
+    condemned_birds = Column(Integer, nullable=True)
+    condemnation_pct = Column(Float, nullable=True)
+
+    mortality_to_processing = Column(Integer, nullable=True)
+
+    grade_a_pct = Column(Float, nullable=True)
+    grade_b_pct = Column(Float, nullable=True)
+
+    downgrade_reason = Column(String, nullable=True)
+    status = Column(String, default="Draft")
+    notes = Column(Text, nullable=True)
 
 class BroilerPlacementPlan(Base):
     __tablename__ = "broiler_placement_plans"

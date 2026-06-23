@@ -3,6 +3,72 @@ from decimal import Decimal
 from typing import Optional
 from pydantic import BaseModel, ConfigDict
 
+from datetime import date
+from typing import Optional
+from pydantic import BaseModel
+
+
+class BroilerProcessingBase(BaseModel):
+    broiler_cycle_id: int
+
+    processing_date: Optional[date] = None
+    processor: Optional[str] = None
+    plant_location: Optional[str] = None
+
+    planned_birds: Optional[int] = None
+    actual_birds_processed: Optional[int] = None
+
+    average_live_weight_kg: Optional[float] = None
+    total_live_weight_kg: Optional[float] = None
+
+    average_dressed_weight_kg: Optional[float] = None
+    total_dressed_weight_kg: Optional[float] = None
+
+    processing_yield_pct: Optional[float] = None
+
+    condemned_birds: Optional[int] = None
+    condemnation_pct: Optional[float] = None
+
+    mortality_to_processing: Optional[int] = None
+
+    grade_a_pct: Optional[float] = None
+    grade_b_pct: Optional[float] = None
+
+    downgrade_reason: Optional[str] = None
+    status: Optional[str] = "Draft"
+    notes: Optional[str] = None
+
+
+class BroilerProcessingCreate(BroilerProcessingBase):
+    pass
+
+
+class BroilerProcessingUpdate(BaseModel):
+    processing_date: Optional[date] = None
+    processor: Optional[str] = None
+    plant_location: Optional[str] = None
+
+    planned_birds: Optional[int] = None
+    actual_birds_processed: Optional[int] = None
+
+    average_live_weight_kg: Optional[float] = None
+    average_dressed_weight_kg: Optional[float] = None
+
+    condemned_birds: Optional[int] = None
+
+    grade_a_pct: Optional[float] = None
+    grade_b_pct: Optional[float] = None
+
+    downgrade_reason: Optional[str] = None
+    status: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class BroilerProcessingOut(BroilerProcessingBase):
+    id: int
+
+    class Config:
+        from_attributes = True
 
 def _to_float(value) -> Optional[float]:
     if value is None:

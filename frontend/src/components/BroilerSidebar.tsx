@@ -37,8 +37,9 @@ export default function BroilerSidebar() {
     <aside className="sidebar">
       <div className="brand-row">
         <div className="brand-logo">
-					<img src="/OviCore_egg_icon.png" alt="OviCore" />
-				</div>
+          <img src="/OviCore_egg_icon.png" alt="OviCore" />
+        </div>
+
         <div>
           <h1>OviCore</h1>
           <p>Plan with confidence. Forecast with precision.</p>
@@ -56,18 +57,18 @@ export default function BroilerSidebar() {
         </div>
       </div>
 
-			<nav className="nav-list">
-				{broilerMenuItems.map((item) => (
-					<button
-						key={item.href}
-						type="button"
-						className={pathname === item.href ? "active" : ""}
-						onClick={() => router.push(item.href)}
-					>
-						{item.label}
-					</button>
-				))}
-			</nav>
+      <nav className="nav-list">
+        {broilerMenuItems.map((item) => (
+          <button
+            key={item.href}
+            type="button"
+            className={pathname === item.href ? "active" : ""}
+            onClick={() => router.push(item.href)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </nav>
     </aside>
   );
 }

@@ -3,6 +3,7 @@ from datetime import datetime
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session, joinedload
+from app.routers import broiler_processing
 
 from .db import Base, engine, SessionLocal, get_db
 from .models import BroilerFarm, BroilerShed, BroilerPlacementPlan, BroilerDailyPerformance
@@ -24,6 +25,7 @@ from .calculations import build_plan_response
 from .seed import seed_demo_data
 
 app = FastAPI(title="OviCore Broiler Module API", version="0.1.0")
+app.include_router(broiler_processing.router)
 
 origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
 app.add_middleware(
