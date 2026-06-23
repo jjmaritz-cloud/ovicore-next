@@ -846,7 +846,12 @@ export default function BroilerDemandPlannerPage() {
 					<button onClick={() => (window.location.href = "/broilers/cycles")}>
 						Cycle Register
 					</button>
-					<button>Performance</button>
+					<button
+						className="active"
+						onClick={() => (window.location.href = "/broilers/performance")}
+					>
+						Performance
+					</button>
 					<button>Processing</button>
 				</nav>
 

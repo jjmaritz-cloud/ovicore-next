@@ -770,7 +770,12 @@ export default function BroilerPerformancePage() {
             Cycle Register
           </button>
 
-          <button className="active">Performance</button>
+          <button
+						className="active"
+						onClick={() => (window.location.href = "/broilers/performance")}
+					>
+						Performance
+					</button>
           <button>Processing</button>
         </nav>
 
