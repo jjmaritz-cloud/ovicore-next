@@ -14,6 +14,7 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-quartz.css";
+import BroilerSidebar from "@/components/BroilerSidebar";
 
 type BroilerFarmRow = {
   id: number;
@@ -395,46 +396,7 @@ export default function BroilerShedRegisterPage() {
 
   return (
     <main className="page-shell">
-      <aside className="sidebar">
-        <div className="brand-row">
-          <div className="brand-logo">O</div>
-          <div>
-            <h1>OviCore</h1>
-            <p>Plan with confidence. Forecast with precision.</p>
-          </div>
-        </div>
-
-        <div className="workspace-card">
-          <span>Active workspace</span>
-          <strong>Broiler Operations</strong>
-          <div className="workspace-pills">
-            <b>Broilers</b>
-            <b>Setup</b>
-            <b>Sheds</b>
-          </div>
-        </div>
-
-        <nav className="nav-list">
-          <button onClick={() => (window.location.href = "/broilers/demand-planner")}>
-            Demand Planner
-          </button>
-          <button onClick={() => (window.location.href = "/broilers/farms")}>
-            Farm Register
-          </button>
-          <button className="active">Shed Register</button>
-					<button onClick={() => (window.location.href = "/broilers/cycles")}>
-						Cycle Register
-					</button>
-          <button>Performance</button>
-          <button>Processing</button>
-        </nav>
-
-        <div className="sidebar-note">
-          <strong>Broiler setup</strong>
-          <br />
-          Sheds drive floor area, density, liveweight and growout defaults.
-        </div>
-      </aside>
+      <BroilerSidebar />
 
       <section className="main-panel">
         <header className="topbar">
@@ -514,7 +476,8 @@ export default function BroilerShedRegisterPage() {
           <div className="formula-bar">
             <div className="formula-name">Capacity setup</div>
             <div className="formula-text">
-              Floor area, default density, target liveweight and growout days are used by the Demand Planner when new rows are created.
+              Floor area, default density, target liveweight and growout days are used by the
+              Demand Planner when new rows are created.
             </div>
           </div>
 

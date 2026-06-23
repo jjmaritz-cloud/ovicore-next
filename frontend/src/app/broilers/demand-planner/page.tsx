@@ -17,6 +17,7 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-quartz.css";
+import BroilerSidebar from "@/components/BroilerSidebar";
 
 type BroilerPlanRow = {
   id: number;
@@ -812,57 +813,11 @@ export default function BroilerDemandPlannerPage() {
     };
   }, [rows]);
 
-  return (
-    <main className="page-shell">
-      <aside className="sidebar">
-        <div className="brand-row">
-          <div className="brand-logo">O</div>
-          <div>
-            <h1>OviCore</h1>
-            <p>Plan with confidence. Forecast with precision.</p>
-          </div>
-        </div>
+return (
+  <main className="page-shell">
+    <BroilerSidebar />
 
-        <div className="workspace-card">
-          <span>Active workspace</span>
-          <strong>Broiler Operations</strong>
-          <div className="workspace-pills">
-            <b>Broilers</b>
-            <b>Planning</b>
-            <b>Demand</b>
-          </div>
-        </div>
-
-				<nav className="nav-list">
-					<button className="active">Demand Planner</button>
-
-					<button onClick={() => (window.location.href = "/broilers/farms")}>
-						Farm Register
-					</button>
-
-					<button onClick={() => (window.location.href = "/broilers/sheds")}>
-						Shed Register
-					</button>
-					<button onClick={() => (window.location.href = "/broilers/cycles")}>
-						Cycle Register
-					</button>
-					<button
-						className="active"
-						onClick={() => (window.location.href = "/broilers/performance")}
-					>
-						Performance
-					</button>
-					<button>Processing</button>
-				</nav>
-
-        <div className="sidebar-note">
-          <strong>Broiler module</strong>
-          <br />
-          Demand planning first. Supply connection later.
-        </div>
-      </aside>
-
-      <section className="main-panel">
+    <section className="main-panel">
         <header className="topbar">
           <div>
             <p className="eyebrow">Broiler Demand Planner</p>
