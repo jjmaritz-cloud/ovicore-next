@@ -747,7 +747,7 @@ export default function BroilerDemandPlannerPage() {
 				const payload = {
 					placement_date: displayDateToIso(row.placementDate),
 					planned_birds:
-						row.plannedBirds === null || row.plannedBirds === undefined || row.plannedBirds === ""
+						row.plannedBirds === null || row.plannedBirds === undefined
 							? null
 							: Number(row.plannedBirds),
 					target_density_kg_m2: Number(row.targetDensityKgM2),
