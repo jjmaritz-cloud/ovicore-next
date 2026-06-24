@@ -129,6 +129,14 @@ function toNumberOrNull(value: number | "" | string) {
   return Number.isFinite(num) ? num : null;
 }
 
+function positiveOrBlank(value: number | null | undefined): number | "" {
+  if (value === null || value === undefined || Number(value) <= 0) {
+    return "";
+  }
+
+  return Number(value);
+}
+
 function addDays(isoDate: string, days: number) {
   if (!isoDate) return "";
 
@@ -356,44 +364,24 @@ export default function DailyPerformancePage() {
 
         opening_birds: openingBirds ?? "",
 
-				mortality_front:
-					existing?.mortality_front && existing.mortality_front > 0
-						? existing.mortality_front
-						: "",
-				mortality_middle:
-					existing?.mortality_middle && existing.mortality_middle > 0
-						? existing.mortality_middle
-						: "",
-				mortality_back:
-					existing?.mortality_back && existing.mortality_back > 0
-						? existing.mortality_back
-						: "",
-				mortality_other:
-					existing?.mortality_other && existing.mortality_other > 0
-						? existing.mortality_other
-						: "",
-				mortality_birds:
-					existing?.mortality_birds && existing.mortality_birds > 0
-						? existing.mortality_birds
-						: "",
+				mortality_front: positiveOrBlank(existing?.mortality_front),
+				mortality_middle: positiveOrBlank(existing?.mortality_middle),
+				mortality_back: positiveOrBlank(existing?.mortality_back),
+				mortality_other: positiveOrBlank(existing?.mortality_other),
+				mortality_birds: existing?.mortality_birds ?? 0,
 
-				cull_legs:
-					existing?.cull_legs && existing.cull_legs > 0 ? existing.cull_legs : "",
-				cull_runts:
-					existing?.cull_runts && existing.cull_runts > 0 ? existing.cull_runts : "",
-				cull_beak:
-					existing?.cull_beak && existing.cull_beak > 0 ? existing.cull_beak : "",
-				cull_other:
-					existing?.cull_other && existing.cull_other > 0 ? existing.cull_other : "",
-				cull_birds:
-					existing?.cull_birds && existing.cull_birds > 0 ? existing.cull_birds : "",
+				cull_legs: positiveOrBlank(existing?.cull_legs),
+				cull_runts: positiveOrBlank(existing?.cull_runts),
+				cull_beak: positiveOrBlank(existing?.cull_beak),
+				cull_other: positiveOrBlank(existing?.cull_other),
+				cull_birds: existing?.cull_birds ?? 0,
 
         total_bird_loss: "",
         closing_birds: existing?.closing_birds ?? "",
 
-        feed_kg: existing?.feed_kg ?? "",
-        water_litres: existing?.water_litres ?? "",
-        body_weight_kg: existingBodyWeight,
+				feed_kg: positiveOrBlank(existing?.feed_kg),
+				water_litres: positiveOrBlank(existing?.water_litres),
+				body_weight_kg: positiveOrBlank(Number(existingBodyWeight || 0)),
 
         mortality_pct: "",
         cull_pct: "",

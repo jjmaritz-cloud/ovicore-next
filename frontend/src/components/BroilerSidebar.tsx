@@ -27,6 +27,10 @@ const broilerMenuItems = [
     label: "Daily House Sheet",
     href: "/broilers/performance",
   },
+	{
+		label: "Broiler Insights",
+		href: "/broilers/insights",
+	},
   {
     label: "Processing",
     href: "/broilers/processing",
