@@ -43,19 +43,27 @@ button {
 }
 
 .page-shell {
-  display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
+  display: block;
   min-height: 100vh;
 }
 
+.main-panel {
+  min-height: 100vh;
+  margin-left: 260px;
+  transition: margin-left 180ms ease;
+}
+
 .sidebar {
-  position: sticky;
-  top: 0;
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: 260px;
   height: 100vh;
+  z-index: 70;
   padding: 18px 16px;
   background: linear-gradient(180deg, #061a16 0%, #0b3129 68%, #102b27 100%);
   color: #fff;
   box-shadow: 16px 0 45px rgba(2, 8, 23, 0.22);
+  overflow-y: auto;
 }
 
 .brand-row {
@@ -77,8 +85,8 @@ button {
 }
 
 .brand-logo img {
-  width: 60px;
-  height: 60px;
+  width: 56px;
+  height: 56px;
   object-fit: contain;
   display: block;
 }
@@ -499,32 +507,6 @@ button {
   box-shadow: inset 0 0 0 2px #1f8f68;
 }
 
-@media (max-width: 1200px) {
-  .page-shell {
-    grid-template-columns: 86px minmax(0, 1fr);
-  }
-
-  .brand-row h1,
-  .brand-row p,
-  .workspace-card,
-  .nav-list button:not(.active),
-  .sidebar-note {
-    display: none;
-  }
-
-  .brand-row {
-    justify-content: center;
-  }
-
-  .nav-list button {
-    text-align: center;
-    padding: 12px 6px;
-  }
-
-  .search-box {
-    display: none;
-  }
-}
 .ag-theme-quartz .ag-body-horizontal-scroll {
   min-height: 18px !important;
 }
@@ -3319,4 +3301,65 @@ button {
     width: 100%;
     min-height: 100vh;
   }
+}
+
+/* Collapsible broiler sidebar */
+
+.sidebar {
+  transition:
+    transform 180ms ease,
+    opacity 180ms ease;
+}
+
+.sidebar-hidden {
+  transform: translateX(-204px);
+  opacity: 1;
+  pointer-events: none;
+}
+
+.sidebar-hidden::after {
+  content: "";
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 56px;
+  height: 100vh;
+  background: linear-gradient(180deg, #061a16 0%, #0b3129 68%, #102b27 100%);
+  box-shadow: 10px 0 26px rgba(2, 8, 23, 0.18);
+}
+
+.sidebar-toggle {
+  position: fixed;
+  top: 18px;
+  left: 248px;
+  z-index: 999;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid rgba(217, 225, 234, 0.95);
+  background: #ffffff;
+  color: #0f513f;
+  font-size: 22px;
+  font-weight: 1000;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
+  cursor: pointer;
+}
+
+.sidebar-toggle:hover {
+  background: #e8f8f1;
+}
+
+.sidebar-toggle.collapsed {
+  left: 11px;
+  background: #0f513f;
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.22);
+  box-shadow: none;
+}
+
+body.broiler-sidebar-collapsed .main-panel {
+  margin-left: 56px;
 }
