@@ -3282,3 +3282,41 @@ button {
     min-height: 110px;
   }
 }
+
+/* App density scaling
+   Desktop screens stay normal.
+   Laptop screens scale the whole app down slightly.
+*/
+
+@media (max-width: 1650px), (max-height: 880px) {
+  .page-shell {
+    zoom: 0.94;
+    width: 106.4%;
+    min-height: 106.4vh;
+  }
+}
+
+@media (max-width: 1450px), (max-height: 790px) {
+  .page-shell {
+    zoom: 0.9;
+    width: 111.2%;
+    min-height: 111.2vh;
+  }
+}
+
+@media (max-width: 1250px), (max-height: 720px) {
+  .page-shell {
+    zoom: 0.86;
+    width: 116.3%;
+    min-height: 116.3vh;
+  }
+}
+
+/* Do not shrink narrow/mobile layouts too aggressively */
+@media (max-width: 900px) {
+  .page-shell {
+    zoom: 1;
+    width: 100%;
+    min-height: 100vh;
+  }
+}

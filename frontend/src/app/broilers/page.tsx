@@ -326,7 +326,7 @@ export default function BroilerHomePage() {
     const upcomingProcessing = [...plans]
       .filter((plan) => {
         const days = daysUntil(plan.processing_date);
-        return days !== null && days >= 0 && days <= 21;
+        return days !== null && days >= 0 && days <= 60;
       })
       .sort((a, b) =>
         String(a.processing_date || "").localeCompare(
@@ -411,7 +411,7 @@ export default function BroilerHomePage() {
         );
       } else {
         briefing.push(
-          "No processing is due in the next 21 days based on current planned processing dates.",
+          "No processing is due in the next 60 days based on current planned processing dates.",
         );
       }
 
@@ -555,7 +555,7 @@ export default function BroilerHomePage() {
           <div className="kpi-card">
             <span>Processing Due</span>
             <strong>{formatNumber(insights.upcomingProcessing.length)}</strong>
-            <p>Cycles due in the next 21 days.</p>
+            <p>Cycles due in the next 60 days.</p>
           </div>
 
           <div className="kpi-card">
@@ -823,7 +823,7 @@ export default function BroilerHomePage() {
             <div>
               <h3>Upcoming Processing Timeline</h3>
               <p>
-                Next 21 days from the Demand Planner. Use this to confirm
+                Next 60 days from the Demand Planner. Use this to confirm
                 processing readiness and close-out actuals.
               </p>
             </div>
@@ -847,7 +847,7 @@ export default function BroilerHomePage() {
               <tbody>
                 {insights.upcomingProcessing.length === 0 ? (
                   <tr>
-                    <td colSpan={8}>No processing due in the next 21 days.</td>
+                    <td colSpan={8}>No processing due in the next 60 days.</td>
                   </tr>
                 ) : (
                   insights.upcomingProcessing.map((plan) => {

@@ -73,13 +73,32 @@ def create_processing_record(
     db: Session = Depends(get_db),
 ):
     cycle = (
-        db.query(models.BroilerDemandPlan)
-        .filter(models.BroilerDemandPlan.id == payload.broiler_cycle_id)
+        db.query(models.BroilerPlacementPlan)
+        .filter(models.BroilerPlacementPlan.id == payload.broiler_cycle_id)
         .first()
     )
 
     if not cycle:
         raise HTTPException(status_code=404, detail="Broiler cycle not found")
+
+    existing = (
+        db.query(models.BroilerProcessing)
+        .filter(models.BroilerProcessing.broiler_cycle_id == payload.broiler_cycle_id)
+        .first()
+    )
+
+    if existing:
+        update_data = payload.model_dump(exclude_unset=True)
+
+        for key, value in update_data.items():
+            setattr(existing, key, value)
+
+        calculate_processing_fields(existing)
+
+        db.commit()
+        db.refresh(existing)
+
+        return existing
 
     record = models.BroilerProcessing(**payload.model_dump())
     calculate_processing_fields(record)

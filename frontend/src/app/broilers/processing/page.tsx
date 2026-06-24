@@ -89,7 +89,7 @@ function formatNumber(value: number | "" | null | undefined, decimals = 0) {
   });
 }
 
-function toNumberOrNull(value: number | "" | string) {
+function toNumberOrNull(value: number | "" | string | null | undefined) {
   if (value === "" || value === null || value === undefined) return null;
   const num = Number(value);
   return Number.isFinite(num) ? num : null;
@@ -180,8 +180,9 @@ function calculateRow(row: ProcessingRow): ProcessingRow {
 export default function BroilerProcessingPage() {
   const [rows, setRows] = useState<ProcessingRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [savingId, setSavingId] = useState<string | null>(null);
-  const [message, setMessage] = useState("");
+	const [saving, setSaving] = useState(false);
+	const [dirtyKeys, setDirtyKeys] = useState<Set<string>>(new Set());
+	const [message, setMessage] = useState("");
 
 	async function loadData() {
 		setLoading(true);
@@ -269,6 +270,7 @@ export default function BroilerProcessingPage() {
 			});
 
 			setRows(mappedRows);
+			setDirtyKeys(new Set());
 		} catch (error) {
 			console.error(error);
 			setMessage(
@@ -320,6 +322,11 @@ export default function BroilerProcessingPage() {
     field: keyof ProcessingRow,
     value: string,
   ) {
+		setDirtyKeys((current) => {
+			const next = new Set(current);
+			next.add(localKey);
+			return next;
+		});
     setRows((currentRows) =>
       currentRows.map((row) => {
         if (row.local_key !== localKey) return row;
@@ -348,76 +355,92 @@ export default function BroilerProcessingPage() {
     );
   }
 
-  async function saveRow(row: ProcessingRow) {
-    setSavingId(row.local_key);
-    setMessage("");
+	async function saveSingleProcessingRow(row: ProcessingRow) {
+		const payload = {
+			broiler_cycle_id: row.broiler_cycle_id,
 
-    const payload = {
-      broiler_cycle_id: row.broiler_cycle_id,
-      processing_date: displayDateToIso(row.processing_date),
-      processor: row.processor || null,
-      plant_location: row.plant_location || null,
-      planned_birds: toNumberOrNull(row.planned_birds),
-      actual_birds_processed: toNumberOrNull(row.actual_birds_processed),
-      average_live_weight_kg: toNumberOrNull(row.average_live_weight_kg),
-      average_dressed_weight_kg: toNumberOrNull(
-        row.average_dressed_weight_kg,
-      ),
-      condemned_birds: toNumberOrNull(row.condemned_birds),
-      grade_a_pct: toNumberOrNull(row.grade_a_pct),
-      grade_b_pct: toNumberOrNull(row.grade_b_pct),
-      downgrade_reason: row.downgrade_reason || null,
-      status: row.status || "Draft",
-      notes: row.notes || null,
-    };
+			processing_date: displayDateToIso(row.processing_date),
+			processor: row.processor || null,
+			plant_location: row.plant_location || null,
 
-    try {
-      const url = row.record_id
-        ? `${API_BASE}/api/broilers/processing/${row.record_id}`
-        : `${API_BASE}/api/broilers/processing`;
+			planned_birds: toNumberOrNull(row.planned_birds),
+			actual_birds_processed: toNumberOrNull(row.actual_birds_processed),
 
-      const response = await fetch(url, {
-        method: row.record_id ? "PATCH" : "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
+			average_live_weight_kg: toNumberOrNull(row.average_live_weight_kg),
+			total_live_weight_kg: toNumberOrNull(row.total_live_weight_kg),
 
-      if (!response.ok) {
-        throw new Error("Save failed");
-      }
+			average_dressed_weight_kg: toNumberOrNull(row.average_dressed_weight_kg),
+			total_dressed_weight_kg: toNumberOrNull(row.total_dressed_weight_kg),
 
-      const saved: ProcessingRecord = await response.json();
+			processing_yield_pct: toNumberOrNull(row.processing_yield_pct),
 
-      setRows((currentRows) =>
-        currentRows.map((currentRow) =>
-          currentRow.local_key === row.local_key
-            ? calculateRow({
-                ...currentRow,
-                record_id: saved.id,
-                total_live_weight_kg: saved.total_live_weight_kg ?? "",
-                total_dressed_weight_kg:
-                  saved.total_dressed_weight_kg ?? "",
-                processing_yield_pct:
-                  saved.processing_yield_pct ?? "",
-                condemnation_pct: saved.condemnation_pct ?? "",
-                mortality_to_processing:
-                  saved.mortality_to_processing ?? "",
-                status: saved.status || currentRow.status,
-              })
-            : currentRow,
-        ),
-      );
+			condemned_birds: toNumberOrNull(row.condemned_birds),
+			condemnation_pct: toNumberOrNull(row.condemnation_pct),
 
-      setMessage("Processing row saved.");
-    } catch (error) {
-      console.error(error);
-      setMessage("Could not save processing row.");
-    } finally {
-      setSavingId(null);
-    }
-  }
+			mortality_to_processing: toNumberOrNull(row.mortality_to_processing),
+
+			grade_a_pct: toNumberOrNull(row.grade_a_pct),
+			grade_b_pct: toNumberOrNull(row.grade_b_pct),
+
+			downgrade_reason: row.downgrade_reason || null,
+			status: row.status || "Draft",
+			notes: row.notes || null,
+		};
+
+		const url = row.record_id
+			? `${API_BASE}/api/broilers/processing/${row.record_id}`
+			: `${API_BASE}/api/broilers/processing`;
+
+		const response = await fetch(url, {
+			method: row.record_id ? "PATCH" : "POST",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify(payload),
+		});
+
+		if (!response.ok) {
+			const errorText = await response.text();
+			throw new Error(`Save failed: ${response.status}. ${errorText}`);
+		}
+
+		return response.json();
+	}
+
+	async function saveAllProcessingChanges() {
+		const changedRows = rows.filter((row) => dirtyKeys.has(row.local_key));
+
+		if (changedRows.length === 0) return;
+
+		setSaving(true);
+		setMessage("");
+
+		try {
+			for (const row of changedRows) {
+				await saveSingleProcessingRow(row);
+			}
+
+			await loadData();
+
+			setDirtyKeys(new Set());
+			setMessage(`${changedRows.length} processing row(s) saved.`);
+		} catch (error) {
+			console.error(error);
+			setMessage(
+				error instanceof Error
+					? error.message
+					: "Could not save processing rows. Check backend is running on port 8000.",
+			);
+		} finally {
+			setSaving(false);
+		}
+	}
+
+	function discardProcessingChanges() {
+		setDirtyKeys(new Set());
+		loadData();
+		setMessage("Unsaved processing changes discarded.");
+	}
 
 	return (
 		<div className="page-shell">
@@ -473,7 +496,31 @@ export default function BroilerProcessingPage() {
               </p>
             </div>
 
-            {message && <span className="status-pill">{message}</span>}
+						<div className="processing-save-actions">
+							<button
+								type="button"
+								className="daily-action-pill daily-discard-pill"
+								onClick={discardProcessingChanges}
+								disabled={dirtyKeys.size === 0 || saving}
+							>
+								Discard Changes
+							</button>
+
+							<button
+								type="button"
+								className="daily-action-pill daily-save-pill"
+								onClick={saveAllProcessingChanges}
+								disabled={dirtyKeys.size === 0 || saving}
+							>
+								{saving
+									? "Saving..."
+									: dirtyKeys.size > 0
+										? `Save Changes (${dirtyKeys.size})`
+										: "Save Changes"}
+							</button>
+						</div>
+
+            {message && <span className="daily-message-pill">{message}</span>}
           </div>
 
           <div className="grid-scroll-frame">
@@ -485,7 +532,7 @@ export default function BroilerProcessingPage() {
                   <th colSpan={5}>Live Bird Result</th>
                   <th colSpan={4}>Carcase / Yield</th>
                   <th colSpan={4}>Quality</th>
-                  <th colSpan={3}>Workflow</th>
+                  <th colSpan={2}>Workflow</th>
                 </tr>
 
                 <tr>
@@ -515,7 +562,6 @@ export default function BroilerProcessingPage() {
                     "Downgrade Reason",
                     "Status",
                     "Notes",
-                    "Save",
                   ].map((heading) => (
                     <th key={heading}>{heading}</th>
                   ))}
@@ -525,11 +571,11 @@ export default function BroilerProcessingPage() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={26}>Loading processing data...</td>
+                    <td colSpan={25}>Loading processing data...</td>
                   </tr>
                 ) : rows.length === 0 ? (
                   <tr>
-                    <td colSpan={26}>
+                    <td colSpan={25}>
 											No broiler demand plans found. Add rows in the Demand Planner first.
                     </td>
                   </tr>
@@ -690,14 +736,6 @@ export default function BroilerProcessingPage() {
                       />
 
                       <td>
-                        <button
-                          type="button"
-                          className="small-action-button"
-                          onClick={() => saveRow(row)}
-                          disabled={savingId === row.local_key}
-                        >
-                          {savingId === row.local_key ? "Saving" : "Save"}
-                        </button>
                       </td>
                     </tr>
                   ))
@@ -710,6 +748,8 @@ export default function BroilerProcessingPage() {
     </div>
   );
 }
+
+
 
 function EditableCell({
   value,

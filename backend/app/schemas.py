@@ -1,11 +1,8 @@
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Optional
-from pydantic import BaseModel, ConfigDict
 
-from datetime import date
-from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class BroilerProcessingBase(BaseModel):
@@ -52,9 +49,17 @@ class BroilerProcessingUpdate(BaseModel):
     actual_birds_processed: Optional[int] = None
 
     average_live_weight_kg: Optional[float] = None
+    total_live_weight_kg: Optional[float] = None
+
     average_dressed_weight_kg: Optional[float] = None
+    total_dressed_weight_kg: Optional[float] = None
+
+    processing_yield_pct: Optional[float] = None
 
     condemned_birds: Optional[int] = None
+    condemnation_pct: Optional[float] = None
+
+    mortality_to_processing: Optional[int] = None
 
     grade_a_pct: Optional[float] = None
     grade_b_pct: Optional[float] = None
@@ -314,9 +319,7 @@ class BroilerDailyPerformanceOut(BaseModel):
     class Config:
         from_attributes = True
 
-    class Config:
-        from_attributes = True
-        
+       
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel
