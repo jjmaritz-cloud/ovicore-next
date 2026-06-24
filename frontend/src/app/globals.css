@@ -1854,7 +1854,7 @@ button {
 
 .daily-cycle-selector {
   display: grid;
-  grid-template-columns: minmax(280px, 420px);
+  grid-template-columns: minmax(280px, 420px) auto;
   gap: 12px;
   align-items: end;
   margin-bottom: 14px;
@@ -1953,9 +1953,75 @@ button {
   font-weight: 1000;
 }
 
+.daily-save-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding-bottom: 1px;
+}
+
+.daily-action-pill {
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: #eef2f7;
+  color: #64748b;
+  padding: 9px 13px;
+  font-size: 11px;
+  font-weight: 1000;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.daily-action-pill:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+  background: #eef2f7;
+  color: #94a3b8;
+  border-color: #dbe3ea;
+}
+
+.daily-save-pill:not(:disabled) {
+  background: #e8f8f1;
+  color: #166534;
+  border-color: #bdebd7;
+}
+
+.daily-discard-pill:not(:disabled) {
+  background: #fff7ed;
+  color: #9a3412;
+  border-color: #fed7aa;
+}
+
+.daily-save-pill:not(:disabled):hover {
+  background: #dcfce7;
+}
+
+.daily-discard-pill:not(:disabled):hover {
+  background: #ffedd5;
+}
+
+.daily-message-pill {
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3730a3;
+  border: 1px solid #c7d2fe;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 1000;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
 @media (max-width: 900px) {
   .daily-cycle-selector {
     grid-template-columns: 1fr;
+  }
+
+  .daily-save-actions {
+    justify-content: flex-start;
   }
 
   .daily-performance-card {
@@ -1966,4 +2032,78 @@ button {
   .daily-grid-scroll {
     max-height: 62vh;
   }
+
+.daily-save-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding-bottom: 1px;
+}
+
+.daily-action-pill {
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: #eef2f7;
+  color: #64748b;
+  padding: 9px 13px;
+  font-size: 11px;
+  font-weight: 1000;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.daily-action-pill:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+  background: #eef2f7;
+  color: #94a3b8;
+  border-color: #dbe3ea;
+}
+
+.daily-save-pill:not(:disabled) {
+  background: #e8f8f1;
+  color: #166534;
+  border-color: #bdebd7;
+}
+
+.daily-discard-pill:not(:disabled) {
+  background: #fff7ed;
+  color: #9a3412;
+  border-color: #fed7aa;
+}
+
+.daily-message-pill {
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3730a3;
+  border: 1px solid #c7d2fe;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 1000;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .daily-cycle-selector {
+    grid-template-columns: 1fr;
+  }
+
+  .daily-save-actions {
+    justify-content: flex-start;
+  }
+
+  .daily-performance-card {
+    height: auto;
+    min-height: 520px;
+  }
+
+  .daily-grid-scroll {
+    max-height: 62vh;
+  }
+}
+
 }

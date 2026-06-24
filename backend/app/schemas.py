@@ -215,13 +215,25 @@ class BroilerDailyPerformanceCreate(BaseModel):
     age_days: Optional[int] = None
 
     opening_birds: Optional[int] = None
-    mortality_birds: int = 0
-    cull_birds: int = 0
+
+    mortality_front: Optional[int] = 0
+    mortality_middle: Optional[int] = 0
+    mortality_back: Optional[int] = 0
+    mortality_other: Optional[int] = 0
+    mortality_birds: Optional[int] = 0
+
+    cull_legs: Optional[int] = 0
+    cull_runts: Optional[int] = 0
+    cull_beak: Optional[int] = 0
+    cull_other: Optional[int] = 0
+    cull_birds: Optional[int] = 0
+
     closing_birds: Optional[int] = None
 
-    feed_kg: float = 0
-    water_litres: float = 0
+    feed_kg: Optional[float] = None
+    water_litres: Optional[float] = None
     avg_weight_kg: Optional[float] = None
+    body_weight_kg: Optional[float] = None
 
     notes: Optional[str] = None
     last_saved_by: Optional[str] = "JJ"
@@ -232,13 +244,25 @@ class BroilerDailyPerformancePatch(BaseModel):
     age_days: Optional[int] = None
 
     opening_birds: Optional[int] = None
+
+    mortality_front: Optional[int] = None
+    mortality_middle: Optional[int] = None
+    mortality_back: Optional[int] = None
+    mortality_other: Optional[int] = None
     mortality_birds: Optional[int] = None
+
+    cull_legs: Optional[int] = None
+    cull_runts: Optional[int] = None
+    cull_beak: Optional[int] = None
+    cull_other: Optional[int] = None
     cull_birds: Optional[int] = None
+
     closing_birds: Optional[int] = None
 
     feed_kg: Optional[float] = None
     water_litres: Optional[float] = None
     avg_weight_kg: Optional[float] = None
+    body_weight_kg: Optional[float] = None
 
     notes: Optional[str] = None
     last_saved_by: Optional[str] = None
@@ -257,13 +281,25 @@ class BroilerDailyPerformanceOut(BaseModel):
     age_days: Optional[int] = None
 
     opening_birds: Optional[int] = None
-    mortality_birds: int = 0
-    cull_birds: int = 0
+
+    mortality_front: Optional[int] = 0
+    mortality_middle: Optional[int] = 0
+    mortality_back: Optional[int] = 0
+    mortality_other: Optional[int] = 0
+    mortality_birds: Optional[int] = 0
+
+    cull_legs: Optional[int] = 0
+    cull_runts: Optional[int] = 0
+    cull_beak: Optional[int] = 0
+    cull_other: Optional[int] = 0
+    cull_birds: Optional[int] = 0
+
     closing_birds: Optional[int] = None
 
-    feed_kg: float = 0
-    water_litres: float = 0
+    feed_kg: Optional[float] = None
+    water_litres: Optional[float] = None
     avg_weight_kg: Optional[float] = None
+    body_weight_kg: Optional[float] = None
 
     daily_mortality_pct: Optional[float] = None
     cumulative_mortality_birds: Optional[int] = None
@@ -274,6 +310,9 @@ class BroilerDailyPerformanceOut(BaseModel):
     notes: Optional[str] = None
     last_saved_by: Optional[str] = None
     last_saved_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
 
     class Config:
         from_attributes = True

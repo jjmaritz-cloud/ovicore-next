@@ -77,13 +77,25 @@ def build_daily_performance_response(
         age_days=entry.age_days,
 
         opening_birds=entry.opening_birds,
+
+        mortality_front=entry.mortality_front or 0,
+        mortality_middle=entry.mortality_middle or 0,
+        mortality_back=entry.mortality_back or 0,
+        mortality_other=entry.mortality_other or 0,
         mortality_birds=entry.mortality_birds or 0,
+
+        cull_legs=entry.cull_legs or 0,
+        cull_runts=entry.cull_runts or 0,
+        cull_beak=entry.cull_beak or 0,
+        cull_other=entry.cull_other or 0,
         cull_birds=entry.cull_birds or 0,
+
         closing_birds=entry.closing_birds,
 
-        feed_kg=float(entry.feed_kg or 0),
-        water_litres=float(entry.water_litres or 0),
+        feed_kg=float(entry.feed_kg) if entry.feed_kg is not None else None,
+        water_litres=float(entry.water_litres) if entry.water_litres is not None else None,
         avg_weight_kg=float(entry.avg_weight_kg) if entry.avg_weight_kg is not None else None,
+        body_weight_kg=float(entry.avg_weight_kg) if entry.avg_weight_kg is not None else None,
 
         daily_mortality_pct=daily_mortality_pct,
         cumulative_mortality_birds=cumulative_mortality_birds,
@@ -442,6 +454,31 @@ def delete_broiler_shed(shed_id: int, db: Session = Depends(get_db)):
     db.commit()
 
     return {"deleted": True, "id": shed_id}
+
+def recalculate_daily_performance_entry(entry: BroilerDailyPerformance):
+    mortality_total = (
+        int(entry.mortality_front or 0)
+        + int(entry.mortality_middle or 0)
+        + int(entry.mortality_back or 0)
+        + int(entry.mortality_other or 0)
+    )
+
+    cull_total = (
+        int(entry.cull_legs or 0)
+        + int(entry.cull_runts or 0)
+        + int(entry.cull_beak or 0)
+        + int(entry.cull_other or 0)
+    )
+
+    entry.mortality_birds = mortality_total
+    entry.cull_birds = cull_total
+
+    if entry.opening_birds is not None:
+        entry.closing_birds = int(entry.opening_birds or 0) - mortality_total - cull_total
+    else:
+        entry.closing_birds = None
+
+    return entry
     
 @app.get("/api/broilers/performance", response_model=list[BroilerDailyPerformanceOut])
 def list_broiler_performance(
@@ -521,15 +558,13 @@ def create_broiler_performance(
 
     data = payload.model_dump()
 
-    opening_birds = data.get("opening_birds") or 0
-    mortality_birds = data.get("mortality_birds") or 0
-    cull_birds = data.get("cull_birds") or 0
-
-    # Auto-calculate closing birds unless explicitly supplied
-    if data.get("closing_birds") is None and opening_birds > 0:
-        data["closing_birds"] = opening_birds - mortality_birds - cull_birds
+    if "body_weight_kg" in data:
+        data["avg_weight_kg"] = data.pop("body_weight_kg")
 
     entry = BroilerDailyPerformance(**data)
+
+    recalculate_daily_performance_entry(entry)
+
     entry.last_saved_at = datetime.utcnow()
 
     db.add(entry)
@@ -570,16 +605,13 @@ def update_broiler_performance(
 
     data = payload.model_dump(exclude_unset=True)
 
+    if "body_weight_kg" in data:
+        data["avg_weight_kg"] = data.pop("body_weight_kg")
+
     for field, value in data.items():
         setattr(entry, field, value)
 
-    # Auto-calculate closing birds after updates
-    opening_birds = entry.opening_birds or 0
-    mortality_birds = entry.mortality_birds or 0
-    cull_birds = entry.cull_birds or 0
-
-    if opening_birds > 0:
-        entry.closing_birds = opening_birds - mortality_birds - cull_birds
+    recalculate_daily_performance_entry(entry)
 
     entry.last_saved_at = datetime.utcnow()
 
@@ -634,16 +666,10 @@ def recalculate_broiler_performance_cycle(
     previous_closing_birds = None
 
     for index, entry in enumerate(entries):
-        opening_birds = entry.opening_birds or 0
-        mortality_birds = entry.mortality_birds or 0
-        cull_birds = entry.cull_birds or 0
-
         if index > 0 and previous_closing_birds is not None:
             entry.opening_birds = previous_closing_birds
-            opening_birds = previous_closing_birds
 
-        if opening_birds > 0:
-            entry.closing_birds = opening_birds - mortality_birds - cull_birds
+        recalculate_daily_performance_entry(entry)
 
         previous_closing_birds = entry.closing_birds
         entry.last_saved_at = datetime.utcnow()

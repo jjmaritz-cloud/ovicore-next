@@ -244,8 +244,9 @@ export default function DailyPerformancePage() {
   const [records, setRecords] = useState<PerformanceRecord[]>([]);
   const [rows, setRows] = useState<DailyRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [savingKey, setSavingKey] = useState<string | null>(null);
-  const [message, setMessage] = useState("");
+	const [saving, setSaving] = useState(false);
+	const [dirtyKeys, setDirtyKeys] = useState<Set<string>>(new Set());
+	const [message, setMessage] = useState("");
 
   const selectedPlan = useMemo(() => {
     return plans.find((plan) => plan.id === selectedPlanId);
@@ -287,10 +288,12 @@ export default function DailyPerformancePage() {
 						await performanceResponse.json();
 
 					setRecords(performanceData);
+					setDirtyKeys(new Set());
 				}
 			} catch (performanceError) {
 				console.error(performanceError);
 				setRecords([]);
+				setDirtyKeys(new Set());
 				setMessage("Performance records not loaded yet.");
 			}
 		} catch (error) {
@@ -353,17 +356,37 @@ export default function DailyPerformancePage() {
 
         opening_birds: openingBirds ?? "",
 
-        mortality_front: existing?.mortality_front ?? "",
-        mortality_middle: existing?.mortality_middle ?? "",
-        mortality_back: existing?.mortality_back ?? "",
-        mortality_other: existing?.mortality_other ?? "",
-        mortality_birds: existing?.mortality_birds ?? "",
+				mortality_front:
+					existing?.mortality_front && existing.mortality_front > 0
+						? existing.mortality_front
+						: "",
+				mortality_middle:
+					existing?.mortality_middle && existing.mortality_middle > 0
+						? existing.mortality_middle
+						: "",
+				mortality_back:
+					existing?.mortality_back && existing.mortality_back > 0
+						? existing.mortality_back
+						: "",
+				mortality_other:
+					existing?.mortality_other && existing.mortality_other > 0
+						? existing.mortality_other
+						: "",
+				mortality_birds:
+					existing?.mortality_birds && existing.mortality_birds > 0
+						? existing.mortality_birds
+						: "",
 
-        cull_legs: existing?.cull_legs ?? "",
-        cull_runts: existing?.cull_runts ?? "",
-        cull_beak: existing?.cull_beak ?? "",
-        cull_other: existing?.cull_other ?? "",
-        cull_birds: existing?.cull_birds ?? "",
+				cull_legs:
+					existing?.cull_legs && existing.cull_legs > 0 ? existing.cull_legs : "",
+				cull_runts:
+					existing?.cull_runts && existing.cull_runts > 0 ? existing.cull_runts : "",
+				cull_beak:
+					existing?.cull_beak && existing.cull_beak > 0 ? existing.cull_beak : "",
+				cull_other:
+					existing?.cull_other && existing.cull_other > 0 ? existing.cull_other : "",
+				cull_birds:
+					existing?.cull_birds && existing.cull_birds > 0 ? existing.cull_birds : "",
 
         total_bird_loss: "",
         closing_birds: existing?.closing_birds ?? "",
@@ -426,6 +449,12 @@ export default function DailyPerformancePage() {
 
   function updateRow(localKey: string, field: keyof DailyRow, value: string) {
     if (!selectedPlan) return;
+		
+		setDirtyKeys((current) => {
+			const next = new Set(current);
+			next.add(localKey);
+			return next;
+		});
 
     setRows((currentRows) => {
       let previousClosing = Number(selectedPlan.planned_birds || 0);
@@ -474,75 +503,95 @@ export default function DailyPerformancePage() {
     });
   }
 
-  async function saveRow(row: DailyRow) {
-    setSavingKey(row.local_key);
-    setMessage("");
+	async function saveSingleRow(row: DailyRow) {
+		const payload = {
+			placement_plan_id: row.placement_plan_id,
+			entry_date: displayDateToIso(row.entry_date),
+			age_days: row.age_days,
+			opening_birds: toNumberOrNull(row.opening_birds),
 
-    const payload = {
-      placement_plan_id: row.placement_plan_id,
-      entry_date: displayDateToIso(row.entry_date),
-      age_days: row.age_days,
-      opening_birds: toNumberOrNull(row.opening_birds),
+			mortality_front: toNumberOrNull(row.mortality_front),
+			mortality_middle: toNumberOrNull(row.mortality_middle),
+			mortality_back: toNumberOrNull(row.mortality_back),
+			mortality_other: toNumberOrNull(row.mortality_other),
+			mortality_birds: toNumberOrNull(row.mortality_birds),
 
-      mortality_front: toNumberOrNull(row.mortality_front),
-      mortality_middle: toNumberOrNull(row.mortality_middle),
-      mortality_back: toNumberOrNull(row.mortality_back),
-      mortality_other: toNumberOrNull(row.mortality_other),
-      mortality_birds: toNumberOrNull(row.mortality_birds),
+			cull_legs: toNumberOrNull(row.cull_legs),
+			cull_runts: toNumberOrNull(row.cull_runts),
+			cull_beak: toNumberOrNull(row.cull_beak),
+			cull_other: toNumberOrNull(row.cull_other),
+			cull_birds: toNumberOrNull(row.cull_birds),
 
-      cull_legs: toNumberOrNull(row.cull_legs),
-      cull_runts: toNumberOrNull(row.cull_runts),
-      cull_beak: toNumberOrNull(row.cull_beak),
-      cull_other: toNumberOrNull(row.cull_other),
-      cull_birds: toNumberOrNull(row.cull_birds),
+			closing_birds: toNumberOrNull(row.closing_birds),
+			feed_kg: toNumberOrNull(row.feed_kg),
+			water_litres: toNumberOrNull(row.water_litres),
+			body_weight_kg: toNumberOrNull(row.body_weight_kg),
+			avg_weight_kg: toNumberOrNull(row.body_weight_kg),
+			notes: row.notes || null,
+			last_saved_by: "JJ",
+		};
 
-      closing_birds: toNumberOrNull(row.closing_birds),
-      feed_kg: toNumberOrNull(row.feed_kg),
-      water_litres: toNumberOrNull(row.water_litres),
-      body_weight_kg: toNumberOrNull(row.body_weight_kg),
-      avg_weight_kg: toNumberOrNull(row.body_weight_kg),
-      notes: row.notes || null,
-      last_saved_by: "JJ",
-    };
+		const url = row.record_id
+			? `${API_BASE}/api/broilers/performance/${row.record_id}`
+			: `${API_BASE}/api/broilers/performance`;
 
-    try {
-      const url = row.record_id
-        ? `${API_BASE}/api/broilers/performance/${row.record_id}`
-        : `${API_BASE}/api/broilers/performance`;
+		const response = await fetch(url, {
+			method: row.record_id ? "PATCH" : "POST",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify(payload),
+		});
 
-      const response = await fetch(url, {
-        method: row.record_id ? "PATCH" : "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
+		if (!response.ok) {
+			const errorText = await response.text();
+			throw new Error(`Save failed: ${response.status}. ${errorText}`);
+		}
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Save failed: ${response.status}. ${errorText}`);
-      }
+		return response.json() as Promise<PerformanceRecord>;
+	}
 
-      const saved: PerformanceRecord = await response.json();
+	async function saveAllChanges() {
+		const changedRows = rows.filter((row) => dirtyKeys.has(row.local_key));
 
-      setRecords((current) => {
-        const withoutExisting = current.filter(
-          (record) => record.id !== saved.id,
-        );
+		if (changedRows.length === 0) {
+			return;
+		}
 
-        return [...withoutExisting, saved];
-      });
+		setSaving(true);
+		setMessage("");
 
-      setMessage("Daily performance row saved.");
-    } catch (error) {
-      console.error(error);
-      setMessage(
-        error instanceof Error ? error.message : "Could not save row.",
-      );
-    } finally {
-      setSavingKey(null);
-    }
-  }
+		try {
+			const savedRecords: PerformanceRecord[] = [];
+
+			for (const row of changedRows) {
+				const saved = await saveSingleRow(row);
+				savedRecords.push(saved);
+			}
+
+			setRecords((current) => {
+				const savedIds = new Set(savedRecords.map((record) => record.id));
+				const withoutSaved = current.filter((record) => !savedIds.has(record.id));
+				return [...withoutSaved, ...savedRecords];
+			});
+
+			setDirtyKeys(new Set());
+			setMessage(`${changedRows.length} daily performance row(s) saved.`);
+		} catch (error) {
+			console.error(error);
+			setMessage(
+				error instanceof Error ? error.message : "Could not save changes.",
+			);
+		} finally {
+			setSaving(false);
+		}
+	}
+
+	function discardChanges() {
+		setRecords((current) => [...current]);
+		setDirtyKeys(new Set());
+		setMessage("Unsaved changes discarded.");
+	}
 
   return (
     <div className="page-shell">
@@ -564,10 +613,10 @@ export default function DailyPerformancePage() {
           </button>
         </section>
 
-        <section className="daily-cycle-selector">
-          <label>
-            Select Cycle
-            <select
+				<section className="daily-cycle-selector">
+					<label>
+						Select Cycle
+						<select
               value={selectedPlanId}
               onChange={(event) => setSelectedPlanId(Number(event.target.value))}
             >
@@ -579,6 +628,30 @@ export default function DailyPerformancePage() {
               ))}
             </select>
           </label>
+
+					<div className="daily-save-actions">
+						<button
+							type="button"
+							className="daily-action-pill daily-discard-pill"
+							onClick={discardChanges}
+							disabled={dirtyKeys.size === 0 || saving}
+						>
+							Discard Changes
+						</button>
+
+						<button
+							type="button"
+							className="daily-action-pill daily-save-pill"
+							onClick={saveAllChanges}
+							disabled={dirtyKeys.size === 0 || saving}
+						>
+							{saving
+								? "Saving..."
+								: dirtyKeys.size > 0
+									? `Save Changes (${dirtyKeys.size})`
+									: "Save Changes"}
+						</button>
+					</div>
 
         </section>
 
@@ -624,7 +697,7 @@ export default function DailyPerformancePage() {
               </p>
             </div>
 
-            {message && <span className="status-pill">{message}</span>}
+            {message && <span className="daily-message-pill">{message}</span>}
           </div>
 
           <div className="daily-grid-scroll">
@@ -636,8 +709,7 @@ export default function DailyPerformancePage() {
                   <th colSpan={5}>Mortality Location</th>
                   <th colSpan={5}>Cull Reasons</th>
                   <th colSpan={4}>Daily Inputs</th>
-                  <th colSpan={6}>Review</th>
-                  <th colSpan={2}>Workflow</th>
+									<th colSpan={6}>Review</th>
                 </tr>
 
                 <tr>
@@ -676,8 +748,6 @@ export default function DailyPerformancePage() {
                     "Cull Flag",
                     "AI Review",
 
-                    "Status",
-                    "Save",
                   ].map((heading) => (
                     <th key={heading}>{heading}</th>
                   ))}
@@ -687,11 +757,11 @@ export default function DailyPerformancePage() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={30}>Loading daily performance...</td>
+                    <td colSpan={28}>Loading daily performance...</td>
                   </tr>
                 ) : rows.length === 0 ? (
                   <tr>
-                    <td colSpan={30}>
+                    <td colSpan={28}>
                       No cycle selected. Add demand plan rows first.
                     </td>
                   </tr>
@@ -877,25 +947,6 @@ export default function DailyPerformancePage() {
                         }
                       >
                         {row.review_status}
-                      </td>
-
-                      <td>
-                        <span
-                          className={row.record_id ? "ready-pill" : "status-pill"}
-                        >
-                          {row.record_id ? "Saved" : "Draft"}
-                        </span>
-                      </td>
-
-                      <td>
-                        <button
-                          type="button"
-                          className="small-action-button"
-                          onClick={() => saveRow(row)}
-                          disabled={savingKey === row.local_key}
-                        >
-                          {savingKey === row.local_key ? "Saving" : "Save"}
-                        </button>
                       </td>
                     </tr>
                   ))
