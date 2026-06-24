@@ -251,47 +251,59 @@ export default function DailyPerformancePage() {
     return plans.find((plan) => plan.id === selectedPlanId);
   }, [plans, selectedPlanId]);
 
-  async function loadData() {
-    setLoading(true);
-    setMessage("");
+	async function loadData() {
+		setLoading(true);
+		setMessage("");
 
-    try {
-      const [plansResponse, performanceResponse] = await Promise.all([
-        fetch(`${API_BASE}/api/broilers/demand-plans`),
-        fetch(`${API_BASE}/api/broilers/performance`),
-      ]);
+		try {
+			const plansResponse = await fetch(`${API_BASE}/api/broilers/demand-plans`);
 
-      if (!plansResponse.ok) {
-        throw new Error(`Could not load plans: ${plansResponse.status}`);
-      }
+			if (!plansResponse.ok) {
+				throw new Error(`Could not load plans: ${plansResponse.status}`);
+			}
 
-      if (!performanceResponse.ok) {
-        throw new Error(
-          `Could not load daily performance: ${performanceResponse.status}`,
-        );
-      }
+			const plansData: DemandPlan[] = await plansResponse.json();
 
-      const plansData: DemandPlan[] = await plansResponse.json();
-      const performanceData: PerformanceRecord[] =
-        await performanceResponse.json();
+			setPlans(plansData);
 
-      setPlans(plansData);
-      setRecords(performanceData);
+			if (!selectedPlanId && plansData.length > 0) {
+				setSelectedPlanId(plansData[0].id);
+			}
 
-      if (!selectedPlanId && plansData.length > 0) {
-        setSelectedPlanId(plansData[0].id);
-      }
-    } catch (error) {
-      console.error(error);
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "Could not load Daily Performance.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
+			try {
+				const performanceResponse = await fetch(
+					`${API_BASE}/api/broilers/performance`,
+				);
+
+				if (!performanceResponse.ok) {
+					const errorText = await performanceResponse.text();
+					console.error("Performance load failed:", errorText);
+					setRecords([]);
+					setMessage(
+						`Performance records not loaded yet: ${performanceResponse.status}`,
+					);
+				} else {
+					const performanceData: PerformanceRecord[] =
+						await performanceResponse.json();
+
+					setRecords(performanceData);
+				}
+			} catch (performanceError) {
+				console.error(performanceError);
+				setRecords([]);
+				setMessage("Performance records not loaded yet.");
+			}
+		} catch (error) {
+			console.error(error);
+			setMessage(
+				error instanceof Error
+					? error.message
+					: "Could not load Daily Performance.",
+			);
+		} finally {
+			setLoading(false);
+		}
+	}
 
   useEffect(() => {
     loadData();
@@ -568,31 +580,6 @@ export default function DailyPerformancePage() {
             </select>
           </label>
 
-          {selectedPlan && (
-            <div className="cycle-summary-strip">
-              <span>
-                Farm <strong>{selectedPlan.farm_name}</strong>
-              </span>
-              <span>
-                Shed <strong>{selectedPlan.shed_name}</strong>
-              </span>
-              <span>
-                Placement{" "}
-                <strong>{isoToDisplayDate(selectedPlan.placement_date)}</strong>
-              </span>
-              <span>
-                Planned Depop{" "}
-                <strong>{isoToDisplayDate(selectedPlan.processing_date)}</strong>
-              </span>
-              <span>
-                Birds <strong>{formatNumber(selectedPlan.planned_birds)}</strong>
-              </span>
-              <span>
-                Target LW{" "}
-                <strong>{formatNumber(selectedPlan.target_lw_kg, 2)} kg</strong>
-              </span>
-            </div>
-          )}
         </section>
 
         <section className="kpi-grid">

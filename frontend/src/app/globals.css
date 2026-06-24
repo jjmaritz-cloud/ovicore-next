@@ -1854,7 +1854,7 @@ button {
 
 .daily-cycle-selector {
   display: grid;
-  grid-template-columns: minmax(280px, 420px) minmax(0, 1fr);
+  grid-template-columns: minmax(280px, 420px);
   gap: 12px;
   align-items: end;
   margin-bottom: 14px;
@@ -1879,27 +1879,6 @@ button {
   font: inherit;
   font-size: 13px;
   outline: none;
-}
-
-.cycle-summary-strip {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.cycle-summary-strip span {
-  border-radius: 999px;
-  background: #ffffff;
-  border: 1px solid var(--line);
-  padding: 8px 11px;
-  color: #64748b;
-  font-size: 11px;
-  font-weight: 850;
-}
-
-.cycle-summary-strip strong {
-  color: #0f172a;
-  margin-left: 4px;
 }
 
 .daily-performance-card {
