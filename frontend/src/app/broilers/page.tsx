@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import BroilerSidebar from "@/components/BroilerSidebar";
+import BroilerHeroForecast from "@/components/BroilerHeroForecast";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
@@ -518,21 +519,21 @@ export default function BroilerHomePage() {
       <BroilerSidebar />
 
       <main className="main-panel">
-        <section className="broiler-ai-hero">
-          <div>
-            <h2>Broiler AI Home</h2>
-            <p>
-              A clean operating view for placement pressure, processing
-              readiness, density watch, missing actuals, and production risk.
-            </p>
-          </div>
+				<section className="broiler-ai-hero">
+					<div>
+						<h2>Broiler AI Home</h2>
+						<p>
+							A clean operating view for placement pressure, processing
+							readiness, density watch, missing actuals, and production risk.
+						</p>
+					</div>
 
-          <button className="primary-button" type="button" onClick={loadData}>
-            Refresh
-          </button>
-        </section>
+					<button className="primary-button" type="button" onClick={loadData}>
+						Refresh
+					</button>
+				</section>
 
-        <section className="kpi-grid">
+				<section className="kpi-grid">
           <div className="kpi-card">
             <span>Planned Birds</span>
             <strong>{formatNumber(insights.totalPlannedBirds)}</strong>
@@ -758,66 +759,9 @@ export default function BroilerHomePage() {
             </div>
           </div>
         </section>
+				<BroilerHeroForecast />
 
-        <section className="broiler-ai-card broiler-forecast-card">
-          <div className="broiler-ai-card-head">
-            <div>
-              <p className="eyebrow">Forecast Graph</p>
-              <h3>Processing Load Forecast</h3>
-              <p>
-                Forecast live kg by processing week. This is the key pressure
-                graph for balancing plant load and shed timing.
-              </p>
-            </div>
-          </div>
-
-          <div className="forecast-chart">
-            {insights.forecastWeeks.length === 0 ? (
-              <div className="forecast-empty">
-                No processing forecast available yet.
-              </div>
-            ) : (
-              insights.forecastWeeks.map((week) => {
-                const heightPct =
-                  insights.maxForecastKg > 0
-                    ? Math.max(
-                        8,
-                        Math.round(
-                          (week.forecastLiveKg / insights.maxForecastKg) * 100,
-                        ),
-                      )
-                    : 8;
-
-                return (
-                  <div className="forecast-bar-group" key={week.weekEnding}>
-                    <div className="forecast-bar-area">
-                      <div
-                        className={
-                          week.risk === "High"
-                            ? "forecast-bar forecast-high"
-                            : week.risk === "Watch"
-                              ? "forecast-bar forecast-watch"
-                              : "forecast-bar forecast-normal"
-                        }
-                        style={{ height: `${heightPct}%` }}
-                      >
-                        <span>{formatNumber(week.forecastLiveKg)}</span>
-                      </div>
-                    </div>
-
-                    <div className="forecast-bar-label">
-                      <strong>{week.weekLabel}</strong>
-                      <span>{formatNumber(week.plannedBirds)} birds</span>
-                      <em>{week.risk}</em>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </section>
-
-        <section className="grid-card broiler-ai-table-card">
+				<section className="grid-card broiler-ai-table-card">
           <div className="grid-card-head">
             <div>
               <h3>Upcoming Processing Timeline</h3>
