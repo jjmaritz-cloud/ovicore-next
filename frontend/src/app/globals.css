@@ -1943,72 +1943,12 @@ button {
   white-space: nowrap;
 }
 
-.house-sheet-context {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: -2px 0 10px;
-  padding: 8px 11px;
-  border: 1px solid #dbe3ea;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.78);
-}
-
-.house-sheet-context span {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: #64748b;
-  font-size: 11px;
-  font-weight: 900;
-}
-
-.house-sheet-context strong {
-  color: #0f172a;
-  font-weight: 1000;
-}
-
 .daily-performance-card {
   height: clamp(340px, calc(100vh - 330px), 760px);
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-
-.house-sheet-formula-bar {
-  display: grid;
-  grid-template-columns: 1.2fr 1fr 1.2fr;
-  gap: 1px;
-  flex-shrink: 0;
-  border-bottom: 1px solid #dbe3ea;
-  background: #dbe3ea;
-}
-
-.house-sheet-formula-bar > div {
-  min-height: 42px;
-  padding: 8px 12px;
-  background: #fbfcfe;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-
-.house-sheet-formula-bar strong {
-  display: block;
-  color: #0f513f;
-  font-size: 10px;
-  font-weight: 1000;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.house-sheet-formula-bar span {
-  display: block;
-  margin-top: 3px;
-  color: #334155;
-  font-size: 12px;
-  font-weight: 800;
 }
 
 .daily-grid-scroll {
@@ -2086,11 +2026,6 @@ button {
     margin-bottom: 8px;
   }
 
-  .house-sheet-context {
-    margin-bottom: 8px;
-    padding: 7px 10px;
-  }
-
   .daily-performance-card {
     height: clamp(300px, calc(100vh - 305px), 500px);
   }
@@ -2105,15 +2040,6 @@ button {
   }
 
   .grid-card-head p {
-    font-size: 11px;
-  }
-
-  .house-sheet-formula-bar > div {
-    min-height: 36px;
-    padding: 6px 10px;
-  }
-
-  .house-sheet-formula-bar span {
     font-size: 11px;
   }
 

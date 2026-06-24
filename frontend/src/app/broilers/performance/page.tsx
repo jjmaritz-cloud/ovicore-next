@@ -627,28 +627,6 @@ export default function DailyPerformancePage() {
                 </option>
               ))}
             </select>
-						{selectedPlan && (
-							<section className="house-sheet-context">
-								<span>
-									Cycle <strong>{selectedPlan.cycle_code}</strong>
-								</span>
-								<span>
-									Farm <strong>{selectedPlan.farm_name}</strong>
-								</span>
-								<span>
-									Shed <strong>{selectedPlan.shed_name}</strong>
-								</span>
-								<span>
-									Placement <strong>{isoToDisplayDate(selectedPlan.placement_date)}</strong>
-								</span>
-								<span>
-									Planned Depop <strong>{isoToDisplayDate(selectedPlan.processing_date)}</strong>
-								</span>
-								<span>
-									Placed Birds <strong>{formatNumber(selectedPlan.planned_birds)}</strong>
-								</span>
-							</section>
-						)}
           </label>
 
 					<div className="daily-save-actions">
@@ -721,29 +699,6 @@ export default function DailyPerformancePage() {
 
             {message && <span className="daily-message-pill">{message}</span>}
           </div>
-
-					<div className="house-sheet-formula-bar">
-						<div>
-							<strong>Bird reconciliation</strong>
-							<span>
-								Closing Birds = Opening Birds - (Mortality Total + Cull Total)
-							</span>
-						</div>
-
-						<div>
-							<strong>Entry mode</strong>
-							<span>
-								Yellow cells are editable. Calculated cells update automatically.
-							</span>
-						</div>
-
-						<div>
-							<strong>Review logic</strong>
-							<span>
-								Mortality, culls, kg/m² and back-zone losses are flagged for review.
-							</span>
-						</div>
-					</div>
 
           <div className="daily-grid-scroll">
             <table className="daily-performance-table">
