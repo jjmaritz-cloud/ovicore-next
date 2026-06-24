@@ -50,7 +50,7 @@ def build_daily_performance_response(
     mortality_birds = entry.mortality_birds or 0
     cull_birds = entry.cull_birds or 0
     closing_birds = entry.closing_birds or 0
-    feed_kg = float(entry.feed_kg or 0)
+    feed_kg = float(entry.feed_kg) if entry.feed_kg is not None else 0
 
     daily_mortality_pct = None
     if opening_birds > 0:
@@ -474,7 +474,11 @@ def recalculate_daily_performance_entry(entry: BroilerDailyPerformance):
     entry.cull_birds = cull_total
 
     if entry.opening_birds is not None:
-        entry.closing_birds = int(entry.opening_birds or 0) - mortality_total - cull_total
+        entry.closing_birds = (
+            int(entry.opening_birds or 0)
+            - mortality_total
+            - cull_total
+        )
     else:
         entry.closing_birds = None
 
