@@ -1,876 +1,946 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AgGridReact } from "ag-grid-react";
-import {
-  AllCommunityModule,
-  ModuleRegistry,
-  type ColDef,
-  type GridReadyEvent,
-  type ICellRendererParams,
-  type ValueFormatterParams,
-} from "ag-grid-community";
-
-ModuleRegistry.registerModules([AllCommunityModule]);
-
-import "ag-grid-community/styles/ag-grid.css";
-import "ag-grid-community/styles/ag-theme-quartz.css";
+import { useEffect, useMemo, useState } from "react";
 import BroilerSidebar from "@/components/BroilerSidebar";
 
-type BroilerCycleRow = {
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+
+type DemandPlan = {
   id: number;
-  farm_name: string;
-  shed_name: string;
-  cycle_code: string;
-  placement_date: string | null;
-  planned_birds: number | null;
+  farm_name?: string;
+  shed_name?: string;
+  cycle_code?: string;
+  placement_date?: string;
+  processing_date?: string;
+  planned_birds?: number;
+  floor_area_m2?: number;
+  target_lw_kg?: number;
+  planned_kg_m2?: number;
+  growout_days?: number;
 };
 
-type BroilerPerformanceRow = {
+type PerformanceRecord = {
   id: number;
-  company_id: number;
   placement_plan_id: number;
-
-  farm_name: string | null;
-  shed_name: string | null;
-  cycle_code: string | null;
-
   entry_date: string;
-  age_days: number | null;
+  age_days?: number | null;
+  opening_birds?: number | null;
 
-  opening_birds: number | null;
-  mortality_birds: number;
-  cull_birds: number;
-  closing_birds: number | null;
+  mortality_front?: number | null;
+  mortality_middle?: number | null;
+  mortality_back?: number | null;
+  mortality_other?: number | null;
+  mortality_birds?: number | null;
 
-  feed_kg: number;
-  water_litres: number;
-  avg_weight_kg: number | null;
+  cull_legs?: number | null;
+  cull_runts?: number | null;
+  cull_beak?: number | null;
+  cull_other?: number | null;
+  cull_birds?: number | null;
 
-  daily_mortality_pct: number | null;
-  cumulative_mortality_birds: number | null;
-  cumulative_mortality_pct: number | null;
-  feed_per_bird_g: number | null;
-
-  notes: string | null;
-  last_saved_by: string | null;
-  last_saved_at: string | null;
+  closing_birds?: number | null;
+  feed_kg?: number | null;
+  water_litres?: number | null;
+  body_weight_kg?: number | null;
+  avg_weight_kg?: number | null;
+  notes?: string | null;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8001";
+type DailyRow = {
+  local_key: string;
+  record_id?: number;
+  placement_plan_id: number;
+  entry_date: string;
+  age_days: number;
 
-function isoToDisplayDate(value: string | null | undefined) {
+  opening_birds: number | "";
+
+  mortality_front: number | "";
+  mortality_middle: number | "";
+  mortality_back: number | "";
+  mortality_other: number | "";
+  mortality_birds: number | "";
+
+  cull_legs: number | "";
+  cull_runts: number | "";
+  cull_beak: number | "";
+  cull_other: number | "";
+  cull_birds: number | "";
+
+  total_bird_loss: number | "";
+  closing_birds: number | "";
+
+  feed_kg: number | "";
+  water_litres: number | "";
+  body_weight_kg: number | "";
+
+  mortality_pct: number | "";
+  cull_pct: number | "";
+  livability_pct: number | "";
+  kg_m2: number | "";
+  fcr: number | "";
+  review_status: string;
+
+  notes: string;
+};
+
+function formatNumber(value: number | "" | null | undefined, decimals = 0) {
+  if (value === "" || value === null || value === undefined) return "";
+
+  return Number(value).toLocaleString(undefined, {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+}
+
+function isoToDisplayDate(value?: string | null) {
   if (!value) return "";
 
   if (/^\d{2}-\d{2}-\d{4}$/.test(value)) return value;
 
-  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!match) return value;
+  const [year, month, day] = value.split("-");
+  if (!year || !month || !day) return value;
 
-  return `${match[3]}-${match[2]}-${match[1]}`;
+  return `${day}-${month}-${year}`;
 }
 
-function displayDateToIso(value: string | null | undefined) {
+function displayDateToIso(value: string) {
   if (!value) return null;
 
   const clean = String(value).trim();
 
-  const ddmmyyyy = clean.match(/^(\d{2})-(\d{2})-(\d{4})$/);
-  if (ddmmyyyy) return `${ddmmyyyy[3]}-${ddmmyyyy[2]}-${ddmmyyyy[1]}`;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) return clean;
 
-  const slashDate = clean.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (slashDate) return `${slashDate[3]}-${slashDate[2]}-${slashDate[1]}`;
+  const parts = clean.split("-");
+  if (parts.length !== 3) return null;
 
-  const iso = clean.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (iso) return clean;
+  const [day, month, year] = parts;
 
-  return clean;
+  if (!day || !month || !year) return null;
+
+  return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
 }
 
-function todayDisplayDate() {
-  const date = new Date();
-  const dd = String(date.getDate()).padStart(2, "0");
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const yyyy = date.getFullYear();
+function toNumberOrNull(value: number | "" | string) {
+  if (value === "" || value === null || value === undefined) return null;
 
-  return `${dd}-${mm}-${yyyy}`;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
 }
 
-function isoToDisplayDateTime(value: string | null | undefined) {
-  if (!value) return "";
+function addDays(isoDate: string, days: number) {
+  if (!isoDate) return "";
 
-  const clean = String(value).trim();
-  const match = clean.match(/^(\d{4})-(\d{2})-(\d{2})T? ?(\d{2})?:?(\d{2})?/);
+  const date = new Date(`${isoDate}T00:00:00`);
 
-  if (!match) return clean;
+  if (Number.isNaN(date.getTime())) return "";
 
-  const yyyy = match[1];
-  const mm = match[2];
-  const dd = match[3];
-  const hh = match[4] ?? "";
-  const min = match[5] ?? "";
+  date.setDate(date.getDate() + days);
 
-  if (hh && min) return `${dd}-${mm}-${yyyy} ${hh}:${min}`;
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
 
-  return `${dd}-${mm}-${yyyy}`;
+  return `${year}-${month}-${day}`;
 }
 
-function numberFormatter(params: ValueFormatterParams) {
-  if (params.value === null || params.value === undefined || params.value === "") return "";
-  const value = Number(params.value);
-  if (Number.isNaN(value)) return params.value;
-  return value.toLocaleString();
+function diffDays(startIso?: string, endIso?: string) {
+  if (!startIso || !endIso) return 42;
+
+  const start = new Date(`${startIso}T00:00:00`);
+  const end = new Date(`${endIso}T00:00:00`);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 42;
+
+  return Math.max(0, Math.round((end.getTime() - start.getTime()) / 86400000));
 }
 
-function decimalFormatter(params: ValueFormatterParams) {
-  if (params.value === null || params.value === undefined || params.value === "") return "";
-  const value = Number(params.value);
-  if (Number.isNaN(value)) return params.value;
-  return value.toFixed(2);
-}
+function calculateRow(row: DailyRow, plan: DemandPlan): DailyRow {
+  const opening = Number(row.opening_birds || 0);
 
-function threeDecimalFormatter(params: ValueFormatterParams) {
-  if (params.value === null || params.value === undefined || params.value === "") return "";
-  const value = Number(params.value);
-  if (Number.isNaN(value)) return params.value;
-  return value.toFixed(3);
-}
+  const mortTotal =
+    Number(row.mortality_front || 0) +
+    Number(row.mortality_middle || 0) +
+    Number(row.mortality_back || 0) +
+    Number(row.mortality_other || 0);
 
-function pctFormatter(params: ValueFormatterParams) {
-  if (params.value === null || params.value === undefined || params.value === "") return "";
-  const value = Number(params.value);
-  if (Number.isNaN(value)) return params.value;
-  return `${value.toFixed(2)}%`;
-}
+  const cullTotal =
+    Number(row.cull_legs || 0) +
+    Number(row.cull_runts || 0) +
+    Number(row.cull_beak || 0) +
+    Number(row.cull_other || 0);
 
-function PerformanceStatusPill(params: ICellRendererParams) {
-  const value = Number(params.value ?? 0);
+  const totalBirdLoss = mortTotal + cullTotal;
 
-  let className = "review-pill review-ready";
-  let label = "OK";
+  const closing =
+    opening > 0 ? Math.max(0, opening - totalBirdLoss) : "";
 
-  if (value > 0.2) {
-    className = "review-pill review-warning";
-    label = "REVIEW";
+  const bodyWeight = Number(row.body_weight_kg || 0);
+  const floorArea = Number(plan.floor_area_m2 || 0);
+  const feedKg = Number(row.feed_kg || 0);
+  const placedBirds = Number(plan.planned_birds || 0);
+
+  const mortalityPct =
+    opening > 0 ? Number(((mortTotal / opening) * 100).toFixed(2)) : "";
+
+  const cullPct =
+    opening > 0 ? Number(((cullTotal / opening) * 100).toFixed(2)) : "";
+
+  const livabilityPct =
+    placedBirds > 0 && typeof closing === "number"
+      ? Number(((closing / placedBirds) * 100).toFixed(2))
+      : "";
+
+  const kgM2 =
+    floorArea > 0 && typeof closing === "number" && bodyWeight > 0
+      ? Number(((closing * bodyWeight) / floorArea).toFixed(2))
+      : "";
+
+  const fcr =
+    typeof closing === "number" && bodyWeight > 0 && feedKg > 0
+      ? Number((feedKg / (closing * bodyWeight)).toFixed(2))
+      : "";
+
+  let review = "OK";
+
+  if (opening > 0 && mortTotal > Math.max(50, opening * 0.005)) {
+    review = "Mortality Review";
   }
 
-  if (value > 0.5) {
-    className = "review-pill review-missing";
-    label = "HIGH";
+  if (opening > 0 && cullTotal > Math.max(25, opening * 0.003)) {
+    review = "Cull Review";
   }
 
-  return <span className={className}>{label}</span>;
-}
+  if (typeof kgM2 === "number" && kgM2 >= 39) {
+    review = "Density Watch";
+  }
 
-function recalculatePerformanceRow(row: BroilerPerformanceRow): BroilerPerformanceRow {
-  const openingBirds = Number(row.opening_birds ?? 0);
-  const mortalityBirds = Number(row.mortality_birds ?? 0);
-  const cullBirds = Number(row.cull_birds ?? 0);
-  const feedKg = Number(row.feed_kg ?? 0);
+  const backMortalityShare =
+    mortTotal > 0 ? Number(row.mortality_back || 0) / mortTotal : 0;
 
-  const closingBirds =
-    openingBirds > 0 ? openingBirds - mortalityBirds - cullBirds : row.closing_birds;
-
-  const dailyMortalityPct =
-    openingBirds > 0 ? (mortalityBirds / openingBirds) * 100 : null;
-
-  const feedPerBirdG =
-    closingBirds && closingBirds > 0 && feedKg > 0
-      ? (feedKg * 1000) / closingBirds
-      : null;
+  if (mortTotal >= 20 && backMortalityShare >= 0.5) {
+    review = "Back Zone Mortality";
+  }
 
   return {
     ...row,
-    closing_birds: closingBirds,
-    daily_mortality_pct: dailyMortalityPct,
-    feed_per_bird_g: feedPerBirdG,
+    mortality_birds: mortTotal,
+    cull_birds: cullTotal,
+    total_bird_loss: totalBirdLoss,
+    closing_birds: closing,
+    mortality_pct: mortalityPct,
+    cull_pct: cullPct,
+    livability_pct: livabilityPct,
+    kg_m2: kgM2,
+    fcr,
+    review_status: review,
   };
 }
 
-function getCycleRowsSortedByDate(
-  cycleId: number,
-  rows: BroilerPerformanceRow[]
-) {
-  return rows
-    .filter((row) => row.placement_plan_id === cycleId)
-    .sort((a, b) => {
-      const aIso = displayDateToIso(a.entry_date) ?? "";
-      const bIso = displayDateToIso(b.entry_date) ?? "";
-      return aIso.localeCompare(bIso);
-    });
-}
-
-function addDaysToIsoDate(isoDate: string, days: number) {
-  const date = new Date(`${isoDate}T00:00:00`);
-  date.setDate(date.getDate() + days);
-
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const dd = String(date.getDate()).padStart(2, "0");
-
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-function getNextAgeDaysForCycle(
-  cycleId: number,
-  rows: BroilerPerformanceRow[]
-) {
-  const cycleRows = getCycleRowsSortedByDate(cycleId, rows);
-
-  if (cycleRows.length === 0) return 1;
-
-  const lastRow = cycleRows[cycleRows.length - 1];
-  return Number(lastRow.age_days ?? 0) + 1;
-}
-
-function getNextOpeningBirdsForCycle(
-  cycleId: number,
-  rows: BroilerPerformanceRow[],
-  plannedBirds: number | null
-) {
-  const cycleRows = getCycleRowsSortedByDate(cycleId, rows);
-
-  if (cycleRows.length === 0) {
-    return plannedBirds ?? null;
-  }
-
-  const lastRow = cycleRows[cycleRows.length - 1];
-
-  if (lastRow.closing_birds !== null && lastRow.closing_birds !== undefined) {
-    return Number(lastRow.closing_birds);
-  }
-
-  const opening = Number(lastRow.opening_birds ?? 0);
-  const mortality = Number(lastRow.mortality_birds ?? 0);
-  const culls = Number(lastRow.cull_birds ?? 0);
-
-  if (opening > 0) {
-    return opening - mortality - culls;
-  }
-
-  return plannedBirds ?? null;
-}
-
-function getNextEntryDateForCycle(
-  cycleId: number,
-  rows: BroilerPerformanceRow[],
-  placementDate: string | null
-) {
-  const cycleRows = getCycleRowsSortedByDate(cycleId, rows);
-
-  if (cycleRows.length > 0) {
-    const lastRow = cycleRows[cycleRows.length - 1];
-    const lastEntryIso = displayDateToIso(lastRow.entry_date);
-
-    if (lastEntryIso) {
-      return addDaysToIsoDate(lastEntryIso, 1);
-    }
-  }
-
-  if (placementDate) {
-    return placementDate;
-  }
-
-  return displayDateToIso(todayDisplayDate());
-}
-
-export default function BroilerPerformancePage() {
-  const gridRef = useRef<AgGridReact<BroilerPerformanceRow>>(null);
-
-  const [rows, setRows] = useState<BroilerPerformanceRow[]>([]);
-  const [cycles, setCycles] = useState<BroilerCycleRow[]>([]);
-  const [selectedCycleId, setSelectedCycleId] = useState<number | "all">("all");
-
+export default function DailyPerformancePage() {
+  const [plans, setPlans] = useState<DemandPlan[]>([]);
+  const [selectedPlanId, setSelectedPlanId] = useState<number | "">("");
+  const [records, setRecords] = useState<PerformanceRecord[]>([]);
+  const [rows, setRows] = useState<DailyRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [searchText, setSearchText] = useState("");
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [message, setMessage] = useState("");
 
-  const dirtyRowIds = useRef<Set<number>>(new Set());
+  const selectedPlan = useMemo(() => {
+    return plans.find((plan) => plan.id === selectedPlanId);
+  }, [plans, selectedPlanId]);
 
-  const fetchCycles = useCallback(async () => {
-    const response = await fetch(`${API_BASE}/api/broilers/demand-plans`, {
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Could not load cycles. ${response.status}: ${errorText}`);
-    }
-
-    const data = await response.json();
-
-    const mappedCycles: BroilerCycleRow[] = data.map((row: any) => ({
-      id: row.id,
-      farm_name: row.farm_name,
-      shed_name: row.shed_name,
-      cycle_code: row.cycle_code,
-      placement_date: row.placement_date,
-      planned_birds: row.planned_birds,
-    }));
-
-    setCycles(mappedCycles);
-
-    return mappedCycles;
-  }, []);
-
-  const fetchRows = useCallback(async () => {
+  async function loadData() {
     setLoading(true);
+    setMessage("");
 
     try {
-      await fetchCycles();
+      const [plansResponse, performanceResponse] = await Promise.all([
+        fetch(`${API_BASE}/api/broilers/demand-plans`),
+        fetch(`${API_BASE}/api/broilers/performance`),
+      ]);
 
-      const url =
-        selectedCycleId === "all"
-          ? `${API_BASE}/api/broilers/performance`
-          : `${API_BASE}/api/broilers/performance?placement_plan_id=${selectedCycleId}`;
-
-      const response = await fetch(url, {
-        cache: "no-store",
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Could not load performance. ${response.status}: ${errorText}`);
+      if (!plansResponse.ok) {
+        throw new Error(`Could not load plans: ${plansResponse.status}`);
       }
 
-      const data = await response.json();
+      if (!performanceResponse.ok) {
+        throw new Error(
+          `Could not load daily performance: ${performanceResponse.status}`,
+        );
+      }
 
-      const mappedRows: BroilerPerformanceRow[] = data.map((row: any) => ({
-        ...row,
-        entry_date: isoToDisplayDate(row.entry_date),
-        last_saved_at: isoToDisplayDateTime(row.last_saved_at),
-      }));
+      const plansData: DemandPlan[] = await plansResponse.json();
+      const performanceData: PerformanceRecord[] =
+        await performanceResponse.json();
 
-      setRows(mappedRows);
-      dirtyRowIds.current.clear();
+      setPlans(plansData);
+      setRecords(performanceData);
+
+      if (!selectedPlanId && plansData.length > 0) {
+        setSelectedPlanId(plansData[0].id);
+      }
     } catch (error) {
       console.error(error);
-      alert("Could not load broiler performance. Check that the backend is running on port 8001.");
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not load Daily Performance.",
+      );
     } finally {
       setLoading(false);
     }
-  }, [fetchCycles, selectedCycleId]);
+  }
 
   useEffect(() => {
-    fetchRows();
-  }, [fetchRows]);
-
-  const defaultColDef = useMemo<ColDef<BroilerPerformanceRow>>(
-    () => ({
-      resizable: true,
-      sortable: true,
-      filter: true,
-      minWidth: 120,
-      cellClass: "center-cell",
-      headerClass: "center-header",
-    }),
-    []
-  );
-
-  const columnDefs = useMemo<ColDef<BroilerPerformanceRow>[]>(
-    () => [
-      {
-        field: "farm_name",
-        headerName: "Farm",
-        pinned: "left",
-        minWidth: 175,
-        editable: false,
-        cellClass: "identity-cell",
-      },
-      {
-        field: "shed_name",
-        headerName: "Shed",
-        pinned: "left",
-        minWidth: 120,
-        editable: false,
-        cellClass: "identity-cell",
-      },
-      {
-        field: "cycle_code",
-        headerName: "Cycle",
-        pinned: "left",
-        minWidth: 155,
-        editable: false,
-        cellClass: "identity-cell",
-      },
-      {
-        field: "entry_date",
-        headerName: "Entry Date",
-        minWidth: 145,
-        editable: true,
-        cellClass: "editable-cell",
-      },
-      {
-        field: "age_days",
-        headerName: "Age Days",
-        minWidth: 125,
-        editable: true,
-        valueFormatter: numberFormatter,
-        cellClass: "editable-cell",
-      },
-      {
-        field: "opening_birds",
-        headerName: "Opening Birds",
-        minWidth: 150,
-        editable: true,
-        valueFormatter: numberFormatter,
-        cellClass: "editable-cell",
-      },
-      {
-        field: "mortality_birds",
-        headerName: "Mortality",
-        minWidth: 135,
-        editable: true,
-        valueFormatter: numberFormatter,
-        cellClass: "editable-cell",
-      },
-      {
-        field: "cull_birds",
-        headerName: "Culls",
-        minWidth: 115,
-        editable: true,
-        valueFormatter: numberFormatter,
-        cellClass: "editable-cell",
-      },
-			{
-				field: "closing_birds",
-				headerName: "Closing Birds",
-				minWidth: 150,
-				editable: false,
-				valueFormatter: numberFormatter,
-				cellClass: "calculated-cell",
-			},
-      {
-        field: "feed_kg",
-        headerName: "Feed kg",
-        minWidth: 130,
-        editable: true,
-        valueFormatter: decimalFormatter,
-        cellClass: "editable-cell",
-      },
-      {
-        field: "water_litres",
-        headerName: "Water L",
-        minWidth: 130,
-        editable: true,
-        valueFormatter: decimalFormatter,
-        cellClass: "editable-cell",
-      },
-      {
-        field: "avg_weight_kg",
-        headerName: "Avg Weight kg",
-        minWidth: 150,
-        editable: true,
-        valueFormatter: threeDecimalFormatter,
-        cellClass: "editable-cell",
-      },
-      {
-        field: "daily_mortality_pct",
-        headerName: "Daily Mort %",
-        minWidth: 145,
-        editable: false,
-        valueFormatter: pctFormatter,
-        cellClass: "calculated-cell",
-      },
-      {
-        field: "cumulative_mortality_birds",
-        headerName: "Cum Mort Birds",
-        minWidth: 160,
-        editable: false,
-        valueFormatter: numberFormatter,
-        cellClass: "calculated-cell",
-      },
-      {
-        field: "cumulative_mortality_pct",
-        headerName: "Cum Mort %",
-        minWidth: 145,
-        editable: false,
-        valueFormatter: pctFormatter,
-        cellClass: "calculated-cell",
-      },
-      {
-        field: "feed_per_bird_g",
-        headerName: "Feed/Bird g",
-        minWidth: 145,
-        editable: false,
-        valueFormatter: decimalFormatter,
-        cellClass: "calculated-cell",
-      },
-      {
-        field: "daily_mortality_pct",
-        headerName: "Mort Status",
-        minWidth: 135,
-        editable: false,
-        cellRenderer: PerformanceStatusPill,
-        cellClass: "center-cell",
-      },
-      {
-        field: "notes",
-        headerName: "Notes",
-        minWidth: 300,
-        flex: 1,
-        editable: true,
-        cellClass: "editable-cell notes-cell",
-      },
-      {
-        field: "last_saved_at",
-        headerName: "Last Saved",
-        minWidth: 180,
-        editable: false,
-        cellClass: "calculated-cell",
-      },
-      {
-        field: "last_saved_by",
-        headerName: "Saved By",
-        minWidth: 130,
-        editable: false,
-        cellClass: "calculated-cell",
-      },
-    ],
-    []
-  );
-
-  const onGridReady = useCallback((params: GridReadyEvent) => {
-    setTimeout(() => {
-      params.api.sizeColumnsToFit();
-
-      const allColumnIds: string[] = [];
-      params.api.getColumns()?.forEach((column) => allColumnIds.push(column.getId()));
-      params.api.autoSizeColumns(allColumnIds, false);
-    }, 100);
+    loadData();
   }, []);
 
-  const addPerformanceEntry = useCallback(async () => {
-    const cycle =
-      selectedCycleId === "all"
-        ? cycles[0]
-        : cycles.find((row) => row.id === selectedCycleId);
-
-    if (!cycle) {
-      alert("Create or select a broiler cycle first.");
+  useEffect(() => {
+    if (!selectedPlan) {
+      setRows([]);
       return;
     }
 
-    setSaving(true);
+    const days =
+      selectedPlan.growout_days ??
+      diffDays(selectedPlan.placement_date, selectedPlan.processing_date);
 
-    try {
-      const response = await fetch(`${API_BASE}/api/broilers/performance`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-				body: JSON.stringify({
-					company_id: 1,
-					placement_plan_id: cycle.id,
-					entry_date: getNextEntryDateForCycle(cycle.id, rows, cycle.placement_date),
-					age_days: getNextAgeDaysForCycle(cycle.id, rows),
-					opening_birds: getNextOpeningBirdsForCycle(cycle.id, rows, cycle.planned_birds),
-					mortality_birds: 0,
-					cull_birds: 0,
-					closing_birds: null,
-					feed_kg: 0,
-					water_litres: 0,
-					avg_weight_kg: null,
-					notes: "",
-					last_saved_by: "JJ",
-				}),
-      });
+    const existingByAge = new Map<number, PerformanceRecord>();
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Could not create performance entry. ${response.status}: ${errorText}`);
+    for (const record of records) {
+      if (record.placement_plan_id === selectedPlan.id) {
+        existingByAge.set(Number(record.age_days || 0), record);
+      }
+    }
+
+    const generatedRows: DailyRow[] = [];
+    let previousClosing = Number(selectedPlan.planned_birds || 0);
+
+    for (let age = 0; age <= days; age += 1) {
+      const existing = existingByAge.get(age);
+
+      const entryIsoDate =
+        existing?.entry_date ||
+        addDays(selectedPlan.placement_date || "", age);
+
+      const openingBirds =
+        existing?.opening_birds ??
+        (age === 0 ? selectedPlan.planned_birds ?? "" : previousClosing);
+
+      const existingBodyWeight =
+        existing?.body_weight_kg ?? existing?.avg_weight_kg ?? "";
+
+      const baseRow: DailyRow = {
+        local_key: `${selectedPlan.id}-${age}`,
+        record_id: existing?.id,
+        placement_plan_id: selectedPlan.id,
+        entry_date: isoToDisplayDate(entryIsoDate),
+        age_days: age,
+
+        opening_birds: openingBirds ?? "",
+
+        mortality_front: existing?.mortality_front ?? "",
+        mortality_middle: existing?.mortality_middle ?? "",
+        mortality_back: existing?.mortality_back ?? "",
+        mortality_other: existing?.mortality_other ?? "",
+        mortality_birds: existing?.mortality_birds ?? "",
+
+        cull_legs: existing?.cull_legs ?? "",
+        cull_runts: existing?.cull_runts ?? "",
+        cull_beak: existing?.cull_beak ?? "",
+        cull_other: existing?.cull_other ?? "",
+        cull_birds: existing?.cull_birds ?? "",
+
+        total_bird_loss: "",
+        closing_birds: existing?.closing_birds ?? "",
+
+        feed_kg: existing?.feed_kg ?? "",
+        water_litres: existing?.water_litres ?? "",
+        body_weight_kg: existingBodyWeight,
+
+        mortality_pct: "",
+        cull_pct: "",
+        livability_pct: "",
+        kg_m2: "",
+        fcr: "",
+        review_status: "OK",
+
+        notes: existing?.notes || "",
+      };
+
+      const calculated = calculateRow(baseRow, selectedPlan);
+
+      if (typeof calculated.closing_birds === "number") {
+        previousClosing = calculated.closing_birds;
       }
 
-      await response.json();
-      await fetchRows();
-    } catch (error) {
-      console.error(error);
-      alert("Could not create daily performance entry. It may already exist for this cycle and date.");
-    } finally {
-      setSaving(false);
-    }
-  }, [cycles, fetchRows, selectedCycleId, rows]);
-
-  const saveDirtyRows = useCallback(async () => {
-    const api = gridRef.current?.api;
-    if (!api) return;
-
-    api.stopEditing();
-
-    const dirtyIds = Array.from(dirtyRowIds.current);
-
-    if (dirtyIds.length === 0) {
-      alert("No changes to save.");
-      return;
+      generatedRows.push(calculated);
     }
 
-    const rowMap = new Map<number, BroilerPerformanceRow>();
+    setRows(generatedRows);
+  }, [selectedPlan, records]);
 
-    api.forEachNode((node) => {
-      if (node.data) rowMap.set(node.data.id, node.data);
-    });
-
-    setSaving(true);
-
-    try {
-      for (const id of dirtyIds) {
-        const row = rowMap.get(id);
-        if (!row) continue;
-
-        if (!row.entry_date) {
-          alert("Entry date is required.");
-          setSaving(false);
-          return;
-        }
-
-        const response = await fetch(`${API_BASE}/api/broilers/performance/${id}`, {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
-					body: JSON.stringify({
-						entry_date: displayDateToIso(row.entry_date),
-						age_days:
-							row.age_days === null || row.age_days === undefined
-								? null
-								: Number(row.age_days),
-						opening_birds:
-							row.opening_birds === null || row.opening_birds === undefined
-								? null
-								: Number(row.opening_birds),
-						mortality_birds: Number(row.mortality_birds ?? 0),
-						cull_birds: Number(row.cull_birds ?? 0),
-						closing_birds: null,
-						feed_kg: Number(row.feed_kg ?? 0),
-						water_litres: Number(row.water_litres ?? 0),
-						avg_weight_kg:
-							row.avg_weight_kg === null || row.avg_weight_kg === undefined
-								? null
-								: Number(row.avg_weight_kg),
-						notes: row.notes ?? "",
-						last_saved_by: "JJ",
-					}),
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`Could not save row ${id}. ${response.status}: ${errorText}`);
-        }
-      }
-
-      dirtyRowIds.current.clear();
-      await fetchRows();
-      alert("Performance saved.");
-    } catch (error) {
-      console.error(error);
-      alert("Could not save broiler performance.");
-    } finally {
-      setSaving(false);
-    }
-  }, [fetchRows]);
-
-  const deleteSelectedEntry = useCallback(async () => {
-    const api = gridRef.current?.api;
-    if (!api) return;
-
-    const selectedRows = api.getSelectedRows();
-
-    if (selectedRows.length === 0) {
-      alert("Select a performance row to delete.");
-      return;
-    }
-
-    const row = selectedRows[0];
-
-    const confirmed = window.confirm(
-      `Delete performance entry for ${row.cycle_code} on ${row.entry_date}?`
+  const totals = useMemo(() => {
+    const totalMortality = rows.reduce(
+      (sum, row) => sum + Number(row.mortality_birds || 0),
+      0,
     );
 
-    if (!confirmed) return;
+    const totalCulls = rows.reduce(
+      (sum, row) => sum + Number(row.cull_birds || 0),
+      0,
+    );
 
-    setSaving(true);
+    const totalLoss = rows.reduce(
+      (sum, row) => sum + Number(row.total_bird_loss || 0),
+      0,
+    );
 
-    try {
-      const response = await fetch(`${API_BASE}/api/broilers/performance/${row.id}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText);
-      }
-
-      await fetchRows();
-    } catch (error) {
-      console.error(error);
-      alert("Could not delete performance entry.");
-    } finally {
-      setSaving(false);
-    }
-  }, [fetchRows]);
-
-  const kpis = useMemo(() => {
-    const totalEntries = rows.length;
-    const totalMortality = rows.reduce((sum, row) => sum + Number(row.mortality_birds ?? 0), 0);
-    const totalCulls = rows.reduce((sum, row) => sum + Number(row.cull_birds ?? 0), 0);
-    const totalFeed = rows.reduce((sum, row) => sum + Number(row.feed_kg ?? 0), 0);
-
-    const latestWeights = rows
-      .map((row) => Number(row.avg_weight_kg ?? 0))
-      .filter((value) => value > 0);
-
-    const avgWeight =
-      latestWeights.length === 0
-        ? 0
-        : latestWeights.reduce((sum, value) => sum + value, 0) / latestWeights.length;
+    const latestRow = [...rows]
+      .reverse()
+      .find((row) => Number(row.closing_birds || 0) > 0);
 
     return {
-      totalEntries,
       totalMortality,
       totalCulls,
-      totalFeed,
-      avgWeight,
+      totalLoss,
+      latestClosing: Number(latestRow?.closing_birds || 0),
+      latestKgM2: Number(latestRow?.kg_m2 || 0),
+      latestLivability: Number(latestRow?.livability_pct || 0),
     };
   }, [rows]);
 
-  return (
-    <main className="page-shell">
-			<BroilerSidebar />
+  function updateRow(localKey: string, field: keyof DailyRow, value: string) {
+    if (!selectedPlan) return;
 
-      <section className="main-panel">
-        <header className="topbar">
+    setRows((currentRows) => {
+      let previousClosing = Number(selectedPlan.planned_birds || 0);
+
+      return currentRows.map((row) => {
+        const isTarget = row.local_key === localKey;
+
+        const numericFields: Array<keyof DailyRow> = [
+          "opening_birds",
+          "mortality_front",
+          "mortality_middle",
+          "mortality_back",
+          "mortality_other",
+          "cull_legs",
+          "cull_runts",
+          "cull_beak",
+          "cull_other",
+          "feed_kg",
+          "water_litres",
+          "body_weight_kg",
+        ];
+
+        const nextRow = isTarget
+          ? {
+              ...row,
+              [field]: numericFields.includes(field)
+                ? value === ""
+                  ? ""
+                  : Number(value)
+                : value,
+            }
+          : {
+              ...row,
+              opening_birds:
+                row.age_days === 0 ? row.opening_birds : previousClosing,
+            };
+
+        const calculated = calculateRow(nextRow, selectedPlan);
+
+        if (typeof calculated.closing_birds === "number") {
+          previousClosing = calculated.closing_birds;
+        }
+
+        return calculated;
+      });
+    });
+  }
+
+  async function saveRow(row: DailyRow) {
+    setSavingKey(row.local_key);
+    setMessage("");
+
+    const payload = {
+      placement_plan_id: row.placement_plan_id,
+      entry_date: displayDateToIso(row.entry_date),
+      age_days: row.age_days,
+      opening_birds: toNumberOrNull(row.opening_birds),
+
+      mortality_front: toNumberOrNull(row.mortality_front),
+      mortality_middle: toNumberOrNull(row.mortality_middle),
+      mortality_back: toNumberOrNull(row.mortality_back),
+      mortality_other: toNumberOrNull(row.mortality_other),
+      mortality_birds: toNumberOrNull(row.mortality_birds),
+
+      cull_legs: toNumberOrNull(row.cull_legs),
+      cull_runts: toNumberOrNull(row.cull_runts),
+      cull_beak: toNumberOrNull(row.cull_beak),
+      cull_other: toNumberOrNull(row.cull_other),
+      cull_birds: toNumberOrNull(row.cull_birds),
+
+      closing_birds: toNumberOrNull(row.closing_birds),
+      feed_kg: toNumberOrNull(row.feed_kg),
+      water_litres: toNumberOrNull(row.water_litres),
+      body_weight_kg: toNumberOrNull(row.body_weight_kg),
+      avg_weight_kg: toNumberOrNull(row.body_weight_kg),
+      notes: row.notes || null,
+      last_saved_by: "JJ",
+    };
+
+    try {
+      const url = row.record_id
+        ? `${API_BASE}/api/broilers/performance/${row.record_id}`
+        : `${API_BASE}/api/broilers/performance`;
+
+      const response = await fetch(url, {
+        method: row.record_id ? "PATCH" : "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Save failed: ${response.status}. ${errorText}`);
+      }
+
+      const saved: PerformanceRecord = await response.json();
+
+      setRecords((current) => {
+        const withoutExisting = current.filter(
+          (record) => record.id !== saved.id,
+        );
+
+        return [...withoutExisting, saved];
+      });
+
+      setMessage("Daily performance row saved.");
+    } catch (error) {
+      console.error(error);
+      setMessage(
+        error instanceof Error ? error.message : "Could not save row.",
+      );
+    } finally {
+      setSavingKey(null);
+    }
+  }
+
+  return (
+    <div className="page-shell">
+      <BroilerSidebar />
+
+      <main className="main-panel">
+        <section className="topbar">
           <div>
-            <p className="eyebrow">Broiler Performance</p>
-            <h2>Daily actuals by cycle</h2>
+            <p className="eyebrow">OviCore Broiler Module</p>
+            <h2>Daily Performance</h2>
+            <p>
+              Select a cycle and record full grow-out performance from placement
+              to planned depop.
+            </p>
           </div>
 
-          <div className="top-actions">
+          <button className="primary-button" type="button" onClick={loadData}>
+            Refresh
+          </button>
+        </section>
+
+        <section className="daily-cycle-selector">
+          <label>
+            Select Cycle
             <select
-              className="search-box"
-              value={selectedCycleId}
-              onChange={(event) => {
-                const value = event.target.value;
-                setSelectedCycleId(value === "all" ? "all" : Number(value));
-              }}
+              value={selectedPlanId}
+              onChange={(event) => setSelectedPlanId(Number(event.target.value))}
             >
-              <option value="all">All cycles</option>
-              {cycles.map((cycle) => (
-                <option key={cycle.id} value={cycle.id}>
-                  {cycle.cycle_code} | {cycle.farm_name} | {cycle.shed_name}
+              {plans.map((plan) => (
+                <option key={plan.id} value={plan.id}>
+                  {plan.farm_name} / {plan.shed_name} / {plan.cycle_code} /{" "}
+                  {isoToDisplayDate(plan.placement_date)}
                 </option>
               ))}
             </select>
+          </label>
 
-            <input
-              className="search-box"
-              value={searchText}
-              onChange={(event) => setSearchText(event.target.value)}
-              placeholder="Search cycle, farm, shed or note"
-            />
-
-            <div className="avatar">JJ</div>
-          </div>
-        </header>
+          {selectedPlan && (
+            <div className="cycle-summary-strip">
+              <span>
+                Farm <strong>{selectedPlan.farm_name}</strong>
+              </span>
+              <span>
+                Shed <strong>{selectedPlan.shed_name}</strong>
+              </span>
+              <span>
+                Placement{" "}
+                <strong>{isoToDisplayDate(selectedPlan.placement_date)}</strong>
+              </span>
+              <span>
+                Planned Depop{" "}
+                <strong>{isoToDisplayDate(selectedPlan.processing_date)}</strong>
+              </span>
+              <span>
+                Birds <strong>{formatNumber(selectedPlan.planned_birds)}</strong>
+              </span>
+              <span>
+                Target LW{" "}
+                <strong>{formatNumber(selectedPlan.target_lw_kg, 2)} kg</strong>
+              </span>
+            </div>
+          )}
+        </section>
 
         <section className="kpi-grid">
           <div className="kpi-card">
-            <span>Daily entries</span>
-            <strong>{kpis.totalEntries.toLocaleString()}</strong>
-            <p>Performance records captured</p>
+            <span>Total Mortality</span>
+            <strong>{formatNumber(totals.totalMortality)}</strong>
+            <p>Front + middle + back + other.</p>
           </div>
 
           <div className="kpi-card">
-            <span>Total mortality</span>
-            <strong>{kpis.totalMortality.toLocaleString()}</strong>
-            <p>Birds recorded as mortality</p>
+            <span>Total Culls</span>
+            <strong>{formatNumber(totals.totalCulls)}</strong>
+            <p>Legs + runts + beak + other.</p>
           </div>
 
           <div className="kpi-card">
-            <span>Total culls</span>
-            <strong>{kpis.totalCulls.toLocaleString()}</strong>
-            <p>Birds culled</p>
+            <span>Total Bird Loss</span>
+            <strong>{formatNumber(totals.totalLoss)}</strong>
+            <p>Total mortality + total culls.</p>
           </div>
 
           <div className="kpi-card">
-            <span>Total feed kg</span>
-            <strong>{kpis.totalFeed.toLocaleString()}</strong>
-            <p>Feed consumed across entries</p>
+            <span>Closing Birds</span>
+            <strong>{formatNumber(totals.latestClosing)}</strong>
+            <p>Latest calculated closing stock.</p>
           </div>
 
           <div className="kpi-card">
-            <span>Avg weight kg</span>
-            <strong>{kpis.avgWeight.toFixed(3)}</strong>
-            <p>Average of entered weights</p>
+            <span>Livability</span>
+            <strong>{formatNumber(totals.latestLivability, 2)}%</strong>
+            <p>Latest closing birds vs placed birds.</p>
           </div>
         </section>
 
-				<section className="grid-card">
-					<div className="grid-card-head">
-						<div>
-							<h3>Daily Performance Entry</h3>
-							<p>
-								Enter broiler daily actuals. Calculated mortality and feed-per-bird values come from the backend.
-							</p>
-						</div>
-
-						<div className="grid-buttons">
-							<button type="button" onClick={addPerformanceEntry} disabled={saving}>
-								New daily entry
-							</button>
-
-							<button type="button" onClick={deleteSelectedEntry} disabled={saving}>
-								Delete selected entry
-							</button>
-
-							<button type="button" onClick={fetchRows} disabled={saving}>
-								Reload data
-							</button>
-
-							<button type="button" className="primary" onClick={saveDirtyRows} disabled={saving}>
-								{saving ? "Saving..." : "Save changes"}
-							</button>
-						</div>
-					</div>
-
-          <div className="formula-bar">
-            <div className="formula-name">Performance</div>
-            <div className="formula-text">
-              Daily mortality % = mortality ÷ opening birds. Feed per bird = feed kg × 1000 ÷ closing birds.
+        <section className="grid-card daily-performance-card">
+          <div className="grid-card-head">
+            <div>
+              <h3>Full Grow-out Daily Entry</h3>
+              <p>
+                Rows are generated from placement to planned depop. Yellow cells
+                are editable. Review fields are to the right.
+              </p>
             </div>
+
+            {message && <span className="status-pill">{message}</span>}
           </div>
 
-          <div className="ag-theme-quartz broiler-grid">
-            <AgGridReact<BroilerPerformanceRow>
-              ref={gridRef}
-              rowData={rows}
-              columnDefs={columnDefs}
-              defaultColDef={defaultColDef}
-              getRowId={(params) => String(params.data.id)}
-              quickFilterText={searchText}
-              rowSelection="single"
-              suppressRowClickSelection={false}
-              animateRows
-              rowHeight={38}
-              headerHeight={38}
-              loading={loading}
-              onGridReady={onGridReady}
-							onCellValueChanged={(event) => {
-								if (!event.data?.id) return;
+          <div className="daily-grid-scroll">
+            <table className="daily-performance-table">
+              <thead>
+                <tr>
+                  <th colSpan={2}>Day</th>
+                  <th colSpan={6}>Bird Count</th>
+                  <th colSpan={5}>Mortality Location</th>
+                  <th colSpan={5}>Cull Reasons</th>
+                  <th colSpan={4}>Daily Inputs</th>
+                  <th colSpan={6}>Review</th>
+                  <th colSpan={2}>Workflow</th>
+                </tr>
 
-								const recalculated = recalculatePerformanceRow(event.data);
+                <tr>
+                  {[
+                    "Date",
+                    "Age",
 
-								const node = event.api.getRowNode(String(event.data.id));
-								if (node) {
-									node.setData(recalculated);
-								}
+                    "Opening",
+                    "Mort Total",
+                    "Cull Total",
+                    "Total Loss",
+                    "Closing",
+                    "Bird Balance",
 
-								dirtyRowIds.current.add(event.data.id);
-								event.api.refreshCells({ force: true });
-							}}
-            />
+                    "Front",
+                    "Middle",
+                    "Back",
+                    "Other",
+                    "Mort %",
+
+                    "Legs",
+                    "Runts",
+                    "Beak",
+                    "Other",
+                    "Cull %",
+
+                    "Feed kg",
+                    "Water L",
+                    "Bodyweight kg",
+                    "Notes",
+
+                    "Livability %",
+                    "kg/m²",
+                    "FCR",
+                    "Mort Flag",
+                    "Cull Flag",
+                    "AI Review",
+
+                    "Status",
+                    "Save",
+                  ].map((heading) => (
+                    <th key={heading}>{heading}</th>
+                  ))}
+                </tr>
+              </thead>
+
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={30}>Loading daily performance...</td>
+                  </tr>
+                ) : rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={30}>
+                      No cycle selected. Add demand plan rows first.
+                    </td>
+                  </tr>
+                ) : (
+                  rows.map((row) => (
+                    <tr key={row.local_key}>
+                      <td>{row.entry_date}</td>
+                      <td>{row.age_days}</td>
+
+                      <EditableCell
+                        value={row.opening_birds}
+                        type="number"
+                        onChange={(value) =>
+                          updateRow(row.local_key, "opening_birds", value)
+                        }
+                      />
+
+                      <td className="daily-calculated">
+                        {formatNumber(row.mortality_birds)}
+                      </td>
+
+                      <td className="daily-calculated">
+                        {formatNumber(row.cull_birds)}
+                      </td>
+
+                      <td className="daily-calculated">
+                        {formatNumber(row.total_bird_loss)}
+                      </td>
+
+                      <td className="daily-calculated">
+                        {formatNumber(row.closing_birds)}
+                      </td>
+
+                      <td className="daily-calculated">
+                        {Number(row.opening_birds || 0) -
+                          Number(row.total_bird_loss || 0) ===
+                        Number(row.closing_birds || 0)
+                          ? "OK"
+                          : "Check"}
+                      </td>
+
+                      <EditableCell
+                        value={row.mortality_front}
+                        type="number"
+                        onChange={(value) =>
+                          updateRow(row.local_key, "mortality_front", value)
+                        }
+                      />
+
+                      <EditableCell
+                        value={row.mortality_middle}
+                        type="number"
+                        onChange={(value) =>
+                          updateRow(row.local_key, "mortality_middle", value)
+                        }
+                      />
+
+                      <EditableCell
+                        value={row.mortality_back}
+                        type="number"
+                        onChange={(value) =>
+                          updateRow(row.local_key, "mortality_back", value)
+                        }
+                      />
+
+                      <EditableCell
+                        value={row.mortality_other}
+                        type="number"
+                        onChange={(value) =>
+                          updateRow(row.local_key, "mortality_other", value)
+                        }
+                      />
+
+                      <td className="daily-calculated">
+                        {formatNumber(row.mortality_pct, 2)}
+                      </td>
+
+                      <EditableCell
+                        value={row.cull_legs}
+                        type="number"
+                        onChange={(value) =>
+                          updateRow(row.local_key, "cull_legs", value)
+                        }
+                      />
+
+                      <EditableCell
+                        value={row.cull_runts}
+                        type="number"
+                        onChange={(value) =>
+                          updateRow(row.local_key, "cull_runts", value)
+                        }
+                      />
+
+                      <EditableCell
+                        value={row.cull_beak}
+                        type="number"
+                        onChange={(value) =>
+                          updateRow(row.local_key, "cull_beak", value)
+                        }
+                      />
+
+                      <EditableCell
+                        value={row.cull_other}
+                        type="number"
+                        onChange={(value) =>
+                          updateRow(row.local_key, "cull_other", value)
+                        }
+                      />
+
+                      <td className="daily-calculated">
+                        {formatNumber(row.cull_pct, 2)}
+                      </td>
+
+                      <EditableCell
+                        value={row.feed_kg}
+                        type="number"
+                        onChange={(value) =>
+                          updateRow(row.local_key, "feed_kg", value)
+                        }
+                      />
+
+                      <EditableCell
+                        value={row.water_litres}
+                        type="number"
+                        onChange={(value) =>
+                          updateRow(row.local_key, "water_litres", value)
+                        }
+                      />
+
+                      <EditableCell
+                        value={row.body_weight_kg}
+                        type="number"
+                        step="0.001"
+                        onChange={(value) =>
+                          updateRow(row.local_key, "body_weight_kg", value)
+                        }
+                      />
+
+                      <EditableCell
+                        value={row.notes}
+                        onChange={(value) =>
+                          updateRow(row.local_key, "notes", value)
+                        }
+                      />
+
+                      <td className="daily-calculated">
+                        {formatNumber(row.livability_pct, 2)}
+                      </td>
+
+                      <td className="daily-calculated">
+                        {formatNumber(row.kg_m2, 2)}
+                      </td>
+
+                      <td className="daily-calculated">
+                        {formatNumber(row.fcr, 2)}
+                      </td>
+
+                      <td
+                        className={
+                          row.review_status.includes("Mortality")
+                            ? "daily-warning"
+                            : "daily-calculated"
+                        }
+                      >
+                        {row.review_status.includes("Mortality") ? "Review" : "OK"}
+                      </td>
+
+                      <td
+                        className={
+                          row.review_status.includes("Cull")
+                            ? "daily-warning"
+                            : "daily-calculated"
+                        }
+                      >
+                        {row.review_status.includes("Cull") ? "Review" : "OK"}
+                      </td>
+
+                      <td
+                        className={
+                          row.review_status === "OK"
+                            ? "daily-calculated"
+                            : "daily-warning"
+                        }
+                      >
+                        {row.review_status}
+                      </td>
+
+                      <td>
+                        <span
+                          className={row.record_id ? "ready-pill" : "status-pill"}
+                        >
+                          {row.record_id ? "Saved" : "Draft"}
+                        </span>
+                      </td>
+
+                      <td>
+                        <button
+                          type="button"
+                          className="small-action-button"
+                          onClick={() => saveRow(row)}
+                          disabled={savingKey === row.local_key}
+                        >
+                          {savingKey === row.local_key ? "Saving" : "Save"}
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </section>
-      </section>
-    </main>
+      </main>
+    </div>
+  );
+}
+
+function EditableCell({
+  value,
+  onChange,
+  type = "text",
+  step,
+}: {
+  value: string | number | "";
+  onChange: (value: string) => void;
+  type?: string;
+  step?: string;
+}) {
+  return (
+    <td className="daily-editable">
+      <input
+        type={type}
+        step={step}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </td>
   );
 }

@@ -34,45 +34,6 @@ class BroilerShed(Base):
     farm = relationship("BroilerFarm", back_populates="sheds")
     plans = relationship("BroilerPlacementPlan", back_populates="shed")
 
-from sqlalchemy import Column, Integer, String, Float, Date, Text, ForeignKey
-from sqlalchemy.orm import relationship
-
-# Existing imports above should already include Base
-
-
-class BroilerProcessing(Base):
-    __tablename__ = "broiler_processing"
-
-    id = Column(Integer, primary_key=True, index=True)
-
-    broiler_cycle_id = Column(Integer, nullable=False)
-
-    processing_date = Column(Date, nullable=True)
-    processor = Column(String, nullable=True)
-    plant_location = Column(String, nullable=True)
-
-    planned_birds = Column(Integer, nullable=True)
-    actual_birds_processed = Column(Integer, nullable=True)
-
-    average_live_weight_kg = Column(Float, nullable=True)
-    total_live_weight_kg = Column(Float, nullable=True)
-
-    average_dressed_weight_kg = Column(Float, nullable=True)
-    total_dressed_weight_kg = Column(Float, nullable=True)
-
-    processing_yield_pct = Column(Float, nullable=True)
-
-    condemned_birds = Column(Integer, nullable=True)
-    condemnation_pct = Column(Float, nullable=True)
-
-    mortality_to_processing = Column(Integer, nullable=True)
-
-    grade_a_pct = Column(Float, nullable=True)
-    grade_b_pct = Column(Float, nullable=True)
-
-    downgrade_reason = Column(String, nullable=True)
-    status = Column(String, default="Draft")
-    notes = Column(Text, nullable=True)
 
 class BroilerPlacementPlan(Base):
     __tablename__ = "broiler_placement_plans"
@@ -111,15 +72,6 @@ class BroilerDailyPerformance(Base):
 
     opening_birds = Column(Integer)
     mortality_birds = Column(Integer, default=0)
-    mortality_front = Column(Integer, default=0)
-    mortality_middle = Column(Integer, default=0)
-    mortality_back = Column(Integer, default=0)
-    mortality_other = Column(Integer, default=0)
-
-    cull_legs = Column(Integer, default=0)
-    cull_runts = Column(Integer, default=0)
-    cull_beak = Column(Integer, default=0)
-    cull_other = Column(Integer, default=0)
     cull_birds = Column(Integer, default=0)
     closing_birds = Column(Integer)
 
@@ -133,36 +85,3 @@ class BroilerDailyPerformance(Base):
     created_at = Column(DateTime, server_default=func.now())
 
     placement_plan = relationship("BroilerPlacementPlan")
-
-class AppNote(Base):
-    __tablename__ = "app_notes"
-
-    id = Column(Integer, primary_key=True, index=True)
-
-    module = Column(String(50), nullable=False, default="broilers")
-    page = Column(String(100), nullable=True)
-
-    title = Column(String(255), nullable=False)
-    description = Column(Text, nullable=True)
-
-    priority = Column(String(30), nullable=False, default="Medium")
-    status = Column(String(30), nullable=False, default="Todo")
-
-    source = Column(String(100), nullable=True)  # JJ, Cornelius, Adam, etc.
-    category = Column(String(80), nullable=True)  # Feature, Bug, Terminology, Review
-
-    is_done = Column(Boolean, nullable=False, default=False)
-
-    created_at = Column(DateTime, server_default=func.now())
-    completed_at = Column(DateTime, nullable=True)
-    
-class AppNoteComment(Base):
-    __tablename__ = "app_note_comments"
-
-    id = Column(Integer, primary_key=True, index=True)
-
-    note_id = Column(Integer, nullable=False)
-    author = Column(String(100), nullable=False, default="JJ")
-    comment = Column(Text, nullable=False)
-
-    created_at = Column(DateTime, server_default=func.now())

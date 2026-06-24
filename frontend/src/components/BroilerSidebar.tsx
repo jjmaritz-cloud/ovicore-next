@@ -3,6 +3,10 @@
 import { usePathname, useRouter } from "next/navigation";
 
 const broilerMenuItems = [
+	{
+		label: "Home",
+		href: "/broilers",
+	},
   {
     label: "Demand Planner",
     href: "/broilers/demand-planner",
@@ -20,13 +24,17 @@ const broilerMenuItems = [
     href: "/broilers/cycles",
   },
   {
-    label: "Performance",
+    label: "Daily Performance",
     href: "/broilers/performance",
   },
   {
     label: "Processing",
     href: "/broilers/processing",
   },
+	{
+		label: "Notes",
+		href: "/broilers/notes",
+	},
 ];
 
 export default function BroilerSidebar() {
