@@ -590,10 +590,6 @@ export default function DailyPerformancePage() {
           <div>
 						<p className="eyebrow">OviCore Broiler Module</p>
 						<h2>Daily House Sheet</h2>
-						<p>
-							Familiar daily shed entry for bird numbers, mortality, culls, feed,
-							water, weight, comments, and calculated review checks.
-						</p>
           </div>
 
           <button className="primary-button" type="button" onClick={loadData}>

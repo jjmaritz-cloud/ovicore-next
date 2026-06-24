@@ -451,7 +451,6 @@ export default function BroilerProcessingPage() {
 					<div>
 						<p className="eyebrow">OviCore Broiler Module</p>
 						<h2>Processing</h2>
-						<p>Capture actual processing results against planned broiler cycles.</p>
 					</div>
 
           <button className="primary-button" type="button" onClick={loadData}>

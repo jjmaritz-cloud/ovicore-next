@@ -520,7 +520,6 @@ export default function BroilerHomePage() {
       <main className="main-panel">
         <section className="broiler-ai-hero">
           <div>
-            <p className="eyebrow">OviCore Broiler Intelligence</p>
             <h2>Broiler AI Home</h2>
             <p>
               A clean operating view for placement pressure, processing

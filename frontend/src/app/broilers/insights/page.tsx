@@ -340,10 +340,6 @@ export default function BroilerInsightsPage() {
           <div>
             <p className="eyebrow">OviCore Broiler Module</p>
             <h2>Broiler Insights</h2>
-            <p>
-              Cycle graphs and reports for mortality, culls, livability,
-              growth, feed, water and processing readiness.
-            </p>
           </div>
 
           <button className="primary-button" type="button" onClick={loadData}>

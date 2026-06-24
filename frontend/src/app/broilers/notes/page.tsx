@@ -313,10 +313,6 @@ export default function BroilerNotesPage() {
           <div>
             <p className="eyebrow">OviCore Build Notes</p>
             <h2>Dev Notes</h2>
-            <p>
-              Capture build tasks, feature ideas, terminology notes, bugs,
-              review items, and release follow-ups.
-            </p>
           </div>
 
           <button className="primary-button" type="button" onClick={loadNotes}>
