@@ -456,7 +456,7 @@ export default function BroilerInsightsPage() {
 								No graph data yet for this view. Enter daily performance first.
 							</div>
 						) : chartMode === "mortality" ? (
-							<MortalityLocationTrend rows={chartData} />
+							<CleanMortalityLineGraph rows={chartData} />
 						) : (
 							<div className="insights-chart">
 								{chartData.map((row) => (
@@ -896,6 +896,209 @@ function MortalityLocationTrend({
           {rows.map((row) => (
             <span key={`axis-${row.id}`}>D{row.age}</span>
           ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function CleanMortalityLineGraph({
+  rows,
+}: {
+  rows: Array<{
+    id: number;
+    age: number;
+    date: string;
+    mortalityFront: number;
+    mortalityMiddle: number;
+    mortalityBack: number;
+    mortalityOther: number;
+    mortality: number;
+  }>;
+}) {
+  const totals = rows.reduce(
+    (acc, row) => {
+      acc.front += row.mortalityFront;
+      acc.middle += row.mortalityMiddle;
+      acc.back += row.mortalityBack;
+      acc.other += row.mortalityOther;
+      acc.total += row.mortality;
+      return acc;
+    },
+    { front: 0, middle: 0, back: 0, other: 0, total: 0 },
+  );
+
+  const totalMorts = Math.max(totals.total, 1);
+
+  const share = {
+    front: Math.round((totals.front / totalMorts) * 100),
+    middle: Math.round((totals.middle / totalMorts) * 100),
+    back: Math.round((totals.back / totalMorts) * 100),
+    other: Math.round((totals.other / totalMorts) * 100),
+  };
+
+  const maxValue = Math.max(
+    1,
+    ...rows.flatMap((row) => [
+      row.mortalityFront,
+      row.mortalityMiddle,
+      row.mortalityBack,
+      row.mortalityOther,
+    ]),
+  );
+
+  const chartWidth = Math.max(1100, rows.length * 90);
+  const chartHeight = 260;
+
+  const left = 46;
+  const right = 24;
+  const top = 18;
+  const bottom = 34;
+
+  const plotWidth = chartWidth - left - right;
+  const plotHeight = chartHeight - top - bottom;
+
+  function xFor(index: number) {
+    if (rows.length <= 1) return left;
+    return left + (index / (rows.length - 1)) * plotWidth;
+  }
+
+  function yFor(value: number) {
+    return top + plotHeight - (Number(value || 0) / maxValue) * plotHeight;
+  }
+
+  function linePoints(zone: "front" | "middle" | "back" | "other") {
+    return rows
+      .map((row, index) => {
+        const value =
+          zone === "front"
+            ? row.mortalityFront
+            : zone === "middle"
+              ? row.mortalityMiddle
+              : zone === "back"
+                ? row.mortalityBack
+                : row.mortalityOther;
+
+        return `${xFor(index)},${yFor(value)}`;
+      })
+      .join(" ");
+  }
+
+  const ySteps = [
+    maxValue,
+    Math.round(maxValue * 0.75),
+    Math.round(maxValue * 0.5),
+    Math.round(maxValue * 0.25),
+    0,
+  ];
+
+  return (
+    <div className="clean-mortality-graph">
+      <aside className="clean-mortality-share">
+        <div className="clean-share-block clean-share-back">
+          <strong>Back</strong>
+          <span>{share.back}%</span>
+          <em>{totals.back} birds</em>
+        </div>
+
+        <div className="clean-share-block clean-share-middle">
+          <strong>Middle</strong>
+          <span>{share.middle}%</span>
+          <em>{totals.middle} birds</em>
+        </div>
+
+        <div className="clean-share-block clean-share-front">
+          <strong>Front</strong>
+          <span>{share.front}%</span>
+          <em>{totals.front} birds</em>
+        </div>
+      </aside>
+
+      <section className="clean-line-panel">
+        <div className="clean-line-head">
+          <div>
+            <h4>Shed morts by day per shed location</h4>
+            <p>Front, middle and back mortality trend by age.</p>
+          </div>
+
+          <div className="clean-line-legend">
+            <span className="clean-legend-front">Front</span>
+            <span className="clean-legend-middle">Middle</span>
+            <span className="clean-legend-back">Back</span>
+            {totals.other > 0 && (
+              <span className="clean-legend-other">Other</span>
+            )}
+          </div>
+        </div>
+
+        <div className="clean-line-scroll">
+					<svg
+						className="clean-line-svg"
+						viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+						width="100%"
+						height={chartHeight}
+						preserveAspectRatio="none"
+					>
+            <rect
+              x={left}
+              y={top}
+              width={plotWidth}
+              height={plotHeight}
+              className="clean-plot-bg"
+            />
+
+            {ySteps.map((step) => {
+              const y = yFor(step);
+
+              return (
+                <g key={`y-${step}`}>
+                  <line
+                    x1={left}
+                    y1={y}
+                    x2={chartWidth - right}
+                    y2={y}
+                    className="clean-grid-line"
+                  />
+                  <text
+                    x={left - 10}
+                    y={y + 4}
+                    className="clean-axis-label"
+                    textAnchor="end"
+                  >
+                    {step}
+                  </text>
+                </g>
+              );
+            })}
+
+            {rows.map((row, index) => {
+              const x = xFor(index);
+
+              return (
+                <g key={`x-${row.id}`}>
+                  <text
+                    x={x}
+                    y={chartHeight - 10}
+                    className="clean-axis-label"
+                    textAnchor="middle"
+                  >
+                    D{row.age}
+                  </text>
+                </g>
+              );
+            })}
+
+            <polyline className="clean-line-front" points={linePoints("front")} />
+            <polyline className="clean-line-middle" points={linePoints("middle")} />
+            <polyline className="clean-line-back" points={linePoints("back")} />
+
+            {totals.other > 0 && (
+              <polyline
+                className="clean-line-other"
+                points={linePoints("other")}
+              />
+            )}
+          </svg>
         </div>
       </section>
     </div>
