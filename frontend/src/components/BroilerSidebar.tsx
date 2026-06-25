@@ -6,14 +6,15 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 
 const navSections = [
-  {
-    title: "Broiler Command",
-    items: [
-      { label: "Overview", href: "/broilers" },
-      { label: "Placement Plan", href: "/broilers/demand-planner" },
-      { label: "Chick Supply", href: "/broilers/chick-supply" },
-    ],
-  },
+	{
+		title: "Broiler Command",
+		items: [
+			{ label: "OviCore Home", href: "/home" },
+			{ label: "Overview", href: "/broilers" },
+			{ label: "Placement Plan", href: "/broilers/demand-planner" },
+			{ label: "Chick Supply", href: "/broilers/chick-supply" },
+		],
+	},
   {
     title: "Operations",
     items: [
