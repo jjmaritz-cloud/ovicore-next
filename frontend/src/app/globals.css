@@ -3766,3 +3766,323 @@ body.broiler-sidebar-collapsed .main-panel {
     grid-template-columns: 1fr;
   }
 }
+
+.chick-supply-card {
+  margin-top: 18px;
+  padding: 22px;
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 12% 10%, rgba(22, 163, 113, 0.12), transparent 28%),
+    linear-gradient(135deg, #ffffff 0%, #f4fbf8 100%);
+  border: 1px solid rgba(10, 80, 55, 0.12);
+  box-shadow: 0 18px 50px rgba(15, 45, 35, 0.08);
+}
+
+.chick-supply-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.chick-supply-head h3 {
+  margin: 4px 0 4px;
+  color: #10281d;
+  font-size: 22px;
+  letter-spacing: -0.04em;
+}
+
+.chick-supply-head span {
+  color: #6d7d74;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.chick-supply-head > strong {
+  white-space: nowrap;
+  padding: 9px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.supply-risk-covered {
+  background: #e7f8ee;
+  color: #137246;
+}
+
+.supply-risk-watch {
+  background: #fff4d8;
+  color: #946300;
+}
+
+.supply-risk-high {
+  background: #ffe4e0;
+  color: #a83224;
+}
+
+.chick-supply-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.chick-supply-grid > div {
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid rgba(10, 80, 55, 0.1);
+}
+
+.chick-supply-grid span {
+  display: block;
+  margin-bottom: 8px;
+  color: #6b7c72;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.chick-supply-grid strong {
+  display: block;
+  color: #10281d;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.chick-supply-grid p {
+  margin: 8px 0 0;
+  color: #718178;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.negative-supply {
+  color: #b83224 !important;
+}
+
+.positive-supply {
+  color: #137246 !important;
+}
+
+@media (max-width: 1100px) {
+  .chick-supply-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .chick-supply-head {
+    flex-direction: column;
+  }
+
+  .chick-supply-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.chick-supply-page-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
+  gap: 18px;
+}
+
+.chick-entry-card,
+.chick-summary-card {
+  background:
+    radial-gradient(circle at 12% 10%, rgba(22, 163, 113, 0.1), transparent 28%),
+    linear-gradient(135deg, #ffffff 0%, #f5fbf8 100%);
+  border: 1px solid rgba(10, 80, 55, 0.12);
+  border-radius: 24px;
+  box-shadow: 0 18px 50px rgba(15, 45, 35, 0.08);
+}
+
+.chick-entry-card {
+  padding: 22px;
+}
+
+.chick-entry-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.chick-entry-head h3 {
+  margin: 4px 0;
+  color: #10281d;
+  font-size: 22px;
+  letter-spacing: -0.04em;
+}
+
+.chick-entry-head span {
+  color: #6d7d74;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.save-pill {
+  white-space: nowrap;
+  padding: 9px 12px;
+  border-radius: 999px;
+  background: #eef5f2;
+  color: #305346;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.save-pill.saved {
+  background: #e7f8ee;
+  color: #137246;
+}
+
+.save-pill.saving {
+  background: #fff4d8;
+  color: #946300;
+}
+
+.save-pill.error {
+  background: #ffe4e0;
+  color: #a83224;
+}
+
+.chick-entry-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.chick-entry-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.chick-entry-form label span {
+  color: #50645a;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.chick-entry-form input,
+.chick-entry-form textarea {
+  width: 100%;
+  border: 1px solid rgba(10, 80, 55, 0.16);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.88);
+  padding: 12px 13px;
+  color: #10281d;
+  font-size: 14px;
+  font-weight: 700;
+  outline: none;
+}
+
+.chick-entry-form input:focus,
+.chick-entry-form textarea:focus {
+  border-color: rgba(20, 126, 83, 0.45);
+  box-shadow: 0 0 0 4px rgba(20, 126, 83, 0.1);
+}
+
+.chick-notes-field {
+  grid-column: 1 / -1;
+}
+
+.chick-entry-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.secondary-button {
+  border: 1px solid rgba(10, 80, 55, 0.14);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #173a2b;
+  padding: 10px 14px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.chick-form-message {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #a83224;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.chick-summary-stack {
+  display: grid;
+  gap: 14px;
+}
+
+.chick-summary-card {
+  padding: 18px;
+}
+
+.chick-summary-card span {
+  display: block;
+  margin-bottom: 8px;
+  color: #6b7c72;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.chick-summary-card strong {
+  display: block;
+  color: #10281d;
+  font-size: 28px;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.chick-summary-card p {
+  margin: 8px 0 0;
+  color: #718178;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.small-table-button {
+  border: 1px solid rgba(10, 80, 55, 0.12);
+  border-radius: 999px;
+  background: #f2fbf6;
+  color: #176c44;
+  padding: 7px 11px;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.small-table-button:hover {
+  background: #e6f7ed;
+}
+
+@media (max-width: 1000px) {
+  .chick-supply-page-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .chick-entry-head {
+    flex-direction: column;
+  }
+
+  .chick-entry-form {
+    grid-template-columns: 1fr;
+  }
+}

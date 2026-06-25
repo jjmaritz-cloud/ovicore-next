@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import BroilerSidebar from "@/components/BroilerSidebar";
-import BroilerHeroForecast from "@/components/BroilerHeroForecast";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
@@ -23,16 +22,8 @@ type DemandPlan = {
   status?: string;
 };
 
-type ProcessingRecord = {
-  id: number;
-  broiler_cycle_id: number;
-  actual_birds_processed?: number | null;
-  average_live_weight_kg?: number | null;
-  total_live_weight_kg?: number | null;
-  condemned_birds?: number | null;
-  condemnation_pct?: number | null;
-  processing_yield_pct?: number | null;
-  status?: string | null;
+type ChickSupplySummary = {
+  available_chicks: number;
 };
 
 type ForecastWeek = {
@@ -203,10 +194,10 @@ function getWeatherRisk(day: WeatherDay) {
 }
 
 export default function BroilerHomePage() {
-  const [plans, setPlans] = useState<DemandPlan[]>([]);
-  const [processing, setProcessing] = useState<ProcessingRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState("");
+	const [plans, setPlans] = useState<DemandPlan[]>([]);
+	const [chickSupply, setChickSupply] = useState<ChickSupplySummary | null>(null);
+	const [loading, setLoading] = useState(true);
+	const [message, setMessage] = useState("");
 	const [weatherOpen, setWeatherOpen] = useState(false);
 
   async function loadData() {
@@ -223,22 +214,22 @@ export default function BroilerHomePage() {
       const plansData: DemandPlan[] = await plansResponse.json();
       setPlans(plansData);
 
-      try {
-        const processingResponse = await fetch(
-          `${API_BASE}/api/broilers/processing`,
-        );
+		try {
+			const chickSupplyResponse = await fetch(
+				`${API_BASE}/api/broilers/chick-supply-summary`,
+			);
 
-        if (processingResponse.ok) {
-          const processingData: ProcessingRecord[] =
-            await processingResponse.json();
+			if (chickSupplyResponse.ok) {
+				const chickSupplyData: ChickSupplySummary =
+					await chickSupplyResponse.json();
 
-          setProcessing(processingData);
-        } else {
-          setProcessing([]);
-        }
-      } catch {
-        setProcessing([]);
-      }
+				setChickSupply(chickSupplyData);
+			} else {
+				setChickSupply(null);
+			}
+		} catch {
+			setChickSupply(null);
+		}
     } catch (error) {
       console.error(error);
       setMessage(
@@ -256,11 +247,6 @@ export default function BroilerHomePage() {
   }, []);
 
   const insights = useMemo(() => {
-    const processingByCycle = new Map<number, ProcessingRecord>();
-
-    for (const record of processing) {
-      processingByCycle.set(record.broiler_cycle_id, record);
-    }
 
     const totalPlannedBirds = plans.reduce(
       (sum, plan) => sum + Number(plan.planned_birds || 0),
@@ -271,35 +257,35 @@ export default function BroilerHomePage() {
       (sum, plan) => sum + Number(plan.required_chicks || 0),
       0,
     );
+		
+		const availableChicks = Number(chickSupply?.available_chicks || 0);
+		const chickSurplusShortfall = availableChicks - totalRequiredChicks;
+
+		let chickSupplyRisk = "Not connected";
+
+		if (totalRequiredChicks <= 0) {
+			chickSupplyRisk = "No Demand";
+		} else if (availableChicks <= 0) {
+			chickSupplyRisk = "No Supply";
+		} else if (chickSurplusShortfall < 0) {
+			const shortfallPct = Math.abs(chickSurplusShortfall) / totalRequiredChicks;
+
+			if (shortfallPct >= 0.1) {
+				chickSupplyRisk = "High";
+			} else if (shortfallPct >= 0.03) {
+				chickSupplyRisk = "Watch";
+			} else {
+				chickSupplyRisk = "Minor";
+			}
+		} else {
+			chickSupplyRisk = "Covered";
+		}
 
     const forecastLiveKg = plans.reduce((sum, plan) => {
       const birds = Number(plan.planned_birds || 0);
       const targetLw = Number(plan.target_lw_kg || 0);
       return sum + birds * targetLw;
     }, 0);
-
-    const totalProcessedBirds = processing.reduce(
-      (sum, record) => sum + Number(record.actual_birds_processed || 0),
-      0,
-    );
-
-    const actualLiveKg = processing.reduce(
-      (sum, record) => sum + Number(record.total_live_weight_kg || 0),
-      0,
-    );
-
-    const totalCondemned = processing.reduce(
-      (sum, record) => sum + Number(record.condemned_birds || 0),
-      0,
-    );
-
-    const averageLiveWeight =
-      totalProcessedBirds > 0 ? actualLiveKg / totalProcessedBirds : 0;
-
-    const condemnationPct =
-      totalProcessedBirds > 0
-        ? (totalCondemned / totalProcessedBirds) * 100
-        : 0;
 
     const densityValues = plans
       .map((plan) => Number(plan.planned_kg_m2 || 0))
@@ -315,25 +301,16 @@ export default function BroilerHomePage() {
       (plan) => Number(plan.planned_kg_m2 || 0) >= 39,
     );
 
-    const missingProcessingActuals = plans.filter(
-      (plan) => !processingByCycle.has(plan.id),
-    );
-
-    const overdueProcessing = plans.filter((plan) => {
-      const days = daysUntil(plan.processing_date);
-      return days !== null && days < 0 && !processingByCycle.has(plan.id);
-    });
-
-    const upcomingProcessing = [...plans]
-      .filter((plan) => {
-        const days = daysUntil(plan.processing_date);
-        return days !== null && days >= 0 && days <= 60;
-      })
-      .sort((a, b) =>
-        String(a.processing_date || "").localeCompare(
-          String(b.processing_date || ""),
-        ),
-      );
+		const upcomingPlacements = [...plans]
+			.filter((plan) => {
+				const days = daysUntil(plan.placement_date);
+				return days !== null && days >= 0 && days <= 60;
+			})
+			.sort((a, b) =>
+				String(a.placement_date || "").localeCompare(
+					String(b.placement_date || ""),
+				),
+			);
 
     const grouped = new Map<string, ForecastWeek>();
 
@@ -406,15 +383,15 @@ export default function BroilerHomePage() {
         )} kg of forecast liveweight.`,
       );
 
-      if (upcomingProcessing.length > 0) {
-        briefing.push(
-          `${upcomingProcessing.length} cycles are due for processing in the next 21 days. Check processing readiness and confirm actuals as birds are picked up.`,
-        );
-      } else {
-        briefing.push(
-          "No processing is due in the next 60 days based on current planned processing dates.",
-        );
-      }
+			if (upcomingPlacements.length > 0) {
+				briefing.push(
+					`${upcomingPlacements.length} placements are planned in the next 60 days. Check chick supply, shed density, placement timing, and farm readiness.`,
+				);
+			} else {
+				briefing.push(
+					"No placements are planned in the next 60 days based on current placement dates.",
+				);
+			}
 
       if (highDensityPlans.length > 0) {
         briefing.push(
@@ -429,26 +406,6 @@ export default function BroilerHomePage() {
         );
       }
 
-      if (totalProcessedBirds === 0) {
-        briefing.push(
-          "No processing actuals have been recorded yet, so liveweight, yield, and condemnation trends are not available.",
-        );
-      } else {
-        briefing.push(
-          `${formatNumber(
-            totalProcessedBirds,
-          )} birds have processing actuals recorded. Average liveweight is ${formatNumber(
-            averageLiveWeight,
-            2,
-          )} kg and condemnation is ${formatNumber(condemnationPct, 2)}%.`,
-        );
-      }
-
-      if (overdueProcessing.length > 0) {
-        briefing.push(
-          `${overdueProcessing.length} cycles appear overdue for processing actuals. Update Processing to close out those cycles.`,
-        );
-      }
     }
 
 		const tomorrowWeather = demoWeather[0];
@@ -494,15 +451,13 @@ export default function BroilerHomePage() {
 		return {
 			totalPlannedBirds,
 			totalRequiredChicks,
+			availableChicks,
+			chickSurplusShortfall,
+			chickSupplyRisk,
 			forecastLiveKg,
-			totalProcessedBirds,
-			averageLiveWeight,
-			condemnationPct,
 			averageDensity,
 			highDensityPlans,
-			missingProcessingActuals,
-			overdueProcessing,
-			upcomingProcessing,
+			upcomingPlacements,
 			forecastWeeks,
 			maxForecastKg,
 			briefing,
@@ -512,7 +467,7 @@ export default function BroilerHomePage() {
 			hotDays,
 			weatherBriefing,
 		};
-  }, [plans, processing]);
+	}, [plans, chickSupply]);
 
   return (
     <div className="page-shell">
@@ -522,49 +477,12 @@ export default function BroilerHomePage() {
 				<section className="broiler-ai-hero">
 					<div>
 						<h2>Broiler AI Home</h2>
-						<p>
-							A clean operating view for placement pressure, processing
-							readiness, density watch, missing actuals, and production risk.
-						</p>
 					</div>
 
 					<button className="primary-button" type="button" onClick={loadData}>
 						Refresh
 					</button>
 				</section>
-
-				<section className="kpi-grid">
-          <div className="kpi-card">
-            <span>Planned Birds</span>
-            <strong>{formatNumber(insights.totalPlannedBirds)}</strong>
-            <p>Total birds in the active broiler plan.</p>
-          </div>
-
-          <div className="kpi-card">
-            <span>Forecast Live Kg</span>
-            <strong>{formatNumber(insights.forecastLiveKg)}</strong>
-            <p>Planned birds × target liveweight.</p>
-          </div>
-
-          <div className="kpi-card">
-            <span>Avg kg/m²</span>
-            <strong>{formatNumber(insights.averageDensity, 2)}</strong>
-            <p>Average planned shed density.</p>
-          </div>
-
-          <div className="kpi-card">
-            <span>Processing Due</span>
-            <strong>{formatNumber(insights.upcomingProcessing.length)}</strong>
-            <p>Cycles due in the next 60 days.</p>
-          </div>
-
-          <div className="kpi-card">
-            <span>Actual Condemn</span>
-            <strong>{formatNumber(insights.condemnationPct, 2)}%</strong>
-            <p>From saved processing records.</p>
-          </div>
-        </section>
-
 				<section className="weather-drawer-card">
 					<button
 						type="button"
@@ -731,44 +649,106 @@ export default function BroilerHomePage() {
               </div>
             </div>
 
-            <div className="ai-action-stack">
-              <ActionCard
-                title="Missing processing actuals"
-                value={insights.missingProcessingActuals.length}
-                detail="Cycles without saved processing records."
-                tone={
-                  insights.missingProcessingActuals.length > 0
-                    ? "warning"
-                    : "good"
-                }
-              />
+						<div className="ai-action-stack">
+							<ActionCard
+								title="Chick supply pressure"
+								value={insights.chickSurplusShortfall < 0 ? Math.abs(insights.chickSurplusShortfall) : 0}
+								detail="Chick shortfall against broiler demand."
+								tone={insights.chickSurplusShortfall < 0 ? "bad" : "good"}
+							/>
 
-              <ActionCard
-                title="Density watch"
-                value={insights.highDensityPlans.length}
-                detail="Cycles at or above 39 kg/m²."
-                tone={insights.highDensityPlans.length > 0 ? "warning" : "good"}
-              />
+							<ActionCard
+								title="Density watch"
+								value={insights.highDensityPlans.length}
+								detail="Cycles at or above 39 kg/m²."
+								tone={insights.highDensityPlans.length > 0 ? "warning" : "good"}
+							/>
 
-              <ActionCard
-                title="Overdue close-out"
-                value={insights.overdueProcessing.length}
-                detail="Processing date passed with no actuals."
-                tone={insights.overdueProcessing.length > 0 ? "bad" : "good"}
-              />
-            </div>
+							<ActionCard
+								title="Upcoming placements"
+								value={insights.upcomingPlacements.length}
+								detail="Placements planned in the next 60 days."
+								tone={insights.upcomingPlacements.length > 0 ? "good" : "warning"}
+							/>
+						</div>
           </div>
         </section>
-				<BroilerHeroForecast />
+
+				<section className="chick-supply-card">
+					<div className="chick-supply-head">
+						<div>
+							<p className="eyebrow">Chick Supply Pressure</p>
+							<h3>Hatchery Supply vs Broiler Demand</h3>
+							<span>
+								First integration bridge: required chicks from Broiler planning compared
+								with available chick supply.
+							</span>
+						</div>
+
+						<strong
+							className={
+								insights.chickSupplyRisk === "High" ||
+								insights.chickSupplyRisk === "No Supply"
+									? "supply-risk-high"
+									: insights.chickSupplyRisk === "Watch" ||
+											insights.chickSupplyRisk === "Minor"
+										? "supply-risk-watch"
+										: "supply-risk-covered"
+							}
+						>
+							{insights.chickSupplyRisk}
+						</strong>
+					</div>
+
+					<div className="chick-supply-grid">
+						<div>
+							<span>Required Chicks</span>
+							<strong>{formatNumber(insights.totalRequiredChicks)}</strong>
+							<p>Calculated from the Broiler Demand Planner.</p>
+						</div>
+
+						<div>
+							<span>Available Chicks</span>
+							<strong>{formatNumber(insights.availableChicks)}</strong>
+							<p>Entered as hatchery/chick supply.</p>
+						</div>
+
+						<div>
+							<span>Surplus / Shortfall</span>
+							<strong
+								className={
+									insights.chickSurplusShortfall < 0
+										? "negative-supply"
+										: "positive-supply"
+								}
+							>
+								{formatNumber(insights.chickSurplusShortfall)}
+							</strong>
+							<p>Negative means placement risk.</p>
+						</div>
+
+						<div>
+							<span>Planning Signal</span>
+							<strong>
+								{insights.chickSurplusShortfall < 0
+									? "Review placements"
+									: insights.availableChicks > 0
+										? "Covered"
+										: "Awaiting supply"}
+							</strong>
+							<p>Next step is linking this to Hatchery output.</p>
+						</div>
+					</div>
+				</section>
 
 				<section className="grid-card broiler-ai-table-card">
           <div className="grid-card-head">
             <div>
-              <h3>Upcoming Processing Timeline</h3>
-              <p>
-                Next 60 days from the Demand Planner. Use this to confirm
-                processing readiness and close-out actuals.
-              </p>
+							<h3>Upcoming Placement Timeline</h3>
+							<p>
+								Next 60 days from the Demand Planner. Use this to check placement timing,
+								required chicks, shed density, and farm readiness.
+							</p>
             </div>
           </div>
 
@@ -776,24 +756,24 @@ export default function BroilerHomePage() {
             <table className="ai-home-table">
               <thead>
                 <tr>
-                  <th>Date</th>
-                  <th>Farm</th>
-                  <th>Shed</th>
-                  <th>Cycle</th>
-                  <th>Birds</th>
-                  <th>Target LW</th>
-                  <th>kg/m²</th>
-                  <th>AI Status</th>
+									<th>Placement Date</th>
+									<th>Farm</th>
+									<th>Shed</th>
+									<th>Cycle</th>
+									<th>Planned Birds</th>
+									<th>Required Chicks</th>
+									<th>kg/m²</th>
+									<th>Planning Status</th>
                 </tr>
               </thead>
 
               <tbody>
-                {insights.upcomingProcessing.length === 0 ? (
-                  <tr>
-                    <td colSpan={8}>No processing due in the next 60 days.</td>
-                  </tr>
-                ) : (
-                  insights.upcomingProcessing.map((plan) => {
+								{insights.upcomingPlacements.length === 0 ? (
+									<tr>
+										<td colSpan={8}>No placements planned in the next 60 days.</td>
+									</tr>
+								) : (
+									insights.upcomingPlacements.map((plan) => {
                     const density = Number(plan.planned_kg_m2 || 0);
 
                     const status =
@@ -803,12 +783,12 @@ export default function BroilerHomePage() {
 
                     return (
                       <tr key={plan.id}>
-                        <td>{isoToDisplayDate(plan.processing_date)}</td>
+                        <td>{isoToDisplayDate(plan.placement_date)}</td>
                         <td>{plan.farm_name}</td>
                         <td>{plan.shed_name}</td>
                         <td>{plan.cycle_code}</td>
                         <td>{formatNumber(plan.planned_birds)}</td>
-                        <td>{formatNumber(plan.target_lw_kg, 2)} kg</td>
+                        <td>{formatNumber(plan.required_chicks)}</td>
                         <td>{formatNumber(plan.planned_kg_m2, 2)}</td>
                         <td>
                           <span
