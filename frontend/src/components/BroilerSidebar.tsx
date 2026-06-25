@@ -5,17 +5,32 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 
-const navItems = [
-  { label: "Home", href: "/broilers" },
-  { label: "Demand Planner", href: "/broilers/demand-planner" },
-  { label: "Chick Supply", href: "/broilers/chick-supply" },
-  { label: "Farm Register", href: "/broilers/farms" },
-  { label: "Shed Register", href: "/broilers/sheds" },
-  { label: "Cycle Register", href: "/broilers/cycles" },
-  { label: "Daily House Sheet", href: "/broilers/performance" },
-  { label: "Broiler Insights", href: "/broilers/insights" },
-  { label: "Processing", href: "/broilers/processing" },
-  { label: "Notes", href: "/broilers/notes" },
+const navSections = [
+  {
+    title: "Broiler Command",
+    items: [
+      { label: "Overview", href: "/broilers" },
+      { label: "Placement Plan", href: "/broilers/demand-planner" },
+      { label: "Chick Supply", href: "/broilers/chick-supply" },
+    ],
+  },
+  {
+    title: "Operations",
+    items: [
+      { label: "Farms", href: "/broilers/farms" },
+      { label: "Sheds", href: "/broilers/sheds" },
+      { label: "Flock Cycles", href: "/broilers/cycles" },
+      { label: "Daily Sheet", href: "/broilers/performance" },
+    ],
+  },
+  {
+    title: "Intelligence",
+    items: [
+      { label: "Insights", href: "/broilers/insights" },
+      { label: "Processing", href: "/broilers/processing" },
+      { label: "Build Notes", href: "/broilers/notes" },
+    ],
+  },
 ];
 
 export default function BroilerSidebar() {
@@ -53,6 +68,10 @@ export default function BroilerSidebar() {
     };
   }, [collapsed]);
 
+  function closeSidebar() {
+    setCollapsed(true);
+  }
+
   return (
     <>
       <button
@@ -70,7 +89,7 @@ export default function BroilerSidebar() {
         ref={sidebarRef}
         className={collapsed ? "sidebar sidebar-hidden" : "sidebar"}
       >
-        <div className="brand-row">
+        <div className="brand-row sidebar-brand-premium">
           <div className="brand-logo">
             <Image
               src="/assets/ovicore-icon.png"
@@ -83,35 +102,40 @@ export default function BroilerSidebar() {
 
           <div>
             <h1>OviCore</h1>
-            <p>Plan with confidence. Forecast with precision.</p>
+            <p>Broiler Planning</p>
           </div>
         </div>
 
-        <section className="workspace-card">
-          <span>Active Workspace</span>
-          <strong>Broiler Operations</strong>
+        <nav className="sidebar-nav">
+          {navSections.map((section) => (
+            <div className="sidebar-section" key={section.title}>
+              <div className="sidebar-section-title">
+                <span>{section.title}</span>
+                <i />
+              </div>
 
-          <div className="workspace-pills">
-            <b>Broilers</b>
-            <b>Performance</b>
-            <b>Daily</b>
-          </div>
-        </section>
+              <div className="sidebar-section-links">
+                {section.items.map((item) => {
+                  const active =
+                    pathname === item.href ||
+                    (item.href !== "/broilers" &&
+                      pathname.startsWith(item.href));
 
-        <nav className="nav-list">
-          {navItems.map((item) => {
-            const active =
-              pathname === item.href ||
-              (item.href !== "/broilers" && pathname.startsWith(item.href));
-
-            return (
-              <Link key={item.href} href={item.href}>
-                <button type="button" className={active ? "active" : ""}>
-                  {item.label}
-                </button>
-              </Link>
-            );
-          })}
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={`sidebar-link ${active ? "active" : ""}`}
+                      onClick={closeSidebar}
+                    >
+                      <span className="sidebar-link-dot" />
+                      <span>{item.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </nav>
       </aside>
     </>
