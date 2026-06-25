@@ -4170,6 +4170,12 @@ body.broiler-sidebar-collapsed .main-panel {
   align-items: center;
   padding: 30px;
   border-radius: 30px;
+  background:
+    radial-gradient(circle at 8% 18%, rgba(255, 255, 255, 0.13), transparent 20%),
+    radial-gradient(circle at 92% 12%, rgba(141, 240, 181, 0.12), transparent 26%),
+    linear-gradient(135deg, #04261e 0%, #07513b 45%, #0f6046 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 22px 70px rgba(15, 23, 42, 0.16);
 }
 
 .module-home-logo {
@@ -4177,23 +4183,21 @@ body.broiler-sidebar-collapsed .main-panel {
   height: 82px;
   display: grid;
   place-items: center;
-  border-radius: 24px;
-  background:
-    radial-gradient(circle at 35% 25%, rgba(255, 255, 255, 0.24), transparent 28%),
-    linear-gradient(135deg, #063326, #0f6046);
-  box-shadow: 0 18px 40px rgba(15, 81, 63, 0.24);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .module-home-logo img {
-  width: 74px;
-  height: 74px;
+  width: 82px;
+  height: 82px;
   object-fit: contain;
 }
 
 .module-home-brand h1 {
   max-width: 980px;
   margin: 7px 0 10px;
-  color: #0f172a;
+  color: #ffffff !important;
   font-size: clamp(34px, 4vw, 58px);
   line-height: 0.98;
   letter-spacing: -0.08em;
@@ -4202,10 +4206,14 @@ body.broiler-sidebar-collapsed .main-panel {
 .module-home-brand span {
   display: block;
   max-width: 760px;
-  color: #526273;
+  color: rgba(255, 255, 255, 0.84) !important;
   font-size: 15px;
   font-weight: 750;
   line-height: 1.5;
+}
+
+.module-home-brand .eyebrow {
+  color: #8df0b5 !important;
 }
 
 .module-home-flow {
