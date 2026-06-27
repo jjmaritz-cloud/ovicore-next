@@ -137,6 +137,13 @@ function positiveOrBlank(value: number | null | undefined): number | "" {
   return Number(value);
 }
 
+function valueToNumber(value: number | "" | null | undefined) {
+  if (value === "" || value === null || value === undefined) return 0;
+
+  const num = Number(value);
+  return Number.isFinite(num) ? num : 0;
+}
+
 function addDays(isoDate: string, days: number) {
   if (!isoDate) return "";
 
@@ -165,29 +172,38 @@ function diffDays(startIso?: string, endIso?: string) {
 }
 
 function calculateRow(row: DailyRow, plan: DemandPlan): DailyRow {
-  const opening = Number(row.opening_birds || 0);
+  const opening = valueToNumber(row.opening_birds);
 
+  const mortBreakdownTotal =
+    valueToNumber(row.mortality_front) +
+    valueToNumber(row.mortality_middle) +
+    valueToNumber(row.mortality_back) +
+    valueToNumber(row.mortality_other);
+
+  const cullBreakdownTotal =
+    valueToNumber(row.cull_legs) +
+    valueToNumber(row.cull_runts) +
+    valueToNumber(row.cull_beak) +
+    valueToNumber(row.cull_other);
+
+  // Important:
+  // Older saved rows may only have mortality_birds / cull_birds saved,
+  // before the front/middle/back and cull reason split existed.
+  // Use the split totals when they exist, otherwise keep the saved total.
   const mortTotal =
-    Number(row.mortality_front || 0) +
-    Number(row.mortality_middle || 0) +
-    Number(row.mortality_back || 0) +
-    Number(row.mortality_other || 0);
+    mortBreakdownTotal > 0 ? mortBreakdownTotal : valueToNumber(row.mortality_birds);
 
   const cullTotal =
-    Number(row.cull_legs || 0) +
-    Number(row.cull_runts || 0) +
-    Number(row.cull_beak || 0) +
-    Number(row.cull_other || 0);
+    cullBreakdownTotal > 0 ? cullBreakdownTotal : valueToNumber(row.cull_birds);
 
   const totalBirdLoss = mortTotal + cullTotal;
-
   const closing =
     opening > 0 ? Math.max(0, opening - totalBirdLoss) : "";
 
-  const bodyWeight = Number(row.body_weight_kg || 0);
-  const floorArea = Number(plan.floor_area_m2 || 0);
-  const feedKg = Number(row.feed_kg || 0);
-  const placedBirds = Number(plan.planned_birds || 0);
+  const bodyWeight = valueToNumber(row.body_weight_kg);
+  const floorArea = valueToNumber(plan.floor_area_m2);
+  const feedKg = valueToNumber(row.feed_kg);
+  const placedBirds = valueToNumber(plan.planned_birds);
 
   const mortalityPct =
     opening > 0 ? Number(((mortTotal / opening) * 100).toFixed(2)) : "";
@@ -225,7 +241,7 @@ function calculateRow(row: DailyRow, plan: DemandPlan): DailyRow {
   }
 
   const backMortalityShare =
-    mortTotal > 0 ? Number(row.mortality_back || 0) / mortTotal : 0;
+    mortTotal > 0 ? valueToNumber(row.mortality_back) / mortTotal : 0;
 
   if (mortTotal >= 20 && backMortalityShare >= 0.5) {
     review = "Back Zone Mortality";
@@ -246,15 +262,40 @@ function calculateRow(row: DailyRow, plan: DemandPlan): DailyRow {
   };
 }
 
+function recalculateStockFlow(rows: DailyRow[], plan: DemandPlan): DailyRow[] {
+  let previousClosing = valueToNumber(plan.planned_birds);
+
+  return rows.map((row) => {
+    const openingBirds =
+      row.age_days === 0
+        ? valueToNumber(plan.planned_birds) || row.opening_birds
+        : previousClosing;
+
+    const calculated = calculateRow(
+      {
+        ...row,
+        opening_birds: openingBirds,
+      },
+      plan,
+    );
+
+    if (typeof calculated.closing_birds === "number") {
+      previousClosing = calculated.closing_birds;
+    }
+
+    return calculated;
+  });
+}
+
 export default function DailyPerformancePage() {
   const [plans, setPlans] = useState<DemandPlan[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<number | "">("");
   const [records, setRecords] = useState<PerformanceRecord[]>([]);
   const [rows, setRows] = useState<DailyRow[]>([]);
   const [loading, setLoading] = useState(true);
-	const [saving, setSaving] = useState(false);
-	const [dirtyKeys, setDirtyKeys] = useState<Set<string>>(new Set());
-	const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [dirtyKeys, setDirtyKeys] = useState<Set<string>>(new Set());
+  const [message, setMessage] = useState("");
 
   const selectedPlan = useMemo(() => {
     return plans.find((plan) => plan.id === selectedPlanId);
@@ -339,7 +380,6 @@ export default function DailyPerformancePage() {
     }
 
     const generatedRows: DailyRow[] = [];
-    let previousClosing = Number(selectedPlan.planned_birds || 0);
 
     for (let age = 0; age <= days; age += 1) {
       const existing = existingByAge.get(age);
@@ -349,8 +389,9 @@ export default function DailyPerformancePage() {
         addDays(selectedPlan.placement_date || "", age);
 
       const openingBirds =
-        existing?.opening_birds ??
-        (age === 0 ? selectedPlan.planned_birds ?? "" : previousClosing);
+        age === 0
+          ? selectedPlan.planned_birds ?? existing?.opening_birds ?? ""
+          : existing?.opening_birds ?? "";
 
       const existingBodyWeight =
         existing?.body_weight_kg ?? existing?.avg_weight_kg ?? "";
@@ -393,16 +434,10 @@ export default function DailyPerformancePage() {
         notes: existing?.notes || "",
       };
 
-      const calculated = calculateRow(baseRow, selectedPlan);
-
-      if (typeof calculated.closing_birds === "number") {
-        previousClosing = calculated.closing_birds;
-      }
-
-      generatedRows.push(calculated);
+      generatedRows.push(baseRow);
     }
 
-    setRows(generatedRows);
+    setRows(recalculateStockFlow(generatedRows, selectedPlan));
   }, [selectedPlan, records]);
 
   const totals = useMemo(() => {
@@ -435,66 +470,73 @@ export default function DailyPerformancePage() {
     };
   }, [rows]);
 
-  function updateRow(localKey: string, field: keyof DailyRow, value: string) {
-    if (!selectedPlan) return;
-		
-		setDirtyKeys((current) => {
-			const next = new Set(current);
-			next.add(localKey);
-			return next;
+	function updateRow(localKey: string, field: keyof DailyRow, value: string) {
+		if (!selectedPlan) return;
+
+		setRows((currentRows) => {
+			const targetRow = currentRows.find((row) => row.local_key === localKey);
+			const targetAge = targetRow?.age_days ?? 0;
+
+			const numericFields: Array<keyof DailyRow> = [
+				"opening_birds",
+				"mortality_front",
+				"mortality_middle",
+				"mortality_back",
+				"mortality_other",
+				"cull_legs",
+				"cull_runts",
+				"cull_beak",
+				"cull_other",
+				"feed_kg",
+				"water_litres",
+				"body_weight_kg",
+			];
+
+			const editedRows = currentRows.map((row) => {
+				if (row.local_key !== localKey) return row;
+
+				return {
+					...row,
+					[field]: numericFields.includes(field)
+						? value === ""
+							? ""
+							: Number(value)
+						: value,
+				};
+			});
+
+			const recalculatedRows = recalculateStockFlow(editedRows, selectedPlan);
+
+			setDirtyKeys((current) => {
+				const next = new Set(current);
+
+				// Only save the row the user actually edited.
+				// Downstream opening/closing birds can recalculate visually,
+				// but they should not be marked dirty unless the user edits them.
+				next.add(localKey);
+
+				return next;
+			});
+
+			return recalculatedRows;
 		});
-
-    setRows((currentRows) => {
-      let previousClosing = Number(selectedPlan.planned_birds || 0);
-
-      return currentRows.map((row) => {
-        const isTarget = row.local_key === localKey;
-
-        const numericFields: Array<keyof DailyRow> = [
-          "opening_birds",
-          "mortality_front",
-          "mortality_middle",
-          "mortality_back",
-          "mortality_other",
-          "cull_legs",
-          "cull_runts",
-          "cull_beak",
-          "cull_other",
-          "feed_kg",
-          "water_litres",
-          "body_weight_kg",
-        ];
-
-        const nextRow = isTarget
-          ? {
-              ...row,
-              [field]: numericFields.includes(field)
-                ? value === ""
-                  ? ""
-                  : Number(value)
-                : value,
-            }
-          : {
-              ...row,
-              opening_birds:
-                row.age_days === 0 ? row.opening_birds : previousClosing,
-            };
-
-        const calculated = calculateRow(nextRow, selectedPlan);
-
-        if (typeof calculated.closing_birds === "number") {
-          previousClosing = calculated.closing_birds;
-        }
-
-        return calculated;
-      });
-    });
-  }
+	}
 
 	async function saveSingleRow(row: DailyRow) {
+		const entryIsoDate = displayDateToIso(row.entry_date);
+
+		const existingRecord = records.find((record) => {
+			return (
+				record.placement_plan_id === row.placement_plan_id &&
+				record.entry_date === entryIsoDate
+			);
+		});
+
+		const recordId = row.record_id ?? existingRecord?.id;
+
 		const payload = {
 			placement_plan_id: row.placement_plan_id,
-			entry_date: displayDateToIso(row.entry_date),
+			entry_date: entryIsoDate,
 			age_days: row.age_days,
 			opening_birds: toNumberOrNull(row.opening_birds),
 
@@ -519,12 +561,12 @@ export default function DailyPerformancePage() {
 			last_saved_by: "JJ",
 		};
 
-		const url = row.record_id
-			? `${API_BASE}/api/broilers/performance/${row.record_id}`
+		const url = recordId
+			? `${API_BASE}/api/broilers/performance/${recordId}`
 			: `${API_BASE}/api/broilers/performance`;
 
 		const response = await fetch(url, {
-			method: row.record_id ? "PATCH" : "POST",
+			method: recordId ? "PATCH" : "POST",
 			headers: {
 				"Content-Type": "application/json",
 			},
@@ -540,7 +582,9 @@ export default function DailyPerformancePage() {
 	}
 
 	async function saveAllChanges() {
-		const changedRows = rows.filter((row) => dirtyKeys.has(row.local_key));
+		const changedRows = rows
+			.filter((row) => dirtyKeys.has(row.local_key))
+			.sort((a, b) => a.age_days - b.age_days);
 
 		if (changedRows.length === 0) {
 			return;
@@ -564,7 +608,7 @@ export default function DailyPerformancePage() {
 			});
 
 			setDirtyKeys(new Set());
-			setMessage(`${changedRows.length} daily performance row(s) saved.`);
+			setMessage(`${savedRecords.length} daily performance row(s) saved.`);
 		} catch (error) {
 			console.error(error);
 			setMessage(
@@ -681,7 +725,9 @@ export default function DailyPerformancePage() {
 							</p>
             </div>
 
-            {message && <span className="daily-message-pill">{message}</span>}
+						{message && (
+							<span className="daily-message-pill">{message}</span>
+						)}
           </div>
 
           <div className="daily-grid-scroll">

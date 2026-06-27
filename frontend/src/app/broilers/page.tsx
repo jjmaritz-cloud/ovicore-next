@@ -26,6 +26,30 @@ type ChickSupplySummary = {
   available_chicks: number;
 };
 
+type PerformanceRecord = {
+  id: number;
+  placement_plan_id: number;
+  entry_date: string;
+  age_days?: number | null;
+  opening_birds?: number | null;
+
+  mortality_front?: number | null;
+  mortality_middle?: number | null;
+  mortality_back?: number | null;
+  mortality_other?: number | null;
+  mortality_birds?: number | null;
+
+  cull_legs?: number | null;
+  cull_runts?: number | null;
+  cull_beak?: number | null;
+  cull_other?: number | null;
+  cull_birds?: number | null;
+
+  closing_birds?: number | null;
+  body_weight_kg?: number | null;
+  avg_weight_kg?: number | null;
+};
+
 type ForecastWeek = {
   weekEnding: string;
   weekLabel: string;
@@ -193,54 +217,107 @@ function getWeatherRisk(day: WeatherDay) {
   return "Normal";
 }
 
+function numberOrZero(value: number | null | undefined) {
+  return Number(value || 0);
+}
+
+function getMortalityTotal(record: PerformanceRecord) {
+  const splitTotal =
+    numberOrZero(record.mortality_front) +
+    numberOrZero(record.mortality_middle) +
+    numberOrZero(record.mortality_back) +
+    numberOrZero(record.mortality_other);
+
+  return splitTotal > 0 ? splitTotal : numberOrZero(record.mortality_birds);
+}
+
+function getCullTotal(record: PerformanceRecord) {
+  const splitTotal =
+    numberOrZero(record.cull_legs) +
+    numberOrZero(record.cull_runts) +
+    numberOrZero(record.cull_beak) +
+    numberOrZero(record.cull_other);
+
+  return splitTotal > 0 ? splitTotal : numberOrZero(record.cull_birds);
+}
+
+function getLatestRecordForPlan(
+  records: PerformanceRecord[],
+  placementPlanId: number,
+) {
+  return records
+    .filter((record) => record.placement_plan_id === placementPlanId)
+    .sort((a, b) => Number(b.age_days || 0) - Number(a.age_days || 0))[0];
+}
+
 export default function BroilerHomePage() {
 	const [plans, setPlans] = useState<DemandPlan[]>([]);
+	const [performanceRecords, setPerformanceRecords] = useState<PerformanceRecord[]>([]);
 	const [chickSupply, setChickSupply] = useState<ChickSupplySummary | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [message, setMessage] = useState("");
 	const [weatherOpen, setWeatherOpen] = useState(false);
 
-  async function loadData() {
-    setLoading(true);
-    setMessage("");
-
-    try {
-      const plansResponse = await fetch(`${API_BASE}/api/broilers/demand-plans`);
-
-      if (!plansResponse.ok) {
-        throw new Error(`Could not load demand plans: ${plansResponse.status}`);
-      }
-
-      const plansData: DemandPlan[] = await plansResponse.json();
-      setPlans(plansData);
+	async function loadData() {
+		setLoading(true);
+		setMessage("");
 
 		try {
-			const chickSupplyResponse = await fetch(
-				`${API_BASE}/api/broilers/chick-supply-summary`,
-			);
+			const [plansResponse, performanceResponse] = await Promise.all([
+				fetch(`${API_BASE}/api/broilers/demand-plans`, {
+					cache: "no-store",
+				}),
+				fetch(`${API_BASE}/api/broilers/performance`, {
+					cache: "no-store",
+				}),
+			]);
 
-			if (chickSupplyResponse.ok) {
-				const chickSupplyData: ChickSupplySummary =
-					await chickSupplyResponse.json();
+			if (!plansResponse.ok) {
+				throw new Error(`Could not load demand plans: ${plansResponse.status}`);
+			}
 
-				setChickSupply(chickSupplyData);
+			const plansData: DemandPlan[] = await plansResponse.json();
+			setPlans(plansData);
+
+			if (performanceResponse.ok) {
+				const performanceData: PerformanceRecord[] =
+					await performanceResponse.json();
+
+				setPerformanceRecords(performanceData);
 			} else {
+				setPerformanceRecords([]);
+			}
+
+			try {
+				const chickSupplyResponse = await fetch(
+					`${API_BASE}/api/broilers/chick-supply-summary`,
+					{
+						cache: "no-store",
+					},
+				);
+
+				if (chickSupplyResponse.ok) {
+					const chickSupplyData: ChickSupplySummary =
+						await chickSupplyResponse.json();
+
+					setChickSupply(chickSupplyData);
+				} else {
+					setChickSupply(null);
+				}
+			} catch {
 				setChickSupply(null);
 			}
-		} catch {
-			setChickSupply(null);
+		} catch (error) {
+			console.error(error);
+			setMessage(
+				error instanceof Error
+					? error.message
+					: "Could not load Broiler AI Home.",
+			);
+		} finally {
+			setLoading(false);
 		}
-    } catch (error) {
-      console.error(error);
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "Could not load Broiler AI Home.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
+	}
 
   useEffect(() => {
     loadData();
@@ -252,6 +329,76 @@ export default function BroilerHomePage() {
       (sum, plan) => sum + Number(plan.planned_birds || 0),
       0,
     );
+		
+		const latestPerformanceByPlan = plans
+		.map((plan) => {
+			const latestRecord = getLatestRecordForPlan(performanceRecords, plan.id);
+
+			if (!latestRecord) {
+				return null;
+			}
+
+			return {
+				plan,
+				latestRecord,
+				closingBirds: numberOrZero(latestRecord.closing_birds),
+				mortality: getMortalityTotal(latestRecord),
+				culls: getCullTotal(latestRecord),
+			};
+		})
+		.filter(Boolean) as Array<{
+			plan: DemandPlan;
+			latestRecord: PerformanceRecord;
+			closingBirds: number;
+			mortality: number;
+			culls: number;
+		}>;
+
+	const currentClosingBirds = latestPerformanceByPlan.reduce(
+		(sum, item) => sum + item.closingBirds,
+		0,
+	);
+
+	const activePlannedBirds = latestPerformanceByPlan.reduce(
+		(sum, item) => sum + Number(item.plan.planned_birds || 0),
+		0,
+	);
+
+	const activePlanIds = new Set(
+		latestPerformanceByPlan.map((item) => item.plan.id),
+	);
+
+	const activePerformanceRecords = performanceRecords.filter((record) =>
+		activePlanIds.has(record.placement_plan_id),
+	);
+
+	const totalActualMortality = activePerformanceRecords.reduce(
+		(sum, record) => sum + getMortalityTotal(record),
+		0,
+	);
+
+	const totalActualCulls = activePerformanceRecords.reduce(
+		(sum, record) => sum + getCullTotal(record),
+		0,
+	);
+
+	const actualLivability =
+		activePlannedBirds > 0 && currentClosingBirds > 0
+			? Number(((currentClosingBirds / activePlannedBirds) * 100).toFixed(2))
+			: 0;
+
+	const activeCycles = latestPerformanceByPlan.length;
+
+	const performanceWatchCycles = latestPerformanceByPlan.filter((item) => {
+		const opening = numberOrZero(item.latestRecord.opening_birds);
+		const mortality = item.mortality;
+		const culls = item.culls;
+
+		return (
+			(opening > 0 && mortality > Math.max(50, opening * 0.005)) ||
+			(opening > 0 && culls > Math.max(25, opening * 0.003))
+		);
+	});
 
     const totalRequiredChicks = plans.reduce(
       (sum, plan) => sum + Number(plan.required_chicks || 0),
@@ -393,6 +540,33 @@ export default function BroilerHomePage() {
 				);
 			}
 
+			if (performanceRecords.length > 0) {
+				briefing.push(
+					`Daily House Sheet is connected: ${activeCycles} active cycles are reporting ${formatNumber(
+						currentClosingBirds,
+					)} current closing birds, ${formatNumber(
+						totalActualMortality,
+					)} actual mortalities, and ${formatNumber(totalActualCulls)} actual culls.`,
+				);
+
+				if (performanceWatchCycles.length > 0) {
+					briefing.push(
+						`${performanceWatchCycles.length} active cycles need production review based on mortality or cull pressure from the Daily House Sheet.`,
+					);
+				} else {
+					briefing.push(
+						`Current Daily House Sheet livability is ${formatNumber(
+							actualLivability,
+							2,
+						)}%, with no active mortality or cull pressure flags.`,
+					);
+				}
+			} else {
+				briefing.push(
+					"Daily House Sheet data is not loaded yet. Enter daily shed actuals to activate live production pressure on this page.",
+				);
+			}
+
       if (highDensityPlans.length > 0) {
         briefing.push(
           `${highDensityPlans.length} cycles are at or above the 39 kg/m² density watch line. Review placement density, target liveweight, and processing timing.`,
@@ -451,6 +625,13 @@ export default function BroilerHomePage() {
 		return {
 			totalPlannedBirds,
 			totalRequiredChicks,
+			activeCycles,
+			activePlannedBirds,
+			currentClosingBirds,
+			totalActualMortality,
+			totalActualCulls,
+			actualLivability,
+			performanceWatchCycles,
 			availableChicks,
 			chickSurplusShortfall,
 			chickSupplyRisk,
@@ -467,7 +648,7 @@ export default function BroilerHomePage() {
 			hotDays,
 			weatherBriefing,
 		};
-	}, [plans, chickSupply]);
+	}, [plans, performanceRecords, chickSupply]);
 
   return (
     <div className="page-shell">
@@ -651,6 +832,12 @@ export default function BroilerHomePage() {
 
 						<div className="ai-action-stack">
 							<ActionCard
+								title="Production pressure"
+								value={insights.performanceWatchCycles.length}
+								detail="Cycles with mortality or cull pressure from Daily House Sheet."
+								tone={insights.performanceWatchCycles.length > 0 ? "warning" : "good"}
+							/>
+							<ActionCard
 								title="Chick supply pressure"
 								value={insights.chickSurplusShortfall < 0 ? Math.abs(insights.chickSurplusShortfall) : 0}
 								detail="Chick shortfall against broiler demand."
@@ -673,6 +860,58 @@ export default function BroilerHomePage() {
 						</div>
           </div>
         </section>
+
+				<section className="chick-supply-card">
+					<div className="chick-supply-head">
+						<div>
+							<p className="eyebrow">Live Production Position</p>
+							<h3>Daily House Sheet Actuals</h3>
+							<span>
+								Current stock and loss pressure calculated from saved Daily House Sheet rows.
+							</span>
+						</div>
+
+						<strong
+							className={
+								insights.performanceWatchCycles.length > 0
+									? "supply-risk-watch"
+									: "supply-risk-covered"
+							}
+						>
+							{insights.performanceWatchCycles.length > 0 ? "Review" : "Stable"}
+						</strong>
+					</div>
+
+					<div className="chick-supply-grid">
+						<div>
+							<span>Active Cycles</span>
+							<strong>{formatNumber(insights.activeCycles)}</strong>
+							<p>Cycles with saved Daily House Sheet rows.</p>
+						</div>
+
+						<div>
+							<span>Current Birds</span>
+							<strong>{formatNumber(insights.currentClosingBirds)}</strong>
+							<p>Latest closing birds by active cycle.</p>
+						</div>
+
+						<div>
+							<span>Actual Losses</span>
+							<strong>
+								{formatNumber(
+									insights.totalActualMortality + insights.totalActualCulls,
+								)}
+							</strong>
+							<p>Mortality plus culls from Daily House Sheet.</p>
+						</div>
+
+						<div>
+							<span>Livability</span>
+							<strong>{formatNumber(insights.actualLivability, 2)}%</strong>
+							<p>Current closing birds vs planned birds.</p>
+						</div>
+					</div>
+				</section>
 
 				<section className="chick-supply-card">
 					<div className="chick-supply-head">
