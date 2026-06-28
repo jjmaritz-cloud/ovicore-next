@@ -1,4 +1,9 @@
 import Link from "next/link";
+import {
+  formatNumber,
+  formatPercent,
+  formatSigned,
+} from "../hatcheryData";
 
 type ChickAvailabilityRow = {
   weekEnding: string;
@@ -68,17 +73,18 @@ const totalExpected = rows.reduce((sum, row) => sum + row.expectedChicks, 0);
 const totalAvailable = rows.reduce((sum, row) => sum + row.availableChicks, 0);
 const totalDemand = rows.reduce((sum, row) => sum + row.broilerDemand, 0);
 const balance = totalAvailable - totalDemand;
+const highRiskWeeks = rows.filter((row) => row.status !== "Covered").length;
+const biggestShortfall = rows.reduce((worst, row) => {
+  const rowBalance = row.availableChicks - row.broilerDemand;
+  const worstBalance = worst.availableChicks - worst.broilerDemand;
+
+  return rowBalance < worstBalance ? row : worst;
+}, rows[0]);
+const biggestShortfallBalance =
+  biggestShortfall.availableChicks - biggestShortfall.broilerDemand;
+
 const averageHatchability =
   rows.reduce((sum, row) => sum + row.hatchabilityPct, 0) / rows.length;
-
-function formatNumber(value: number) {
-  return new Intl.NumberFormat("en-AU").format(value);
-}
-
-function formatSigned(value: number) {
-  const formatted = formatNumber(Math.abs(value));
-  return value >= 0 ? `+${formatted}` : `-${formatted}`;
-}
 
 function statusClass(status: ChickAvailabilityRow["status"]) {
   if (status === "Covered") return "status covered";
@@ -108,11 +114,11 @@ export default function ChickAvailabilityPage() {
       </section>
 
       <section className="kpi-grid">
-        <article className="kpi-card">
-          <p>Expected Chicks</p>
-          <h2>{formatNumber(totalExpected)}</h2>
-          <span>Across current hatch forecast.</span>
-        </article>
+				<article className="kpi-card">
+					<p>High Risk Weeks</p>
+					<h2>{highRiskWeeks}</h2>
+					<span>Weeks marked tight or shortfall.</span>
+				</article>
 
         <article className="kpi-card">
           <p>Available Chicks</p>
@@ -134,7 +140,7 @@ export default function ChickAvailabilityPage() {
 
         <article className="kpi-card">
           <p>Avg Hatchability</p>
-          <h2>{averageHatchability.toFixed(1)}%</h2>
+          <h2>{formatPercent(averageHatchability)}</h2>
           <span>Weighted planning indicator.</span>
         </article>
       </section>
@@ -204,25 +210,37 @@ export default function ChickAvailabilityPage() {
           </div>
         </article>
 
-        <aside className="briefing-card">
-          <p className="eyebrow">Manager Briefing</p>
-          <h2>Supply Risk</h2>
-          <p>
-            Hatchery availability is currently short by{" "}
-            <strong>{formatNumber(Math.abs(balance))}</strong> chicks across the
-            forecast window.
-          </p>
-          <p>
-            The highest pressure week is <strong>12/07/2026</strong>. Review
-            breeder egg output, setter priority, hatch transfer results, and
-            external chick options before broiler placement is locked.
-          </p>
+				<aside className="briefing-card">
+					<p className="eyebrow">Manager Briefing</p>
+					<h2>Supply Risk</h2>
 
-          <div className="briefing-actions">
-            <Link href="/broilers/demand">Review Broiler Demand</Link>
-            <Link href="/broilers/chick-supply">Open Chick Supply</Link>
-          </div>
-        </aside>
+					{balance < 0 ? (
+						<p>
+							Hatchery availability is currently short by{" "}
+							<strong>{formatNumber(Math.abs(balance))}</strong> chicks across the
+							forecast window.
+						</p>
+					) : (
+						<p>
+							Hatchery availability is currently ahead by{" "}
+							<strong>{formatNumber(balance)}</strong> chicks across the forecast
+							window.
+						</p>
+					)}
+
+					<p>
+						The highest pressure week is{" "}
+						<strong>{biggestShortfall.weekEnding}</strong> with a balance of{" "}
+						<strong>{formatSigned(biggestShortfallBalance)}</strong> chicks. Review
+						breeder egg output, setter priority, hatch transfer results, and broiler
+						placement timing before placements are locked.
+					</p>
+
+					<div className="briefing-actions">
+						<Link href="/broilers/demand">Review Broiler Demand</Link>
+						<Link href="/broilers/chick-supply">Open Chick Supply</Link>
+					</div>
+				</aside>
       </section>
 
       <section className="table-card">
@@ -263,8 +281,8 @@ export default function ChickAvailabilityPage() {
                     <td>{row.weekEnding}</td>
                     <td>{row.hatchery}</td>
                     <td>{formatNumber(row.eggsSet)}</td>
-                    <td>{row.fertilityPct.toFixed(1)}%</td>
-                    <td>{row.hatchabilityPct.toFixed(1)}%</td>
+										<td>{formatPercent(row.fertilityPct)}</td>
+										<td>{formatPercent(row.hatchabilityPct)}</td>
                     <td>{formatNumber(row.expectedChicks)}</td>
                     <td>{formatNumber(row.actualChicks)}</td>
                     <td>{formatNumber(row.heldChicks)}</td>

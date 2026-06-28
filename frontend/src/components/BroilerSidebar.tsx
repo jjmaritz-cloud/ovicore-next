@@ -10,7 +10,7 @@ const navSections = [
 		title: "Broiler Command",
 		items: [
 			{ label: "OviCore Home", href: "/home" },
-			{ label: "Overview", href: "/broilers" },
+			{ label: "Broiler Home", href: "/broilers" },
 			{ label: "Placement Plan", href: "/broilers/demand-planner" },
 			{ label: "Chick Supply", href: "/broilers/chick-supply" },
 		],

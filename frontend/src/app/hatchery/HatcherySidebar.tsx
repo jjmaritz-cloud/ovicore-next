@@ -10,7 +10,7 @@ const navSections = [
     title: "Hatchery Command",
     items: [
       { label: "OviCore Home", href: "/home" },
-      { label: "Overview", href: "/hatchery" },
+      { label: "Hatchery Home", href: "/hatchery" },
       { label: "Chick Availability", href: "/hatchery/chick-availability" },
     ],
   },
@@ -18,7 +18,7 @@ const navSections = [
     title: "Operations",
     items: [
       { label: "Egg Receiving", href: "/hatchery/egg-receiving" },
-      { label: "Setter Planner", href: "/hatchery/setter-planner" },
+      { label: "Setter Program", href: "/hatchery/setter-program" },
       { label: "Hatch Results", href: "/hatchery/hatch-results" },
     ],
   },

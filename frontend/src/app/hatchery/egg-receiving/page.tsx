@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { formatNumber, formatPercent } from "../hatcheryData";
 
 type EggReceiptRow = {
   receiptDate: string;
@@ -79,14 +80,6 @@ const totalFloorEggs = rows.reduce((sum, row) => sum + row.floorEggs, 0);
 const rejectPct = totalEggs > 0 ? (totalRejected / totalEggs) * 100 : 0;
 const floorPct = totalEggs > 0 ? (totalFloorEggs / totalEggs) * 100 : 0;
 
-function formatNumber(value: number) {
-  return new Intl.NumberFormat("en-AU").format(value);
-}
-
-function formatPct(value: number) {
-  return `${value.toFixed(1)}%`;
-}
-
 function statusClass(status: EggReceiptRow["status"]) {
   if (status === "Ready") return "status ready";
   if (status === "Review") return "status review";
@@ -123,12 +116,12 @@ export default function EggReceivingPage() {
         <article className="kpi-card">
           <p>Rejected Eggs</p>
           <h2>{formatNumber(totalRejected)}</h2>
-          <span>{formatPct(rejectPct)} of received eggs.</span>
+          <span>{formatPercent(rejectPct)} of received eggs.</span>
         </article>
 
         <article className={floorPct > 1.5 ? "kpi-card warning" : "kpi-card"}>
           <p>Floor Egg %</p>
-          <h2>{formatPct(floorPct)}</h2>
+          <h2>{formatPercent(floorPct)}</h2>
           <span>Review if this continues rising.</span>
         </article>
 
@@ -232,14 +225,14 @@ export default function EggReceivingPage() {
             settable eggs available from <strong>{formatNumber(totalEggs)}</strong>{" "}
             total eggs received.
           </p>
-          <p>
-            Reject rate is sitting at <strong>{formatPct(rejectPct)}</strong>.
-            Floor egg percentage is <strong>{formatPct(floorPct)}</strong>.
-            Review flock BRD-26-002 if elevated floor eggs continue.
-          </p>
+					<p>
+						Reject rate is sitting at <strong>{formatPercent(rejectPct)}</strong>.
+						Floor egg percentage is <strong>{formatPercent(floorPct)}</strong>.
+						Review flock BRD-26-002 if elevated floor eggs continue.
+					</p>
 
           <div className="briefing-actions">
-            <Link href="/hatchery/setter-planner">Open Setter Planner</Link>
+            <Link href="/hatchery/setter-program">Open Setter Program</Link>
             <Link href="/hatchery/chick-availability">Chick Availability</Link>
           </div>
         </aside>
