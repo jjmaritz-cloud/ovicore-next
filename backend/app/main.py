@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.routers import broiler_processing
 from app.routers import app_notes
 from app.routers import broiler_supply
+from app.routers import access
 
 from .db import Base, engine, SessionLocal, get_db
 from .models import BroilerFarm, BroilerShed, BroilerPlacementPlan, BroilerDailyPerformance
@@ -30,6 +31,7 @@ app = FastAPI(title="OviCore Broiler Module API", version="0.1.0")
 app.include_router(broiler_processing.router)
 app.include_router(app_notes.router)
 app.include_router(broiler_supply.router)
+app.include_router(access.router)
 
 origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
 app.add_middleware(
