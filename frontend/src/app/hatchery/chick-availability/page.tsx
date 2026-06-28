@@ -6,6 +6,8 @@ import {
   formatSigned,
 } from "../hatcheryData";
 
+type ChickAvailabilityRow = (typeof chickAvailabilityRows)[number];
+
 const rows = chickAvailabilityRows;
 
 const totalExpected = rows.reduce((sum, row) => sum + row.expectedChicks, 0);

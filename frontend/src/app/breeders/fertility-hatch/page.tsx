@@ -1,117 +1,12 @@
 import Link from "next/link";
+import {
+  breederFertilityHatchRows,
+  formatNumber,
+  formatPercent,
+  formatSignedPercent,
+} from "../breederData";
 
-type FertilityHatchRow = {
-  weekEnding: string;
-  flock: string;
-  farm: string;
-  ageWeeks: number;
-  fertilityPct: number;
-  fertilityStdPct: number;
-  hatchabilityPct: number;
-  hatchabilityStdPct: number;
-  eggsSet: number;
-  clearEggs: number;
-  deadInShell: number;
-  cullChicks: number;
-  saleableChicks: number;
-  maleMortality: number;
-  matingRatio: number;
-  status: "On Track" | "Fertility Review" | "Hatch Review" | "Male Review";
-  notes: string;
-};
-
-const rows: FertilityHatchRow[] = [
-  {
-    weekEnding: "05/07/2026",
-    flock: "BRD-26-001",
-    farm: "North Breeder Farm",
-    ageWeeks: 35,
-    fertilityPct: 92.2,
-    fertilityStdPct: 92.5,
-    hatchabilityPct: 86.6,
-    hatchabilityStdPct: 86.8,
-    eggsSet: 102684,
-    clearEggs: 4800,
-    deadInShell: 3650,
-    cullChicks: 980,
-    saleableChicks: 81985,
-    maleMortality: 34,
-    matingRatio: 10.0,
-    status: "On Track",
-    notes: "Fertility and hatchability close to standard.",
-  },
-  {
-    weekEnding: "05/07/2026",
-    flock: "BRD-26-002",
-    farm: "East Breeder Farm",
-    ageWeeks: 48,
-    fertilityPct: 89.5,
-    fertilityStdPct: 91.0,
-    hatchabilityPct: 83.6,
-    hatchabilityStdPct: 85.2,
-    eggsSet: 88773,
-    clearEggs: 6900,
-    deadInShell: 4700,
-    cullChicks: 1120,
-    saleableChicks: 66414,
-    maleMortality: 48,
-    matingRatio: 10.3,
-    status: "Fertility Review",
-    notes: "Fertility softening. Review male condition and mating activity.",
-  },
-  {
-    weekEnding: "12/07/2026",
-    flock: "BRD-26-003",
-    farm: "South Breeder Farm",
-    ageWeeks: 56,
-    fertilityPct: 87.1,
-    fertilityStdPct: 89.4,
-    hatchabilityPct: 80.9,
-    hatchabilityStdPct: 83.5,
-    eggsSet: 73828,
-    clearEggs: 7600,
-    deadInShell: 5200,
-    cullChicks: 1340,
-    saleableChicks: 52046,
-    maleMortality: 61,
-    matingRatio: 10.6,
-    status: "Hatch Review",
-    notes: "Older flock profile. Review shell quality, transfer, and chick grading.",
-  },
-  {
-    weekEnding: "12/07/2026",
-    flock: "BRD-26-004",
-    farm: "West Breeder Farm",
-    ageWeeks: 30,
-    fertilityPct: 91.8,
-    fertilityStdPct: 92.0,
-    hatchabilityPct: 85.5,
-    hatchabilityStdPct: 86.0,
-    eggsSet: 100832,
-    clearEggs: 5200,
-    deadInShell: 3900,
-    cullChicks: 1050,
-    saleableChicks: 79109,
-    maleMortality: 72,
-    matingRatio: 10.0,
-    status: "Male Review",
-    notes: "Male mortality elevated. Watch future fertility trend.",
-  },
-];
-
-const formatNumber = (value: number) =>
-  new Intl.NumberFormat("en-AU", {
-    maximumFractionDigits: 0,
-  }).format(value);
-
-const formatPercent = (value: number) =>
-  `${value.toLocaleString("en-AU", {
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1,
-  })}%`;
-
-const formatSignedPercent = (value: number) =>
-  `${value >= 0 ? "+" : ""}${formatPercent(value)}`;
+const rows = breederFertilityHatchRows;
 
 const totalEggsSet = rows.reduce((sum, row) => sum + row.eggsSet, 0);
 const totalClearEggs = rows.reduce((sum, row) => sum + row.clearEggs, 0);
@@ -133,7 +28,7 @@ const fertilityVariance = averageFertility - averageFertilityStd;
 const hatchabilityVariance = averageHatchability - averageHatchabilityStd;
 const reviewRows = rows.filter((row) => row.status !== "On Track").length;
 
-function statusClass(status: FertilityHatchRow["status"]) {
+function statusClass(status: string) {
   if (status === "On Track") return "status-pill on-track";
   if (status === "Fertility Review") return "status-pill fertility-review";
   if (status === "Hatch Review") return "status-pill hatch-review";
