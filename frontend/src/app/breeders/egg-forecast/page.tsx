@@ -1,243 +1,161 @@
 import Link from "next/link";
+import {
+  breederEggForecastRows,
+  formatNumber,
+  formatPercent,
+  formatSignedNumber,
+} from "../breederData";
 
-type BreederFlockRow = {
-  flock: string;
-  farm: string;
-  ageWeeks: number;
-  females: number;
-  males: number;
-  weeklyEggs: number;
-  settableEggs: number;
-  productionPct: number;
-  productionStdPct: number;
-  fertilityPct: number;
-  hatchabilityPct: number;
-  femaleMortPct: number;
-  maleMortPct: number;
-  status: "On Track" | "Egg Supply Risk" | "Fertility Review" | "Mortality Review";
-  notes: string;
-};
+const rows = breederEggForecastRows;
 
-const rows: BreederFlockRow[] = [
-	{
-		flock: "BRD-26-001",
-		farm: "North Breeder Farm",
-		ageWeeks: 34,
-		females: 24500,
-		males: 2450,
-		weeklyEggs: 112800,
-		settableEggs: 103400,
-		productionPct: 65.8,
-		productionStdPct: 66.5,
-		fertilityPct: 92.4,
-		hatchabilityPct: 86.8,
-		femaleMortPct: 0.18,
-		maleMortPct: 0.22,
-		status: "On Track",
-		notes: "Strong production and fertility profile.",
-	},
-	{
-		flock: "BRD-26-002",
-		farm: "East Breeder Farm",
-		ageWeeks: 47,
-		females: 23100,
-		males: 2240,
-		weeklyEggs: 98600,
-		settableEggs: 89700,
-		productionPct: 61.0,
-		productionStdPct: 63.8,
-		fertilityPct: 89.8,
-		hatchabilityPct: 83.9,
-		femaleMortPct: 0.24,
-		maleMortPct: 0.38,
-		status: "Fertility Review",
-		notes: "Fertility softening. Review male condition and mating activity.",
-	},
-	{
-		flock: "BRD-26-003",
-		farm: "South Breeder Farm",
-		ageWeeks: 55,
-		females: 21800,
-		males: 2050,
-		weeklyEggs: 84200,
-		settableEggs: 74200,
-		productionPct: 55.2,
-		productionStdPct: 58.5,
-		fertilityPct: 87.6,
-		hatchabilityPct: 81.4,
-		femaleMortPct: 0.31,
-		maleMortPct: 0.49,
-		status: "Egg Supply Risk",
-		notes: "Older flock. Egg output and hatch profile need close review.",
-	},
-	{
-		flock: "BRD-26-004",
-		farm: "West Breeder Farm",
-		ageWeeks: 29,
-		females: 25200,
-		males: 2520,
-		weeklyEggs: 108900,
-		settableEggs: 100300,
-		productionPct: 61.7,
-		productionStdPct: 62.0,
-		fertilityPct: 91.9,
-		hatchabilityPct: 85.7,
-		femaleMortPct: 0.42,
-		maleMortPct: 0.55,
-		status: "Mortality Review",
-		notes: "Mortality elevated this week. Check flock health and feed/water access.",
-	},
-];
-
-const formatNumber = (value: number) =>
-  new Intl.NumberFormat("en-AU", {
-    maximumFractionDigits: 0,
-  }).format(value);
-
-const formatPercent = (value: number) =>
-  `${value.toLocaleString("en-AU", {
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1,
-  })}%`;
-
-const totalFemales = rows.reduce((sum, row) => sum + row.females, 0);
-const totalMales = rows.reduce((sum, row) => sum + row.males, 0);
 const totalWeeklyEggs = rows.reduce((sum, row) => sum + row.weeklyEggs, 0);
 const totalSettableEggs = rows.reduce((sum, row) => sum + row.settableEggs, 0);
+const totalForecastChicks = rows.reduce((sum, row) => sum + row.forecastChicks, 0);
+const totalHatcheryDemand = rows.reduce((sum, row) => sum + row.hatcheryEggDemand, 0);
+const supplyBalance = totalSettableEggs - totalHatcheryDemand;
+const riskWeeks = rows.filter((row) => row.status !== "Covered").length;
+const averageProduction =
+  rows.reduce((sum, row) => sum + row.productionPct, 0) / rows.length;
 const averageFertility =
   rows.reduce((sum, row) => sum + row.fertilityPct, 0) / rows.length;
-const averageHatchability =
-  rows.reduce((sum, row) => sum + row.hatchabilityPct, 0) / rows.length;
-const riskFlocks = rows.filter((row) => row.status !== "On Track").length;
 
-function statusClass(status: BreederFlockRow["status"]) {
-  if (status === "On Track") return "status-pill on-track";
-  if (status === "Egg Supply Risk") return "status-pill egg-risk";
-  if (status === "Fertility Review") return "status-pill fertility-review";
-  return "status-pill mortality-review";
+function statusClass(status: string) {
+  if (status === "Covered") return "status-pill covered";
+  if (status === "Tight") return "status-pill tight";
+  if (status === "Shortfall") return "status-pill shortfall";
+  return "status-pill review";
 }
 
-export default function BreedersPage() {
+export default function BreederEggForecastPage() {
   return (
-    <main className="breeders-page">
+    <main className="egg-forecast-page">
       <section className="page-hero">
         <div>
-          <p className="eyebrow">Parent Stock Command</p>
-          <h1>Breeder Home</h1>
+          <p className="eyebrow">Breeder Planning</p>
+          <h1>Egg Forecast</h1>
           <p>
-            Monitor breeder flock output, fertility, hatchability, male/female
-            performance, and settable egg supply into Hatchery.
+            Convert breeder house card production into settable egg supply,
+            forecast chicks, and hatchery demand pressure.
           </p>
         </div>
 
         <div className="hero-actions">
+          <Link href="/breeders/production">Daily House Card</Link>
           <Link href="/hatchery/egg-receiving">Egg Receiving</Link>
-          <Link href="/hatchery/chick-availability">Chick Availability</Link>
         </div>
       </section>
 
       <section className="kpi-grid">
         <article className="kpi-card">
-          <p>Active Flocks</p>
-          <h2>{rows.length}</h2>
-          <span>Breeder flocks in production.</span>
-        </article>
-
-        <article className="kpi-card">
-          <p>Females</p>
-          <h2>{formatNumber(totalFemales)}</h2>
-          <span>Female parent stock in production.</span>
-        </article>
-
-        <article className="kpi-card">
-          <p>Males</p>
-          <h2>{formatNumber(totalMales)}</h2>
-          <span>Male parent stock supporting fertility.</span>
+          <p>Weekly Eggs</p>
+          <h2>{formatNumber(totalWeeklyEggs)}</h2>
+          <span>Total breeder eggs forecast.</span>
         </article>
 
         <article className="kpi-card">
           <p>Settable Eggs</p>
           <h2>{formatNumber(totalSettableEggs)}</h2>
-          <span>Forecast eggs available for Hatchery.</span>
+          <span>Forecast eggs available to Hatchery.</span>
         </article>
 
         <article className="kpi-card">
-          <p>Avg Fertility</p>
-          <h2>{formatPercent(averageFertility)}</h2>
-          <span>Weighted breeder fertility indicator.</span>
+          <p>Forecast Chicks</p>
+          <h2>{formatNumber(totalForecastChicks)}</h2>
+          <span>Expected chick output from forecast.</span>
         </article>
 
         <article className="kpi-card">
-          <p>Risk Flocks</p>
-          <h2>{riskFlocks}</h2>
-          <span>Flocks requiring operational review.</span>
+          <p>Hatchery Demand</p>
+          <h2>{formatNumber(totalHatcheryDemand)}</h2>
+          <span>Egg demand from setter planning.</span>
+        </article>
+
+        <article className="kpi-card">
+          <p>Supply Balance</p>
+          <h2 className={supplyBalance < 0 ? "risk-text" : "good-text"}>
+            {formatSignedNumber(supplyBalance)}
+          </h2>
+          <span>Settable eggs versus demand.</span>
+        </article>
+
+        <article className="kpi-card">
+          <p>Risk Rows</p>
+          <h2>{riskWeeks}</h2>
+          <span>Forecast rows requiring review.</span>
         </article>
       </section>
 
       <section className="content-grid">
-        <article className="table-card">
+        <article className="forecast-card">
           <div className="section-header">
             <div>
-              <p className="eyebrow">Breeder Supply</p>
-              <h2>Flock Production Position</h2>
+              <p className="eyebrow">Weekly Forecast</p>
+              <h2>Breeder Egg Supply to Hatchery</h2>
             </div>
-            <span>Weekly eggs: {formatNumber(totalWeeklyEggs)}</span>
+            <span>
+              Avg production: {formatPercent(averageProduction)} · Avg fertility:{" "}
+              {formatPercent(averageFertility)}
+            </span>
           </div>
 
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
+                  <th>Week Ending</th>
                   <th>Flock</th>
                   <th>Farm</th>
                   <th>Age</th>
-                  <th>Females</th>
-                  <th>Males</th>
-									<th>Weekly Eggs</th>
-									<th>Settable Eggs</th>
-									<th>Production %</th>
-									<th>Production Std %</th>
-									<th>Prod Var %</th>
-									<th>Fertility %</th>
+                  <th>Production %</th>
+                  <th>Production Std %</th>
+                  <th>Prod Var %</th>
+                  <th>Weekly Eggs</th>
+                  <th>Settable %</th>
+                  <th>Settable Eggs</th>
+                  <th>Fertility %</th>
                   <th>Hatchability %</th>
-                  <th>Female Mort %</th>
-                  <th>Male Mort %</th>
+                  <th>Forecast Chicks</th>
+                  <th>Hatchery Demand</th>
+                  <th>Balance</th>
                   <th>Status</th>
                   <th>Notes</th>
                 </tr>
               </thead>
 
               <tbody>
-                {rows.map((row) => (
-                  <tr key={row.flock}>
-                    <td>{row.flock}</td>
-                    <td>{row.farm}</td>
-                    <td>{row.ageWeeks} wks</td>
-                    <td>{formatNumber(row.females)}</td>
-                    <td>{formatNumber(row.males)}</td>
-										<td>{formatNumber(row.weeklyEggs)}</td>
-										<td>{formatNumber(row.settableEggs)}</td>
-										<td>{formatPercent(row.productionPct)}</td>
-										<td>{formatPercent(row.productionStdPct)}</td>
-										<td
-											className={
-												row.productionPct - row.productionStdPct < 0
-													? "risk-text strong"
-													: "good-text strong"
-											}
-										>
-											{formatPercent(row.productionPct - row.productionStdPct)}
-										</td>
-										<td>{formatPercent(row.fertilityPct)}</td>
-                    <td>{formatPercent(row.hatchabilityPct)}</td>
-                    <td>{formatPercent(row.femaleMortPct)}</td>
-                    <td>{formatPercent(row.maleMortPct)}</td>
-                    <td>
-                      <span className={statusClass(row.status)}>{row.status}</span>
-                    </td>
-                    <td>{row.notes}</td>
-                  </tr>
-                ))}
+                {rows.map((row) => {
+                  const prodVar = row.productionPct - row.productionStdPct;
+                  const balance = row.settableEggs - row.hatcheryEggDemand;
+
+                  return (
+                    <tr key={`${row.weekEnding}-${row.flock}`}>
+                      <td>{row.weekEnding}</td>
+                      <td>{row.flock}</td>
+                      <td>{row.farm}</td>
+                      <td>{row.ageWeeks} wks</td>
+                      <td>{formatPercent(row.productionPct)}</td>
+                      <td>{formatPercent(row.productionStdPct)}</td>
+                      <td className={prodVar < 0 ? "risk-text strong" : "good-text strong"}>
+                        {prodVar >= 0 ? "+" : ""}
+                        {formatPercent(prodVar)}
+                      </td>
+                      <td>{formatNumber(row.weeklyEggs)}</td>
+                      <td>{formatPercent(row.settablePct)}</td>
+                      <td>{formatNumber(row.settableEggs)}</td>
+                      <td>{formatPercent(row.fertilityPct)}</td>
+                      <td>{formatPercent(row.hatchabilityPct)}</td>
+                      <td>{formatNumber(row.forecastChicks)}</td>
+                      <td>{formatNumber(row.hatcheryEggDemand)}</td>
+                      <td className={balance < 0 ? "risk-text strong" : "good-text strong"}>
+                        {formatSignedNumber(balance)}
+                      </td>
+                      <td>
+                        <span className={statusClass(row.status)}>{row.status}</span>
+                      </td>
+                      <td>{row.notes}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -245,28 +163,38 @@ export default function BreedersPage() {
 
         <aside className="briefing-card">
           <p className="eyebrow">Manager Briefing</p>
-          <h2>Breeder Supply Position</h2>
+          <h2>Egg Supply Position</h2>
+
+          {supplyBalance < 0 ? (
+            <p>
+              Breeder forecast is short by{" "}
+              <strong>{formatNumber(Math.abs(supplyBalance))}</strong> settable
+              eggs against hatchery demand.
+            </p>
+          ) : (
+            <p>
+              Breeder forecast is ahead by{" "}
+              <strong>{formatNumber(supplyBalance)}</strong> settable eggs
+              against hatchery demand.
+            </p>
+          )}
+
           <p>
-            Current breeder production is forecasting{" "}
-            <strong>{formatNumber(totalSettableEggs)}</strong> settable eggs
-            into Hatchery, with average fertility sitting at{" "}
-            <strong>{formatPercent(averageFertility)}</strong>.
-          </p>
-          <p>
-            There are <strong>{riskFlocks}</strong> flocks requiring review.
-            Fertility drops, high male mortality, or flock movements should later
-            flow into Hatchery chick availability and Broiler placement pressure.
+            Review rows marked <strong>Tight</strong>,{" "}
+            <strong>Shortfall</strong>, or <strong>Review</strong>. Production
+            variance, fertility, hatchability, and egg quality pressure should
+            feed into Hatchery Egg Receiving and Chick Availability.
           </p>
 
           <div className="briefing-actions">
-            <Link href="/hatchery/egg-receiving">Review Egg Receiving</Link>
+            <Link href="/breeders/production">Daily House Card</Link>
             <Link href="/hatchery/chick-availability">Chick Availability</Link>
           </div>
         </aside>
       </section>
 
       <style>{`
-        .breeders-page {
+        .egg-forecast-page {
           min-height: 100vh;
           padding: 22px;
           background:
@@ -350,7 +278,7 @@ export default function BreedersPage() {
         }
 
         .kpi-card,
-        .table-card,
+        .forecast-card,
         .briefing-card {
           border: 1px solid rgba(21, 87, 63, 0.12);
           border-radius: 18px;
@@ -392,7 +320,7 @@ export default function BreedersPage() {
           align-items: start;
         }
 
-        .table-card {
+        .forecast-card {
           min-width: 0;
           padding: 14px;
         }
@@ -443,7 +371,7 @@ export default function BreedersPage() {
 
         table {
           width: 100%;
-          min-width: 1460px;
+          min-width: 1660px;
           border-collapse: collapse;
           font-size: 12px;
         }
@@ -473,7 +401,7 @@ export default function BreedersPage() {
         }
 
         td:last-child {
-          min-width: 280px;
+          min-width: 300px;
           white-space: normal;
         }
 
@@ -483,6 +411,18 @@ export default function BreedersPage() {
 
         tbody tr:hover {
           background: #f8fcfa;
+        }
+
+        .strong {
+          font-weight: 900;
+        }
+
+        .good-text {
+          color: #128052;
+        }
+
+        .risk-text {
+          color: #b94a35;
         }
 
         .status-pill {
@@ -497,24 +437,24 @@ export default function BreedersPage() {
           white-space: nowrap;
         }
 
-        .status-pill.on-track {
+        .status-pill.covered {
           background: #e4f6ec;
           color: #137746;
         }
 
-        .status-pill.egg-risk {
-          background: #ffe9df;
-          color: #9b3f24;
-        }
-
-        .status-pill.fertility-review {
+        .status-pill.tight {
           background: #fff3d8;
           color: #8a5a00;
         }
 
-        .status-pill.mortality-review {
+        .status-pill.shortfall {
           background: #fde5e3;
           color: #a6312b;
+        }
+
+        .status-pill.review {
+          background: #e8eefc;
+          color: #334a8a;
         }
 
         @media (max-width: 1180px) {
@@ -528,7 +468,7 @@ export default function BreedersPage() {
         }
 
         @media (max-width: 760px) {
-          .breeders-page {
+          .egg-forecast-page {
             padding: 14px;
           }
 
@@ -539,18 +479,6 @@ export default function BreedersPage() {
           .kpi-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
           }
-					
-					.strong {
-						font-weight: 900;
-					}
-
-					.good-text {
-						color: #128052;
-					}
-
-					.risk-text {
-						color: #b94a35;
-					}
         }
       `}</style>
     </main>

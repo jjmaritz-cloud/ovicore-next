@@ -1,46 +1,51 @@
 import Image from "next/image";
 import Link from "next/link";
+import { Bird, Egg, Drumstick, Factory } from "lucide-react";
 
 const modules = [
   {
-    name: "Breeders",
+    title: "Breeders",
     eyebrow: "Parent Stock",
-    href: "/breeders",
     status: "Planned",
     description:
       "Manage breeder flock output, fertility, hatch egg flow, male/female performance, and parent stock planning.",
-    metrics: ["Fertility", "Settable Eggs", "Parent Flocks"],
-    signal: "Feeds Hatchery egg supply",
+    chips: ["Fertility", "Settable Eggs", "Parent Flocks"],
+    signalText: "Feeds Hatchery egg supply",
+    href: "/breeders",
+    icon: Bird,
   },
   {
-    name: "Hatchery",
+    title: "Hatchery",
     eyebrow: "Eggs to Chicks",
-    href: "/hatchery",
     status: "Planned",
     description:
       "Track egg receiving, setters, hatchability, chick output, and weekly chick availability for broiler placements.",
-    metrics: ["Eggs Set", "Hatch %", "Chicks Available"],
-    signal: "Feeds Broiler chick supply",
+    chips: ["Eggs Set", "Hatch %", "Chicks Available"],
+    signalText: "Feeds Broiler chick supply",
+    href: "/hatchery",
+    icon: Egg,
   },
   {
-    name: "Broilers",
+    title: "Broilers",
     eyebrow: "Placement Planning",
-    href: "/broilers",
     status: "Live",
     description:
       "Plan placements, shed density, required chicks, daily house sheets, growth signals, and broiler supply pressure.",
-    metrics: ["Placements", "Density", "Required Chicks"],
-    signal: "Feeds Processing demand",
+    chips: ["Placements", "Density", "Required Chicks"],
+    signalText: "Feeds Processing demand",
+    href: "/broilers",
+    icon: Drumstick,
   },
   {
-    name: "Processing",
+    title: "Processing",
     eyebrow: "Plant Output",
-    href: "/processing",
     status: "Next",
     description:
       "Manage plant load, processing actuals, average liveweight, dressed weight, yield, condemnation, and close-out.",
-    metrics: ["Plant Load", "Yield", "Condemnation"],
-    signal: "Closes the production cycle",
+    chips: ["Plant Load", "Yield", "Condemnation"],
+    signalText: "Closes the production cycle",
+    href: "/processing",
+    icon: Factory,
   },
 ];
 
@@ -80,52 +85,62 @@ export default function HomePage() {
       </section>
 
       <section className="module-card-grid">
-        {modules.map((module) => (
-          <Link
-            key={module.name}
-            href={module.href}
-            className={`module-card ${
-              module.status === "Live" ? "module-card-live" : ""
-            }`}
-          >
-            <div className="module-card-top">
-              <div>
-                <p>{module.eyebrow}</p>
-                <h2>{module.name}</h2>
+        {modules.map((module) => {
+          const Icon = module.icon;
+
+          return (
+            <Link
+              key={module.title}
+              href={module.href}
+              className={`module-card ${
+                module.status === "Live" ? "module-card-live" : ""
+              }`}
+            >
+              <div className="module-card-top">
+                <div className="module-title-row">
+                  <div className={`module-icon-wrap ${module.title.toLowerCase()}`}>
+                    <Icon size={24} strokeWidth={2.2} />
+                  </div>
+
+                  <div>
+                    <p>{module.eyebrow}</p>
+                    <h2>{module.title}</h2>
+                  </div>
+                </div>
+
+                <strong
+                  className={
+                    module.status === "Live"
+                      ? "module-status-live"
+                      : module.status === "Next"
+                        ? "module-status-next"
+                        : "module-status-planned"
+                  }
+                >
+                  {module.status}
+                </strong>
               </div>
 
-              <strong
-                className={
-                  module.status === "Live"
-                    ? "module-status-live"
-                    : module.status === "Next"
-                      ? "module-status-next"
-                      : "module-status-planned"
-                }
-              >
-                {module.status}
-              </strong>
-            </div>
+              <p className="module-card-description">{module.description}</p>
 
-            <p className="module-card-description">{module.description}</p>
+              <div className="module-metric-row">
+                {module.chips.map((chip) => (
+                  <span key={chip}>{chip}</span>
+                ))}
+              </div>
 
-            <div className="module-metric-row">
-              {module.metrics.map((metric) => (
-                <span key={metric}>{metric}</span>
-              ))}
-            </div>
+              <div className="module-signal">
+                <span>Planning Signal</span>
+                <strong>{module.signalText}</strong>
+              </div>
 
-            <div className="module-signal">
-              <span>Planning Signal</span>
-              <strong>{module.signal}</strong>
-            </div>
-
-            <div className="module-open-row">
-              <span>Open module</span>
-              <b>→</b>
-            </div>
-          </Link>
-        ))}
+              <div className="module-open-row">
+                <span>Open module</span>
+                <b>→</b>
+              </div>
+            </Link>
+          );
+        })}
       </section>
 
       <section className="module-home-bottom">
@@ -142,6 +157,47 @@ export default function HomePage() {
           Continue to Broilers
         </Link>
       </section>
+			
+			<style>{`
+        .module-title-row {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          min-width: 0;
+        }
+
+        .module-icon-wrap {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 44px;
+          height: 44px;
+          border-radius: 15px;
+          border: 1px solid rgba(15, 93, 67, 0.12);
+          flex-shrink: 0;
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+        }
+
+        .module-icon-wrap.breeders {
+          background: linear-gradient(135deg, #eef8f2 0%, #dff3e8 100%);
+          color: #0f5d43;
+        }
+
+        .module-icon-wrap.hatchery {
+          background: linear-gradient(135deg, #fff7e8 0%, #ffefc9 100%);
+          color: #9a6400;
+        }
+
+        .module-icon-wrap.broilers {
+          background: linear-gradient(135deg, #eef4ff 0%, #dce9ff 100%);
+          color: #2956a3;
+        }
+
+        .module-icon-wrap.processing {
+          background: linear-gradient(135deg, #fff0ec 0%, #ffe0d7 100%);
+          color: #a0442b;
+        }
+      `}</style>
     </main>
   );
 }
