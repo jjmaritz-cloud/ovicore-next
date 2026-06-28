@@ -1,73 +1,12 @@
 import Link from "next/link";
 import {
+  chickAvailabilityRows,
   formatNumber,
   formatPercent,
   formatSigned,
 } from "../hatcheryData";
 
-type ChickAvailabilityRow = {
-  weekEnding: string;
-  hatchery: string;
-  eggsSet: number;
-  fertilityPct: number;
-  hatchabilityPct: number;
-  expectedChicks: number;
-  actualChicks: number;
-  heldChicks: number;
-  rejectedChicks: number;
-  availableChicks: number;
-  broilerDemand: number;
-  status: "Covered" | "Tight" | "Shortfall";
-  notes: string;
-};
-
-const rows: ChickAvailabilityRow[] = [
-  {
-    weekEnding: "28/06/2026",
-    hatchery: "Main Hatchery",
-    eggsSet: 224000,
-    fertilityPct: 92.4,
-    hatchabilityPct: 86.8,
-    expectedChicks: 179600,
-    actualChicks: 178900,
-    heldChicks: 1400,
-    rejectedChicks: 1000,
-    availableChicks: 176500,
-    broilerDemand: 172000,
-    status: "Covered",
-    notes: "Supply covers current broiler placements.",
-  },
-  {
-    weekEnding: "05/07/2026",
-    hatchery: "Main Hatchery",
-    eggsSet: 229500,
-    fertilityPct: 91.8,
-    hatchabilityPct: 85.9,
-    expectedChicks: 181100,
-    actualChicks: 180200,
-    heldChicks: 1200,
-    rejectedChicks: 800,
-    availableChicks: 178200,
-    broilerDemand: 184000,
-    status: "Tight",
-    notes: "Monitor hatch transfer and placement timing.",
-  },
-  {
-    weekEnding: "12/07/2026",
-    hatchery: "Main Hatchery",
-    eggsSet: 219000,
-    fertilityPct: 90.6,
-    hatchabilityPct: 84.7,
-    expectedChicks: 168000,
-    actualChicks: 167300,
-    heldChicks: 900,
-    rejectedChicks: 1000,
-    availableChicks: 165400,
-    broilerDemand: 181500,
-    status: "Shortfall",
-    notes: "Review breeder output, setting priority, or external chick support.",
-  },
-];
+const rows = chickAvailabilityRows;
 
 const totalExpected = rows.reduce((sum, row) => sum + row.expectedChicks, 0);
 const totalAvailable = rows.reduce((sum, row) => sum + row.availableChicks, 0);

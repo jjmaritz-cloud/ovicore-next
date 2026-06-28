@@ -1,77 +1,11 @@
 import Link from "next/link";
-import { formatNumber, formatPercent } from "../hatcheryData";
+import {
+  eggReceivingRows,
+  formatNumber,
+  formatPercent,
+} from "../hatcheryData";
 
-type EggReceiptRow = {
-  receiptDate: string;
-  breederFlock: string;
-  farm: string;
-  shed: string;
-  eggAgeDays: number;
-  totalEggs: number;
-  floorEggs: number;
-  crackedEggs: number;
-  dirtyEggs: number;
-  rejectedEggs: number;
-  settableEggs: number;
-  avgEggWeightG: number;
-  storageRoom: string;
-  status: "Ready" | "Review" | "Hold";
-  notes: string;
-};
-
-const rows: EggReceiptRow[] = [
-  {
-    receiptDate: "27/06/2026",
-    breederFlock: "BRD-26-001",
-    farm: "Breeder Farm 1",
-    shed: "Shed 01",
-    eggAgeDays: 2,
-    totalEggs: 84600,
-    floorEggs: 820,
-    crackedEggs: 410,
-    dirtyEggs: 320,
-    rejectedEggs: 1550,
-    settableEggs: 83050,
-    avgEggWeightG: 61.8,
-    storageRoom: "Cool Room A",
-    status: "Ready",
-    notes: "Good egg quality. Suitable for next setter load.",
-  },
-  {
-    receiptDate: "27/06/2026",
-    breederFlock: "BRD-26-002",
-    farm: "Breeder Farm 2",
-    shed: "Shed 03",
-    eggAgeDays: 3,
-    totalEggs: 79100,
-    floorEggs: 1450,
-    crackedEggs: 520,
-    dirtyEggs: 610,
-    rejectedEggs: 2580,
-    settableEggs: 76520,
-    avgEggWeightG: 60.9,
-    storageRoom: "Cool Room B",
-    status: "Review",
-    notes: "Floor eggs slightly elevated. Review nest usage and collection timing.",
-  },
-  {
-    receiptDate: "28/06/2026",
-    breederFlock: "BRD-26-003",
-    farm: "Breeder Farm 3",
-    shed: "Shed 02",
-    eggAgeDays: 5,
-    totalEggs: 72400,
-    floorEggs: 920,
-    crackedEggs: 760,
-    dirtyEggs: 480,
-    rejectedEggs: 2160,
-    settableEggs: 70240,
-    avgEggWeightG: 62.4,
-    storageRoom: "Cool Room A",
-    status: "Hold",
-    notes: "Older egg age. Hold until setter priority is confirmed.",
-  },
-];
+const rows = eggReceivingRows;
 
 const totalEggs = rows.reduce((sum, row) => sum + row.totalEggs, 0);
 const totalSettable = rows.reduce((sum, row) => sum + row.settableEggs, 0);
@@ -80,7 +14,7 @@ const totalFloorEggs = rows.reduce((sum, row) => sum + row.floorEggs, 0);
 const rejectPct = totalEggs > 0 ? (totalRejected / totalEggs) * 100 : 0;
 const floorPct = totalEggs > 0 ? (totalFloorEggs / totalEggs) * 100 : 0;
 
-function statusClass(status: EggReceiptRow["status"]) {
+function statusClass(status: string) {
   if (status === "Ready") return "status ready";
   if (status === "Review") return "status review";
   return "status hold";
