@@ -1,26 +1,91 @@
-from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, func
+from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, Float, UniqueConstraint, func
 from sqlalchemy.orm import relationship
 from .db import Base
 
+class Company(Base):
+    __tablename__ = "companies"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_name = Column(String(255), nullable=False, unique=True, index=True)
+    trading_name = Column(String(255), nullable=True)
+    active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+    users = relationship("AppUser", back_populates="company")
+    broiler_farms = relationship("BroilerFarm", back_populates="company")
+
+
+class AppUser(Base):
+    __tablename__ = "app_users"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=True, index=True)
+
+    full_name = Column(String(255), nullable=False)
+    email = Column(String(255), nullable=False, unique=True, index=True)
+
+    is_global_admin = Column(Boolean, nullable=False, default=False)
+    is_company_admin = Column(Boolean, nullable=False, default=False)
+
+    active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+    company = relationship("Company", back_populates="users")
+    farm_access = relationship(
+        "UserFarmAccess",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+
+class UserFarmAccess(Base):
+    __tablename__ = "user_farm_access"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    user_id = Column(Integer, ForeignKey("app_users.id"), nullable=False, index=True)
+    farm_id = Column(Integer, ForeignKey("broiler_farms.id"), nullable=False, index=True)
+
+    created_at = Column(DateTime, server_default=func.now())
+
+    user = relationship("AppUser", back_populates="farm_access")
+    farm = relationship("BroilerFarm", back_populates="user_access")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "farm_id", name="uq_user_farm_access"),
+    )
 
 class BroilerFarm(Base):
     __tablename__ = "broiler_farms"
 
     id = Column(Integer, primary_key=True, index=True)
-    company_id = Column(Integer, nullable=False, index=True)
+
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
+
     farm_name = Column(Text, nullable=False)
     farm_code = Column(Text)
     active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime, server_default=func.now())
 
+    company = relationship("Company", back_populates="broiler_farms")
     sheds = relationship("BroilerShed", back_populates="farm")
+    user_access = relationship(
+        "UserFarmAccess",
+        back_populates="farm",
+        cascade="all, delete-orphan",
+    )
+
+    __table_args__ = (
+        UniqueConstraint("company_id", "farm_name", name="uq_company_broiler_farm_name"),
+    )
 
 
 class BroilerShed(Base):
     __tablename__ = "broiler_sheds"
 
     id = Column(Integer, primary_key=True, index=True)
-    company_id = Column(Integer, nullable=False, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
     farm_id = Column(Integer, ForeignKey("broiler_farms.id"), nullable=False)
     shed_name = Column(Text, nullable=False)
     shed_code = Column(Text)
@@ -39,12 +104,38 @@ from sqlalchemy.orm import relationship
 
 # Existing imports above should already include Base
 
+class Flock(Base):
+    __tablename__ = "flocks"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
+    farm_id = Column(Integer, ForeignKey("broiler_farms.id"), nullable=False, index=True)
+    shed_id = Column(Integer, ForeignKey("broiler_sheds.id"), nullable=True, index=True)
+
+    flock_code = Column(String(120), nullable=False)
+    module = Column(String(50), nullable=False, default="broilers")
+
+    status = Column(String(40), nullable=False, default="Open")
+
+    placement_date = Column(Date, nullable=True)
+    close_date = Column(Date, nullable=True)
+
+    created_at = Column(DateTime, server_default=func.now())
+
+    farm = relationship("BroilerFarm")
+    shed = relationship("BroilerShed")
+
+    __table_args__ = (
+        UniqueConstraint("company_id", "flock_code", name="uq_company_flock_code"),
+    )
 
 class BroilerProcessing(Base):
     __tablename__ = "broiler_processing"
 
     id = Column(Integer, primary_key=True, index=True)
 
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
     broiler_cycle_id = Column(Integer, nullable=False)
 
     processing_date = Column(Date, nullable=True)
@@ -78,7 +169,7 @@ class BroilerPlacementPlan(Base):
     __tablename__ = "broiler_placement_plans"
 
     id = Column(Integer, primary_key=True, index=True)
-    company_id = Column(Integer, nullable=False, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
     farm_id = Column(Integer, ForeignKey("broiler_farms.id"), nullable=False)
     shed_id = Column(Integer, ForeignKey("broiler_sheds.id"), nullable=False)
 
@@ -103,7 +194,7 @@ class BroilerDailyPerformance(Base):
 
     id = Column(Integer, primary_key=True, index=True)
 
-    company_id = Column(Integer, nullable=False, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
     placement_plan_id = Column(Integer, ForeignKey("broiler_placement_plans.id"), nullable=False)
 
     entry_date = Column(Date, nullable=False)
