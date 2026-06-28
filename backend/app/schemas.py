@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict
 
 
 class BroilerProcessingBase(BaseModel):
+    company_id: int = 1
     broiler_cycle_id: int
 
     processing_date: Optional[date] = None
@@ -72,8 +73,7 @@ class BroilerProcessingUpdate(BaseModel):
 class BroilerProcessingOut(BroilerProcessingBase):
     id: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 def _to_float(value) -> Optional[float]:
     if value is None:
@@ -82,6 +82,112 @@ def _to_float(value) -> Optional[float]:
         return float(value)
     return value
 
+# ---------------------------------------------------------------------
+# Company / User / Farm Access Foundation
+# ---------------------------------------------------------------------
+
+
+class CompanyCreate(BaseModel):
+    company_name: str
+    trading_name: Optional[str] = None
+    active: bool = True
+
+
+class CompanyPatch(BaseModel):
+    company_name: Optional[str] = None
+    trading_name: Optional[str] = None
+    active: Optional[bool] = None
+
+
+class CompanyOut(BaseModel):
+    id: int
+    company_name: str
+    trading_name: Optional[str] = None
+    active: bool
+    created_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AppUserCreate(BaseModel):
+    company_id: Optional[int] = None
+    full_name: str
+    email: str
+    is_global_admin: bool = False
+    is_company_admin: bool = False
+    active: bool = True
+
+
+class AppUserPatch(BaseModel):
+    company_id: Optional[int] = None
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    is_global_admin: Optional[bool] = None
+    is_company_admin: Optional[bool] = None
+    active: Optional[bool] = None
+
+
+class AppUserOut(BaseModel):
+    id: int
+    company_id: Optional[int] = None
+    full_name: str
+    email: str
+    is_global_admin: bool
+    is_company_admin: bool
+    active: bool
+    created_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UserFarmAccessCreate(BaseModel):
+    user_id: int
+    farm_id: int
+
+
+class UserFarmAccessOut(BaseModel):
+    id: int
+    user_id: int
+    farm_id: int
+    created_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class FlockCreate(BaseModel):
+    company_id: int = 1
+    farm_id: int
+    shed_id: Optional[int] = None
+    flock_code: str
+    module: str = "broilers"
+    placement_date: Optional[date] = None
+
+
+class FlockPatch(BaseModel):
+    flock_code: Optional[str] = None
+    module: Optional[str] = None
+    status: Optional[str] = None
+    placement_date: Optional[date] = None
+    close_date: Optional[date] = None
+
+
+class FlockClose(BaseModel):
+    close_date: date
+
+
+class FlockOut(BaseModel):
+    id: int
+    company_id: int
+    farm_id: int
+    shed_id: Optional[int] = None
+    flock_code: str
+    module: str
+    status: str
+    placement_date: Optional[date] = None
+    close_date: Optional[date] = None
+    created_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
 
 class BroilerDemandPlanOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -207,10 +313,6 @@ class BroilerShedOut(BaseModel):
     class Config:
         from_attributes = True
         
-from datetime import date, datetime
-from typing import Optional
-from pydantic import BaseModel
-
 
 class BroilerDailyPerformanceCreate(BaseModel):
     company_id: int = 1
@@ -318,12 +420,6 @@ class BroilerDailyPerformanceOut(BaseModel):
 
     class Config:
         from_attributes = True
-
-       
-from datetime import datetime
-from typing import Optional
-from pydantic import BaseModel
-
 
 class AppNoteBase(BaseModel):
     module: str = "broilers"
