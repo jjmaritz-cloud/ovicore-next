@@ -35,9 +35,7 @@ type OviCoreSidebarProps = {
   defaultCollapsed?: boolean;
 };
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL ??
-  "http://localhost:8001";
+const API_BASE = "";
 
 function getUserRole(
   user: CurrentUser | null
@@ -147,13 +145,10 @@ export default function OviCoreSidebar({
 
   const loadCurrentUser = useCallback(async () => {
     try {
-      const response = await fetch(
-        `${API_BASE}/api/auth/me`,
-        {
-          credentials: "include",
-          cache: "no-store",
-        }
-      );
+			const response = await fetch("/api/auth/me", {
+				credentials: "include",
+				cache: "no-store",
+			});
 
       if (response.status === 401) {
         router.replace("/login");
@@ -231,10 +226,10 @@ export default function OviCoreSidebar({
     setLoggingOut(true);
 
     try {
-      await fetch(`${API_BASE}/api/auth/logout`, {
-        method: "POST",
-        credentials: "include",
-      });
+			await fetch("/api/auth/logout", {
+				method: "POST",
+				credentials: "include",
+			});
     } catch (error) {
       console.error("Logout failed.", error);
     } finally {
