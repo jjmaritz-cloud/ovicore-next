@@ -21,3 +21,30 @@ backend/.env
 frontend/.env.local
 
 Backup/
+
+# OviCore local backups
+_BACKUP_/
+*_backup_log.txt
+
+# Python generated files
+__pycache__/
+*.py[cod]
+
+# Python environments
+.venv/
+venv/
+
+# Next.js generated files
+frontend/.next/
+frontend/node_modules/
+node_modules/
+
+# Environment and secret files
+.env
+.env.*
+!.env.example
+
+# Operating system and editor files
+.DS_Store
+Thumbs.db
+.vscode/
