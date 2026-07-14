@@ -533,10 +533,11 @@ export default function AdminUsersPage() {
 								onClick={(event) => {
 									event.stopPropagation();
 
+									params.api.deselectAll();
+
 									params.api.setNodesSelected({
 										nodes: [params.node],
 										newValue: true,
-										clearSelection: true,
 									});
 
 									const rowIndex = params.node.rowIndex;
