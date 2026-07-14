@@ -135,11 +135,19 @@ def build_daily_performance_response(
 @app.on_event("startup")
 def startup():
     Base.metadata.create_all(bind=engine)
-    db = SessionLocal()
-    try:
-        seed_demo_data(db)
-    finally:
-        db.close()
+
+    should_seed_demo_data = (
+        os.getenv("SEED_DEMO_DATA", "false").strip().lower()
+        in {"1", "true", "yes", "on"}
+    )
+
+    if should_seed_demo_data:
+        db = SessionLocal()
+
+        try:
+            seed_demo_data(db)
+        finally:
+            db.close()
 
 
 @app.get("/api/health")
