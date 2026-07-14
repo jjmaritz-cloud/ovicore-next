@@ -21,8 +21,9 @@ def main() -> None:
             "ADMIN_PASSWORD must contain at least 8 characters."
         )
 
-    # Create all database tables before attempting to find/create the user.
+    print("Creating database tables if required...")
     Base.metadata.create_all(bind=engine)
+    print("Database tables are ready.")
 
     db = SessionLocal()
 
