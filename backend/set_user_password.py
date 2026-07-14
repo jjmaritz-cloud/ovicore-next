@@ -1,7 +1,7 @@
 import os
 
 from app import models
-from app.db import SessionLocal
+from app.db import Base, SessionLocal, engine
 from app.security import hash_password
 
 
@@ -20,6 +20,9 @@ def main() -> None:
         raise RuntimeError(
             "ADMIN_PASSWORD must contain at least 8 characters."
         )
+
+    # Create all database tables before attempting to find/create the user.
+    Base.metadata.create_all(bind=engine)
 
     db = SessionLocal()
 
