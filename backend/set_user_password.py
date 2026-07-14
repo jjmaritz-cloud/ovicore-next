@@ -17,7 +17,9 @@ def main() -> None:
         raise RuntimeError("ADMIN_PASSWORD is not set.")
 
     if len(password) < 8:
-        raise RuntimeError("ADMIN_PASSWORD must contain at least 8 characters.")
+        raise RuntimeError(
+            "ADMIN_PASSWORD must contain at least 8 characters."
+        )
 
     db = SessionLocal()
 
@@ -28,7 +30,7 @@ def main() -> None:
             .first()
         )
 
-        if not user:
+        if user is None:
             user = models.AppUser(
                 full_name=full_name,
                 email=email,
@@ -38,21 +40,26 @@ def main() -> None:
                 is_company_admin=True,
                 must_change_password=False,
             )
+
             db.add(user)
             message = f"Created admin user: {email}"
+
         else:
+            user.full_name = full_name
             user.password_hash = hash_password(password)
             user.active = True
             user.is_global_admin = True
             user.is_company_admin = True
             user.must_change_password = False
+
             message = f"Updated admin user: {email}"
 
         db.commit()
         print(message)
 
-    except Exception:
+    except Exception as error:
         db.rollback()
+        print(f"ERROR: Could not create or update admin user: {error}")
         raise
 
     finally:
