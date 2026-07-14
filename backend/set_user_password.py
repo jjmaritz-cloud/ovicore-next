@@ -1,4 +1,4 @@
-from getpass import getpass
+import os
 
 from app import models
 from app.db import SessionLocal
@@ -6,22 +6,18 @@ from app.security import hash_password
 
 
 def main() -> None:
-    email = input("User email: ").strip().lower()
+    email = os.getenv("ADMIN_EMAIL", "").strip().lower()
+    password = os.getenv("ADMIN_PASSWORD", "").strip()
+    full_name = os.getenv("ADMIN_FULL_NAME", "JJ Maritz").strip()
 
     if not email:
-        print("ERROR: Email is required.")
-        return
+        raise RuntimeError("ADMIN_EMAIL is not set.")
 
-    password = getpass("Temporary password: ")
-    confirm_password = getpass("Confirm password: ")
-
-    if password != confirm_password:
-        print("ERROR: Passwords do not match.")
-        return
+    if not password:
+        raise RuntimeError("ADMIN_PASSWORD is not set.")
 
     if len(password) < 8:
-        print("ERROR: Password must contain at least 8 characters.")
-        return
+        raise RuntimeError("ADMIN_PASSWORD must contain at least 8 characters.")
 
     db = SessionLocal()
 
@@ -33,24 +29,30 @@ def main() -> None:
         )
 
         if not user:
-            print(f"ERROR: No user found for {email}.")
-            return
-
-        user.password_hash = hash_password(password)
-        user.must_change_password = True
-        user.active = True
+            user = models.AppUser(
+                full_name=full_name,
+                email=email,
+                password_hash=hash_password(password),
+                active=True,
+                is_global_admin=True,
+                is_company_admin=True,
+                must_change_password=False,
+            )
+            db.add(user)
+            message = f"Created admin user: {email}"
+        else:
+            user.password_hash = hash_password(password)
+            user.active = True
+            user.is_global_admin = True
+            user.is_company_admin = True
+            user.must_change_password = False
+            message = f"Updated admin user: {email}"
 
         db.commit()
+        print(message)
 
-        print("")
-        print(f"SUCCESS: Temporary password set for {user.full_name}.")
-        print("The user will be required to change it after login.")
-
-    except Exception as error:
+    except Exception:
         db.rollback()
-        print("")
-        print("ERROR: Password could not be updated.")
-        print(error)
         raise
 
     finally:
