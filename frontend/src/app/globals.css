@@ -650,6 +650,332 @@ button {
   }
 }
 
+.input-page-panel {
+  padding: 18px 18px 28px;
+  background:
+    radial-gradient(circle at top left, rgba(217, 245, 233, 0.85), transparent 34%),
+    linear-gradient(180deg, #f4fbf8 0%, #fbfaf5 100%);
+}
+
+.input-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px 18px;
+  border: 1px solid rgba(8, 75, 64, 0.12);
+  border-radius: 16px;
+  background: linear-gradient(100deg, #f8fffc 0%, #e3f7ef 100%);
+  box-shadow: 0 12px 28px rgba(7, 45, 38, 0.08);
+}
+
+.input-page-header h1 {
+  margin: 2px 0 3px;
+  color: #082f2a;
+  font-size: 25px;
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+}
+
+.input-page-header span {
+  color: #49645f;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.input-header-actions,
+.input-save-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.input-header-pill,
+.input-action-pill {
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: #07483f;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 900;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(6, 51, 44, 0.16);
+}
+
+.input-header-pill:hover,
+.input-action-pill:hover {
+  transform: translateY(-1px);
+}
+
+.input-action-pill:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  transform: none;
+  box-shadow: none;
+}
+
+.input-discard-pill {
+  background: #edf3f1;
+  color: #516b65;
+}
+
+.input-save-pill {
+  background: #07483f;
+  color: #ffffff;
+}
+
+.input-control-row {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.input-control-row label {
+  display: grid;
+  gap: 5px;
+  color: #073c35;
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.input-control-row select {
+  min-width: 330px;
+  height: 34px;
+  border: 1px solid rgba(8, 75, 64, 0.18);
+  border-radius: 10px;
+  background: #ffffff;
+  color: #082f2a;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 0 10px;
+  outline: none;
+}
+
+.input-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 9px;
+  margin-top: 10px;
+}
+
+.input-kpi-card {
+  min-height: 74px;
+  border: 1px solid rgba(8, 75, 64, 0.13);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 12px 13px;
+  box-shadow: 0 10px 22px rgba(7, 45, 38, 0.06);
+}
+
+.input-kpi-card span {
+  display: block;
+  color: #55716b;
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.input-kpi-card strong {
+  display: block;
+  margin-top: 4px;
+  color: #073c35;
+  font-size: 20px;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.input-kpi-card p {
+  margin: 6px 0 0;
+  color: #627a75;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.input-table-card {
+  margin-top: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(8, 75, 64, 0.14);
+  border-radius: 15px;
+  background: #ffffff;
+  box-shadow: 0 16px 34px rgba(7, 45, 38, 0.1);
+}
+
+.input-table-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 13px 16px;
+  background: linear-gradient(90deg, #063c35 0%, #08745f 100%);
+  color: #ffffff;
+}
+
+.input-table-titlebar h2 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+.input-table-titlebar span {
+  display: block;
+  margin-top: 3px;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.input-table-titlebar strong {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #e7fff5;
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.input-message-strip {
+  padding: 8px 14px;
+  border-bottom: 1px solid rgba(8, 75, 64, 0.1);
+  background: #eefbf5;
+  color: #075142;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.input-table-scroll {
+  width: 100%;
+  max-height: calc(100vh - 335px);
+  overflow: auto;
+}
+
+.input-data-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  color: #082f2a;
+  font-size: 11px;
+}
+
+.input-data-table th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  border-right: 1px solid rgba(8, 75, 64, 0.12);
+  border-bottom: 1px solid rgba(8, 75, 64, 0.14);
+  background: #eef8f2;
+  color: #063c35;
+  padding: 7px 8px;
+  text-align: center;
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.input-data-table thead tr:first-child th {
+  top: 0;
+  background: #dcefe7;
+}
+
+.input-data-table thead tr:nth-child(2) th {
+  top: 31px;
+}
+
+.input-data-table td {
+  border-right: 1px solid rgba(8, 75, 64, 0.1);
+  border-bottom: 1px solid rgba(8, 75, 64, 0.09);
+  background: #ffffff;
+  padding: 5px 7px;
+  text-align: center;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.input-editable-cell {
+  background: #fff2bf !important;
+  padding: 0 !important;
+}
+
+.input-editable-cell input {
+  width: 100%;
+  min-width: 72px;
+  height: 28px;
+  border: 0;
+  background: #fff2bf;
+  color: #082f2a;
+  font: inherit;
+  font-weight: 850;
+  text-align: center;
+  outline: none;
+}
+
+.input-editable-cell input:focus {
+  background: #ffe68f;
+  box-shadow: inset 0 0 0 2px rgba(8, 75, 64, 0.22);
+}
+
+.input-calculated-cell {
+  background: #fbfdfb !important;
+  color: #0b3d35;
+}
+
+.input-warning-cell {
+  background: #fff1cc !important;
+  color: #a85c00;
+  font-weight: 950;
+}
+
+.input-status-saved {
+  background: #e6f8ed !important;
+  color: #087141;
+  font-weight: 950;
+}
+
+.input-table-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding: 8px 12px;
+  background: #f6fbf8;
+  border-top: 1px solid rgba(8, 75, 64, 0.1);
+}
+
+.input-table-footer span {
+  border-radius: 999px;
+  padding: 5px 9px;
+  background: #e8f6ef;
+  color: #075142;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+@media (max-width: 1200px) {
+  .input-kpi-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .input-control-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .input-control-row select {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
 .grid-scroll-frame {
   width: 100%;
   max-width: 100%;
@@ -3206,44 +3532,6 @@ button {
   }
 }
 
-/* App density scaling
-   Desktop screens stay normal.
-   Laptop screens scale the whole app down slightly.
-*/
-
-@media (max-width: 1650px), (max-height: 880px) {
-  .page-shell {
-    zoom: 0.94;
-    width: 106.4%;
-    min-height: 106.4vh;
-  }
-}
-
-@media (max-width: 1450px), (max-height: 790px) {
-  .page-shell {
-    zoom: 0.9;
-    width: 111.2%;
-    min-height: 111.2vh;
-  }
-}
-
-@media (max-width: 1250px), (max-height: 720px) {
-  .page-shell {
-    zoom: 0.86;
-    width: 116.3%;
-    min-height: 116.3vh;
-  }
-}
-
-/* Do not shrink narrow/mobile layouts too aggressively */
-@media (max-width: 900px) {
-  .page-shell {
-    zoom: 1;
-    width: 100%;
-    min-height: 100vh;
-  }
-}
-
 /* Collapsible broiler sidebar */
 
 .sidebar {
@@ -4524,4 +4812,2551 @@ body.broiler-sidebar-collapsed .main-panel {
   font-size: 13px;
   font-weight: 1000;
   text-decoration: none;
+}
+
+/* =========================================================
+   OviCore Shared Layout System
+   Standard template for all modules/pages
+   ========================================================= */
+
+:root {
+  --ovicore-green-900: #123c2f;
+  --ovicore-green-800: #174c3b;
+  --ovicore-green-700: #1f604b;
+  --ovicore-green-100: #e9f3ef;
+
+  --ovicore-bg: #f4f7f5;
+  --ovicore-card: #ffffff;
+  --ovicore-border: #d7e1dc;
+  --ovicore-border-soft: #e8efeb;
+
+  --ovicore-text: #17211c;
+  --ovicore-muted: #68766f;
+
+  --ovicore-radius: 14px;
+  --ovicore-shadow: 0 12px 30px rgba(18, 60, 47, 0.08);
+}
+
+/* App shell */
+
+.ovicore-shell {
+  min-height: 100vh;
+  background: var(--ovicore-bg);
+  color: var(--ovicore-text);
+  display: flex;
+}
+
+.ovicore-main {
+  flex: 1;
+  min-width: 0;
+  padding: 18px;
+}
+
+.ovicore-page {
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+/* Sidebar */
+
+.ovicore-sidebar {
+  width: 260px;
+  min-height: 100vh;
+  background: linear-gradient(180deg, var(--ovicore-green-900), #0d2d24);
+  color: #ffffff;
+  padding: 14px 12px;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  position: sticky;
+  top: 0;
+}
+
+.ovicore-sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  margin-bottom: 14px;
+}
+
+.ovicore-sidebar-logo {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  object-fit: contain;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 4px;
+}
+
+.ovicore-sidebar-title {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.ovicore-sidebar-subtitle {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.64);
+  margin-top: 2px;
+}
+
+.ovicore-sidebar-section {
+  margin-top: 14px;
+}
+
+.ovicore-sidebar-section-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: rgba(255, 255, 255, 0.5);
+  padding: 8px 10px;
+}
+
+.ovicore-sidebar-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.78);
+  text-decoration: none;
+  padding: 9px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 650;
+  margin-bottom: 4px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.ovicore-sidebar-link:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+
+.ovicore-sidebar-link-active {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+
+/* Page header */
+
+.ovicore-page-header {
+  background: var(--ovicore-card);
+  border: 1px solid var(--ovicore-border-soft);
+  border-radius: var(--ovicore-radius);
+  box-shadow: var(--ovicore-shadow);
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.ovicore-page-header-main {
+  min-width: 0;
+}
+
+.ovicore-page-title {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.15;
+  font-weight: 850;
+  color: var(--ovicore-green-900);
+}
+
+.ovicore-page-subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--ovicore-muted);
+}
+
+.ovicore-page-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Action bar */
+
+.ovicore-action-bar {
+  background: var(--ovicore-card);
+  border: 1px solid var(--ovicore-border-soft);
+  border-radius: var(--ovicore-radius);
+  box-shadow: var(--ovicore-shadow);
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ovicore-action-left,
+.ovicore-action-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Compact KPI strip */
+
+.ovicore-kpi-strip {
+  background: var(--ovicore-card);
+  border: 1px solid var(--ovicore-border-soft);
+  border-radius: var(--ovicore-radius);
+  box-shadow: var(--ovicore-shadow);
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  overflow-x: auto;
+}
+
+.ovicore-kpi-mini {
+  min-width: 140px;
+  border: 1px solid var(--ovicore-border-soft);
+  border-radius: 12px;
+  padding: 8px 10px;
+  background: #fbfdfc;
+}
+
+.ovicore-kpi-mini-label {
+  font-size: 11px;
+  color: var(--ovicore-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 750;
+}
+
+.ovicore-kpi-mini-value {
+  margin-top: 4px;
+  font-size: 18px;
+  font-weight: 850;
+  color: var(--ovicore-green-900);
+}
+
+/* Cards */
+
+.ovicore-card {
+  background: var(--ovicore-card);
+  border: 1px solid var(--ovicore-border-soft);
+  border-radius: var(--ovicore-radius);
+  box-shadow: var(--ovicore-shadow);
+}
+
+.ovicore-card-header {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--ovicore-border-soft);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ovicore-card-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 850;
+  color: var(--ovicore-green-900);
+}
+
+.ovicore-card-subtitle {
+  margin: 3px 0 0;
+  font-size: 12px;
+  color: var(--ovicore-muted);
+}
+
+.ovicore-card-body {
+  padding: 12px;
+}
+
+/* Table standard */
+
+.ovicore-table-wrap {
+  width: 100%;
+  overflow: auto;
+  border-radius: 12px;
+  border: 1px solid var(--ovicore-border);
+}
+
+.ovicore-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  background: #ffffff;
+}
+
+.ovicore-table thead th {
+  background: var(--ovicore-green-900);
+  color: #ffffff;
+  text-transform: uppercase;
+  letter-spacing: 0.055em;
+  font-size: 11px;
+  font-weight: 850;
+  padding: 9px 10px;
+  border-right: 1px solid rgba(255, 255, 255, 0.14);
+  white-space: nowrap;
+  text-align: left;
+}
+
+.ovicore-table tbody td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--ovicore-border-soft);
+  border-right: 1px solid var(--ovicore-border-soft);
+  vertical-align: middle;
+}
+
+.ovicore-table tbody tr:hover {
+  background: #f8fbfa;
+}
+
+.ovicore-table-number {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.ovicore-table-actions {
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Forms/buttons */
+
+.ovicore-input,
+.ovicore-select,
+.ovicore-textarea {
+  border: 1px solid var(--ovicore-border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 13px;
+  background: #ffffff;
+  color: var(--ovicore-text);
+  outline: none;
+}
+
+.ovicore-input:focus,
+.ovicore-select:focus,
+.ovicore-textarea:focus {
+  border-color: var(--ovicore-green-700);
+  box-shadow: 0 0 0 3px rgba(31, 96, 75, 0.12);
+}
+
+.ovicore-btn {
+  border: 1px solid var(--ovicore-border);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 750;
+  background: #ffffff;
+  color: var(--ovicore-green-900);
+  cursor: pointer;
+}
+
+.ovicore-btn:hover {
+  background: #f4f8f6;
+}
+
+.ovicore-btn-primary {
+  background: var(--ovicore-green-900);
+  color: #ffffff;
+  border-color: var(--ovicore-green-900);
+}
+
+.ovicore-btn-primary:hover {
+  background: var(--ovicore-green-800);
+}
+
+.ovicore-btn-danger {
+  color: #9b1c1c;
+  border-color: #efcaca;
+  background: #fff8f8;
+}
+
+.ovicore-btn-muted {
+  background: #f3f5f4;
+  color: var(--ovicore-muted);
+}
+
+/* Status pills */
+
+.ovicore-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.ovicore-pill-green {
+  background: #e5f5ec;
+  color: #17653e;
+}
+
+.ovicore-pill-grey {
+  background: #eef1ef;
+  color: #5f6d66;
+}
+
+.ovicore-pill-amber {
+  background: #fff2d6;
+  color: #8a5a00;
+}
+
+.ovicore-pill-red {
+  background: #fde7e7;
+  color: #9b1c1c;
+}
+
+/* Responsive */
+
+@media (max-width: 900px) {
+  .ovicore-shell {
+    display: block;
+  }
+
+  .ovicore-sidebar {
+    position: relative;
+    width: 100%;
+    min-height: auto;
+  }
+
+  .ovicore-main {
+    padding: 12px;
+  }
+
+  .ovicore-page-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .ovicore-page-header-actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+}
+
+/* =========================================================
+   OviCore AG Grid Standard
+   Makes AG Grid pages match the OviCore table standard
+   ========================================================= */
+
+.ag-theme-quartz.broiler-grid {
+  width: 100%;
+  height: calc(100vh - 310px);
+  min-height: 420px;
+  border: 1px solid var(--ovicore-border);
+  border-radius: 12px;
+  overflow: hidden;
+
+  --ag-font-family: inherit;
+  --ag-font-size: 12px;
+  --ag-header-height: 38px;
+  --ag-row-height: 34px;
+
+  --ag-background-color: #ffffff;
+  --ag-foreground-color: var(--ovicore-text);
+
+  --ag-header-background-color: var(--ovicore-green-900);
+  --ag-header-foreground-color: #ffffff;
+  --ag-header-column-separator-color: rgba(255, 255, 255, 0.18);
+
+  --ag-border-color: var(--ovicore-border-soft);
+  --ag-row-border-color: var(--ovicore-border-soft);
+
+  --ag-odd-row-background-color: #ffffff;
+  --ag-row-hover-color: #f4f8f6;
+  --ag-selected-row-background-color: #e9f3ef;
+
+  --ag-input-border-color: var(--ovicore-border);
+  --ag-input-focus-border-color: var(--ovicore-green-700);
+}
+
+.ag-theme-quartz.broiler-grid .ag-header-cell-label {
+  justify-content: center;
+}
+
+.ag-theme-quartz.broiler-grid .ag-header-cell-text {
+  text-transform: uppercase;
+  letter-spacing: 0.055em;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.ag-theme-quartz.broiler-grid .ag-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 650;
+}
+
+.ag-theme-quartz.broiler-grid .ag-cell.editable-cell {
+  background: #fff6df;
+}
+
+.ag-theme-quartz.broiler-grid .ag-row-hover .ag-cell.editable-cell {
+  background: #fff0c7;
+}
+
+.ag-theme-quartz.broiler-grid .ag-root-wrapper {
+  border: none;
+}
+
+.ag-theme-quartz.broiler-grid .ag-paging-panel {
+  border-top: 1px solid var(--ovicore-border-soft);
+  font-size: 12px;
+}
+
+/* =========================================================
+   OviCore Admin Command Centre
+   ========================================================= */
+
+.ovicore-admin-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ovicore-admin-card-grid-two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ovicore-admin-card {
+  min-height: 150px;
+  border: 1px solid var(--ovicore-border-soft);
+  border-radius: 14px;
+  padding: 14px;
+  background: #fbfdfc;
+  color: var(--ovicore-text);
+  text-decoration: none;
+  box-shadow: 0 10px 22px rgba(18, 60, 47, 0.06);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.ovicore-admin-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 30px rgba(18, 60, 47, 0.1);
+}
+
+.ovicore-admin-card h3 {
+  margin: 10px 0 0;
+  font-size: 19px;
+  font-weight: 850;
+  color: var(--ovicore-green-900);
+  letter-spacing: -0.03em;
+}
+
+.ovicore-admin-card p {
+  margin: 7px 0 0;
+  font-size: 12px;
+  line-height: 1.42;
+  font-weight: 650;
+  color: var(--ovicore-muted);
+}
+
+.ovicore-admin-card strong {
+  width: fit-content;
+  border-radius: 999px;
+  padding: 6px 9px;
+  background: var(--ovicore-green-900);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.ovicore-admin-card-company {
+  background: #fffdf5;
+}
+
+.ovicore-admin-guidance {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.ovicore-admin-guidance h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 850;
+  color: var(--ovicore-green-900);
+}
+
+.ovicore-admin-guidance p {
+  margin: 6px 0 0;
+  max-width: 900px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ovicore-muted);
+}
+
+@media (max-width: 1100px) {
+  .ovicore-admin-card-grid,
+  .ovicore-admin-card-grid-two {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .ovicore-admin-card-grid,
+  .ovicore-admin-card-grid-two {
+    grid-template-columns: 1fr;
+  }
+
+  .ovicore-admin-guidance {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+/* =========================================================
+   OviCore Demand Planner Template Adjustments
+   ========================================================= */
+
+.demand-planner-grid {
+  height: calc(100vh - 320px);
+  min-height: 460px;
+}
+
+.formula-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--ovicore-border-soft);
+  border-radius: 10px;
+  background: #fbfdfc;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+
+.formula-name {
+  font-weight: 850;
+  color: var(--ovicore-green-900);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 11px;
+}
+
+.formula-text {
+  color: var(--ovicore-muted);
+  font-weight: 650;
+}
+
+.search-box {
+  border: 1px solid var(--ovicore-border);
+  border-radius: 999px;
+  padding: 8px 12px;
+  min-width: 260px;
+  font-size: 12px;
+  outline: none;
+}
+
+.search-box:focus {
+  border-color: var(--ovicore-green-700);
+  box-shadow: 0 0 0 3px rgba(31, 96, 75, 0.12);
+}
+
+.avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: var(--ovicore-green-900);
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.top-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* =========================================================
+   Broiler Daily House Sheet - compact input page override
+   Paste at very bottom of globals.css
+   ========================================================= */
+
+.input-page-panel {
+  padding: 10px 10px 24px !important;
+}
+
+.input-page-header {
+  min-height: 78px !important;
+  padding: 14px 16px !important;
+  border-radius: 14px !important;
+  box-shadow: none !important;
+}
+
+.input-page-header h1 {
+  font-size: 24px !important;
+}
+
+.input-control-row {
+  justify-content: flex-start !important;
+  gap: 8px !important;
+  margin-top: 8px !important;
+}
+
+.input-control-row select {
+  height: 31px !important;
+  min-width: 365px !important;
+  font-size: 11px !important;
+}
+
+.input-save-actions {
+  justify-content: flex-start !important;
+  padding-bottom: 1px !important;
+}
+
+.input-kpi-strip {
+  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+  margin-top: 8px !important;
+}
+
+.input-kpi-card {
+  min-height: 64px !important;
+  padding: 10px 12px !important;
+  border-radius: 11px !important;
+  box-shadow: none !important;
+}
+
+.input-kpi-card strong {
+  font-size: 19px !important;
+}
+
+.input-kpi-card p {
+  font-size: 9px !important;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.input-table-card {
+  margin-top: 8px !important;
+  border-radius: 12px !important;
+  box-shadow: none !important;
+}
+
+.input-table-titlebar {
+  padding: 11px 14px !important;
+}
+
+.input-table-scroll {
+  max-height: 390px !important;
+}
+
+.input-data-table {
+  font-size: 10px !important;
+}
+
+.input-data-table th {
+  padding: 6px 7px !important;
+  font-size: 8px !important;
+}
+
+.input-data-table thead tr:nth-child(2) th {
+  top: 28px !important;
+}
+
+.input-data-table td {
+  height: 28px !important;
+  padding: 4px 7px !important;
+  font-size: 10px !important;
+  line-height: 1.15 !important;
+}
+
+/* Important: your current Broiler page still uses these daily-* classes */
+
+.daily-cycle-selector {
+  display: flex !important;
+  align-items: end !important;
+  justify-content: flex-start !important;
+  gap: 8px !important;
+  margin-top: 8px !important;
+  margin-bottom: 8px !important;
+}
+
+.daily-cycle-selector label {
+  font-size: 9px !important;
+}
+
+.daily-cycle-selector select {
+  height: 31px !important;
+  min-width: 365px !important;
+  padding: 0 9px !important;
+  border-radius: 9px !important;
+  font-size: 11px !important;
+}
+
+.daily-save-actions {
+  justify-content: flex-start !important;
+  gap: 7px !important;
+  padding-bottom: 1px !important;
+}
+
+.daily-action-pill {
+  height: 31px !important;
+  padding: 0 12px !important;
+  font-size: 10px !important;
+  box-shadow: none !important;
+}
+
+.kpi-grid {
+  gap: 8px !important;
+  margin-top: 8px !important;
+  margin-bottom: 8px !important;
+}
+
+.kpi-card {
+  min-height: 64px !important;
+  padding: 10px 12px !important;
+  border-radius: 11px !important;
+  box-shadow: none !important;
+}
+
+.kpi-card strong {
+  font-size: 19px !important;
+}
+
+.kpi-card p {
+  font-size: 9px !important;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.grid-card.daily-performance-card {
+  height: auto !important;
+  min-height: 0 !important;
+  margin-top: 8px !important;
+  border-radius: 12px !important;
+  box-shadow: none !important;
+}
+
+.grid-card.daily-performance-card .grid-card-head {
+  min-height: 43px !important;
+  padding: 10px 14px !important;
+  background: linear-gradient(90deg, #063c35 0%, #08745f 100%) !important;
+}
+
+.grid-card.daily-performance-card .grid-card-head h3 {
+  font-size: 18px !important;
+  line-height: 1 !important;
+}
+
+.grid-card.daily-performance-card .grid-card-head p {
+  margin-top: 3px !important;
+  font-size: 10px !important;
+}
+
+.daily-grid-scroll {
+  max-height: 390px !important;
+  flex: none !important;
+  overflow: auto !important;
+}
+
+.daily-performance-table {
+  min-width: 2950px !important;
+  font-size: 10px !important;
+}
+
+.daily-performance-table th,
+.daily-performance-table td {
+  height: 28px !important;
+  min-width: 88px !important;
+  padding: 4px 7px !important;
+  font-size: 10px !important;
+  line-height: 1.15 !important;
+}
+
+.daily-performance-table thead th {
+  font-size: 8px !important;
+  padding: 6px 7px !important;
+  background: #eef8f2 !important;
+  color: #063c35 !important;
+}
+
+.daily-performance-table thead tr:first-child th {
+  background: #dcefe7 !important;
+}
+
+.daily-editable {
+  background: #fff2bf !important;
+  padding: 0 !important;
+}
+
+.daily-editable input {
+  min-width: 70px !important;
+  height: 24px !important;
+  padding: 3px 5px !important;
+  background: #fff2bf !important;
+  font-size: 10px !important;
+}
+
+.daily-calculated {
+  background: #ffffff !important;
+}
+
+.daily-warning {
+  background: #fff1cc !important;
+  color: #a85c00 !important;
+}
+
+/* =========================================================
+   Broiler Daily House Sheet - match Breeder House Card sizing
+   FINAL OVERRIDE - keep at very bottom of globals.css
+   ========================================================= */
+
+/* Page spacing closer to Breeder input page */
+.input-page-panel {
+  padding: 10px 10px 24px !important;
+}
+
+/* Header height closer to Breeder */
+.input-page-header {
+  min-height: 86px !important;
+  padding: 15px 16px !important;
+}
+
+/* Selector row */
+.input-control-row {
+  margin-top: 9px !important;
+  margin-bottom: 8px !important;
+  gap: 8px !important;
+}
+
+.input-control-row select {
+  height: 32px !important;
+  font-size: 11px !important;
+}
+
+/* KPI strip closer to Breeder card height */
+.input-kpi-strip {
+  margin-top: 8px !important;
+  gap: 8px !important;
+}
+
+.input-kpi-card {
+  min-height: 70px !important;
+  padding: 11px 12px !important;
+}
+
+.input-kpi-card strong {
+  font-size: 20px !important;
+}
+
+.input-kpi-card p {
+  font-size: 9px !important;
+}
+
+/* Main table card should NOT be as tall as before */
+.input-table-card {
+  margin-top: 8px !important;
+}
+
+/* Breeder table card is shorter - this is the key fix */
+.input-table-scroll {
+  max-height: 245px !important;
+}
+
+/* Table title bar closer to Breeder */
+.input-table-titlebar {
+  min-height: 48px !important;
+  padding: 11px 14px !important;
+}
+
+.input-table-titlebar h2 {
+  font-size: 18px !important;
+}
+
+.input-table-titlebar span {
+  font-size: 10px !important;
+}
+
+/* Broiler table text/rows slightly bigger than current */
+.input-data-table th {
+  height: 26px !important;
+  padding: 6px 7px !important;
+  font-size: 8.5px !important;
+}
+
+.input-data-table td {
+  height: 31px !important;
+  padding: 5px 7px !important;
+  font-size: 10.5px !important;
+}
+
+.input-editable-cell input {
+  height: 30px !important;
+  font-size: 10.5px !important;
+}
+
+/* Also override older daily-* classes still used by the Broiler page */
+
+.daily-grid-scroll {
+  max-height: 245px !important;
+  flex: none !important;
+  overflow: auto !important;
+}
+
+.daily-performance-table th,
+.daily-performance-table td {
+  height: 31px !important;
+  padding: 5px 7px !important;
+  font-size: 10.5px !important;
+}
+
+.daily-performance-table thead th {
+  height: 26px !important;
+  padding: 6px 7px !important;
+  font-size: 8.5px !important;
+}
+
+.daily-editable input {
+  height: 30px !important;
+  font-size: 10.5px !important;
+}
+
+.input-table-footer {
+  padding: 7px 10px !important;
+}
+
+/* =========================================================
+   OviCore fixed app scale
+   Keep pages at true 100% browser scale
+   ========================================================= */
+
+.page-shell {
+  zoom: 1 !important;
+  width: 100% !important;
+  min-height: 100vh !important;
+}
+
+/* =========================================================
+   Broiler Daily House Sheet - match Breeder table column density
+   FINAL TABLE WIDTH OVERRIDE
+   Keep at very bottom of globals.css
+   ========================================================= */
+
+.daily-performance-table {
+  min-width: 2300px !important;
+  table-layout: fixed !important;
+}
+
+.daily-performance-table th,
+.daily-performance-table td {
+  min-width: 72px !important;
+  height: 31px !important;
+  padding: 5px 6px !important;
+  font-size: 10px !important;
+}
+
+/* Slightly wider columns only where needed */
+.daily-performance-table th:nth-child(1),
+.daily-performance-table td:nth-child(1) {
+  min-width: 82px !important;
+}
+
+.daily-performance-table th:nth-child(8),
+.daily-performance-table td:nth-child(8) {
+  min-width: 86px !important;
+}
+
+.daily-performance-table th:nth-child(22),
+.daily-performance-table td:nth-child(22) {
+  min-width: 120px !important;
+}
+
+.daily-performance-table th:nth-child(28),
+.daily-performance-table td:nth-child(28) {
+  min-width: 120px !important;
+}
+
+/* Header text more like Breeder table */
+.daily-performance-table thead th {
+  height: 27px !important;
+  padding: 6px 6px !important;
+  font-size: 8px !important;
+  letter-spacing: 0.08em !important;
+}
+
+/* Input cells should not force columns too wide */
+.daily-editable input {
+  min-width: 62px !important;
+  height: 29px !important;
+  padding: 4px 5px !important;
+  font-size: 10px !important;
+}
+
+/* Keep the visible card height similar to Breeder */
+.daily-grid-scroll {
+  max-height: 255px !important;
+}
+
+/* =========================================================
+   Broiler Daily House Sheet - final visual alignment
+   Match Breeder Daily House Card spacing
+   ========================================================= */
+
+.input-page-header {
+  min-height: 92px !important;
+}
+
+.input-control-row {
+  margin-top: 10px !important;
+  margin-bottom: 10px !important;
+}
+
+.input-kpi-strip {
+  margin-top: 10px !important;
+  margin-bottom: 10px !important;
+}
+
+.input-kpi-card {
+  min-height: 72px !important;
+}
+
+.input-table-card {
+  margin-top: 10px !important;
+}
+
+/* Slightly tighter Broiler columns */
+.daily-performance-table {
+  min-width: 2150px !important;
+}
+
+.daily-performance-table th,
+.daily-performance-table td {
+  min-width: 68px !important;
+  font-size: 10px !important;
+}
+
+/* Keep important columns readable */
+.daily-performance-table th:nth-child(1),
+.daily-performance-table td:nth-child(1) {
+  min-width: 82px !important;
+}
+
+.daily-performance-table th:nth-child(3),
+.daily-performance-table td:nth-child(3),
+.daily-performance-table th:nth-child(7),
+.daily-performance-table td:nth-child(7) {
+  min-width: 86px !important;
+}
+
+/* Match Breeder card height */
+.daily-grid-scroll {
+  max-height: 260px !important;
+}
+
+/* =========================================================
+   FINAL: Broiler Daily House Sheet exact Breeder visual match
+   Keep this as the last CSS block in globals.css
+   ========================================================= */
+
+/* Match page padding and header rhythm */
+.input-page-panel {
+  padding: 12px 12px 24px !important;
+}
+
+.input-page-header {
+  min-height: 94px !important;
+  padding: 16px 17px !important;
+  border-radius: 15px !important;
+}
+
+.input-page-header h1 {
+  font-size: 25px !important;
+}
+
+.input-page-header span {
+  font-size: 11px !important;
+}
+
+/* Selector row same spacing as Breeder */
+.input-control-row {
+  margin-top: 10px !important;
+  margin-bottom: 10px !important;
+  gap: 9px !important;
+}
+
+.input-control-row select {
+  height: 32px !important;
+  min-width: 320px !important;
+}
+
+/* KPI cards same feel as Breeder */
+.input-kpi-strip {
+  gap: 8px !important;
+  margin-top: 0 !important;
+  margin-bottom: 10px !important;
+}
+
+.input-kpi-card {
+  min-height: 76px !important;
+  padding: 12px 13px !important;
+  border-radius: 12px !important;
+}
+
+.input-kpi-card strong {
+  font-size: 21px !important;
+}
+
+.input-kpi-card p {
+  font-size: 9px !important;
+  line-height: 1.25 !important;
+}
+
+/* Table card */
+.input-table-card {
+  margin-top: 8px !important;
+  border-radius: 13px !important;
+}
+
+/* Title bar height like Breeder */
+.input-table-titlebar {
+  min-height: 55px !important;
+  padding: 12px 15px !important;
+}
+
+.input-table-titlebar h2 {
+  font-size: 19px !important;
+}
+
+.input-table-titlebar span {
+  font-size: 10px !important;
+}
+
+/* Make Broiler table column density closer to Breeder */
+.daily-performance-table {
+  min-width: 1850px !important;
+  table-layout: fixed !important;
+}
+
+.daily-performance-table th,
+.daily-performance-table td {
+  min-width: 58px !important;
+  height: 33px !important;
+  padding: 5px 6px !important;
+  font-size: 10px !important;
+  line-height: 1.15 !important;
+}
+
+/* Date and key numeric columns */
+.daily-performance-table th:nth-child(1),
+.daily-performance-table td:nth-child(1) {
+  min-width: 78px !important;
+}
+
+.daily-performance-table th:nth-child(3),
+.daily-performance-table td:nth-child(3),
+.daily-performance-table th:nth-child(7),
+.daily-performance-table td:nth-child(7) {
+  min-width: 82px !important;
+}
+
+/* Notes / AI review can be wider if visible */
+.daily-performance-table th:nth-child(22),
+.daily-performance-table td:nth-child(22),
+.daily-performance-table th:nth-child(28),
+.daily-performance-table td:nth-child(28) {
+  min-width: 105px !important;
+}
+
+/* Header rows */
+.daily-performance-table thead th {
+  height: 28px !important;
+  padding: 6px 6px !important;
+  font-size: 8px !important;
+  letter-spacing: 0.08em !important;
+}
+
+/* Inputs must not stretch the columns */
+.daily-editable input,
+.input-editable-cell input {
+  min-width: 52px !important;
+  height: 31px !important;
+  padding: 4px 5px !important;
+  font-size: 10px !important;
+}
+
+/* Match Breeder table visible height */
+.daily-grid-scroll,
+.input-table-scroll {
+  max-height: 270px !important;
+}
+
+/* Footer pills */
+.input-table-footer {
+  padding: 8px 11px !important;
+}
+
+/* =========================================================
+   FINAL: Broiler Daily House Sheet - size up slightly
+   Match Breeder Daily House Card
+   KEEP THIS VERY LAST
+   ========================================================= */
+
+/* Give Broiler the same visual weight as Breeder */
+.input-page-header {
+  min-height: 98px !important;
+  padding: 17px 18px !important;
+}
+
+.input-page-header h1 {
+  font-size: 27px !important;
+}
+
+.input-page-header span {
+  font-size: 12px !important;
+}
+
+/* Selector row slightly bigger */
+.input-control-row {
+  margin-top: 11px !important;
+  margin-bottom: 11px !important;
+}
+
+.input-control-row label {
+  font-size: 9.5px !important;
+}
+
+.input-control-row select {
+  height: 34px !important;
+  min-width: 340px !important;
+  font-size: 11.5px !important;
+}
+
+/* KPI cards closer to Breeder size */
+.input-kpi-card {
+  min-height: 82px !important;
+  padding: 13px 14px !important;
+}
+
+.input-kpi-card span {
+  font-size: 9px !important;
+}
+
+.input-kpi-card strong {
+  font-size: 22px !important;
+}
+
+.input-kpi-card p {
+  font-size: 9.5px !important;
+}
+
+/* Table title bar slightly taller */
+.input-table-titlebar {
+  min-height: 59px !important;
+  padding: 13px 16px !important;
+}
+
+.input-table-titlebar h2 {
+  font-size: 20px !important;
+}
+
+.input-table-titlebar span {
+  font-size: 10.5px !important;
+}
+
+/* Broiler table was too compressed - size it back up */
+.daily-performance-table {
+  min-width: 2050px !important;
+  table-layout: fixed !important;
+}
+
+.daily-performance-table th,
+.daily-performance-table td {
+  min-width: 64px !important;
+  height: 35px !important;
+  padding: 6px 7px !important;
+  font-size: 10.8px !important;
+  line-height: 1.2 !important;
+}
+
+/* Date and key columns */
+.daily-performance-table th:nth-child(1),
+.daily-performance-table td:nth-child(1) {
+  min-width: 84px !important;
+}
+
+.daily-performance-table th:nth-child(3),
+.daily-performance-table td:nth-child(3),
+.daily-performance-table th:nth-child(7),
+.daily-performance-table td:nth-child(7) {
+  min-width: 88px !important;
+}
+
+/* Header rows closer to Breeder */
+.daily-performance-table thead th {
+  height: 30px !important;
+  padding: 7px 7px !important;
+  font-size: 8.5px !important;
+}
+
+/* Editable cells same feel as Breeder yellow cells */
+.daily-editable input,
+.input-editable-cell input {
+  min-width: 58px !important;
+  height: 33px !important;
+  padding: 5px 6px !important;
+  font-size: 10.8px !important;
+}
+
+/* Visible table height like Breeder */
+.daily-grid-scroll,
+.input-table-scroll {
+  max-height: 290px !important;
+}
+
+/* =========================================================
+   OviCore Master House Sheet Template
+   Used by Broilers, Breeders, future Layers
+   ========================================================= */
+
+.house-sheet-panel {
+  min-height: 100vh;
+  padding: 12px 12px 24px;
+  background:
+    radial-gradient(circle at top left, rgba(217, 245, 233, 0.7), transparent 32%),
+    linear-gradient(180deg, #f4fbf8 0%, #fbfaf5 100%);
+}
+
+.house-sheet-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 94px;
+  padding: 16px 17px;
+  border: 1px solid rgba(8, 75, 64, 0.14);
+  border-radius: 15px;
+  background: linear-gradient(100deg, #fbfffd 0%, #e1f6ee 100%);
+}
+
+.house-sheet-eyebrow {
+  margin: 0;
+  color: #16775c;
+  font-size: 10px;
+  font-weight: 1000;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+.house-sheet-header h1 {
+  margin: 3px 0 5px;
+  color: #082f2a;
+  font-size: 25px;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.house-sheet-header span {
+  color: #375a54;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.house-sheet-header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding-top: 4px;
+}
+
+.house-sheet-header-actions a {
+  border-radius: 999px;
+  background: #063c35;
+  color: #ffffff;
+  padding: 8px 13px;
+  font-size: 10px;
+  font-weight: 950;
+  text-decoration: none;
+}
+
+.house-sheet-control-row {
+  display: flex;
+  align-items: end;
+  justify-content: flex-start;
+  gap: 9px;
+  margin-top: 10px;
+  margin-bottom: 10px;
+}
+
+.house-sheet-control-row label {
+  display: grid;
+  gap: 4px;
+  color: #073c35;
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.house-sheet-control-row select {
+  min-width: 320px;
+  height: 32px;
+  border: 1px solid rgba(8, 75, 64, 0.18);
+  border-radius: 9px;
+  background: #ffffff;
+  color: #082f2a;
+  font-size: 11px;
+  font-weight: 850;
+  padding: 0 9px;
+  outline: none;
+}
+
+.house-sheet-save-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-bottom: 1px;
+}
+
+.house-sheet-save-actions button {
+  height: 32px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 12px;
+  font-size: 10px;
+  font-weight: 950;
+}
+
+.house-sheet-save-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.house-sheet-discard {
+  background: #edf3f1;
+  color: #647872;
+}
+
+.house-sheet-save {
+  background: #063c35;
+  color: #ffffff;
+}
+
+.house-sheet-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.house-sheet-kpi {
+  min-height: 76px;
+  border: 1px solid rgba(8, 75, 64, 0.13);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.96);
+  padding: 12px 13px;
+}
+
+.house-sheet-kpi span {
+  display: block;
+  color: #55716b;
+  font-size: 8.5px;
+  font-weight: 950;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.house-sheet-kpi strong {
+  display: block;
+  margin-top: 5px;
+  color: #073c35;
+  font-size: 21px;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.house-sheet-kpi p {
+  margin: 6px 0 0;
+  color: #627a75;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.house-sheet-kpi-good strong {
+  color: #087141;
+}
+
+.house-sheet-kpi-warning strong {
+  color: #a85c00;
+}
+
+.house-sheet-kpi-bad strong {
+  color: #b42318;
+}
+
+.house-sheet-table-card {
+  margin-top: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(8, 75, 64, 0.14);
+  border-radius: 13px;
+  background: #ffffff;
+}
+
+.house-sheet-table-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 55px;
+  padding: 12px 15px;
+  background: linear-gradient(90deg, #063c35 0%, #08745f 100%);
+  color: #ffffff;
+}
+
+.house-sheet-table-titlebar h2 {
+  margin: 0;
+  font-size: 19px;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.house-sheet-table-titlebar span {
+  display: block;
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.house-sheet-table-titlebar strong {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.13);
+  color: #e7fff5;
+  font-size: 10px;
+  font-weight: 950;
+}
+
+.house-sheet-message {
+  padding: 7px 12px;
+  border-bottom: 1px solid rgba(8, 75, 64, 0.1);
+  background: #eefbf5;
+  color: #075142;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.house-sheet-table-scroll {
+  width: 100%;
+  max-height: 290px;
+  overflow: auto;
+}
+
+.house-sheet-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  color: #082f2a;
+  font-size: 10px;
+}
+
+.house-sheet-table th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  height: 28px;
+  border-right: 1px solid rgba(8, 75, 64, 0.12);
+  border-bottom: 1px solid rgba(8, 75, 64, 0.14);
+  background: #eef8f2;
+  color: #063c35;
+  padding: 6px 6px;
+  text-align: center;
+  font-size: 8px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.house-sheet-table thead tr:first-child th {
+  top: 0;
+  background: #dcefe7;
+}
+
+.house-sheet-table thead tr:nth-child(2) th {
+  top: 28px;
+}
+
+.house-sheet-table td {
+  height: 33px;
+  border-right: 1px solid rgba(8, 75, 64, 0.1);
+  border-bottom: 1px solid rgba(8, 75, 64, 0.09);
+  background: #ffffff;
+  padding: 5px 6px;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.house-sheet-editable {
+  background: #fff2bf !important;
+  padding: 0 !important;
+}
+
+.house-sheet-editable input {
+  width: 100%;
+  min-width: 58px;
+  height: 33px;
+  border: 0;
+  background: #fff2bf;
+  color: #082f2a;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 850;
+  text-align: center;
+  outline: none;
+}
+
+.house-sheet-editable input:focus {
+  background: #ffe68f;
+  box-shadow: inset 0 0 0 2px rgba(8, 75, 64, 0.22);
+}
+
+.house-sheet-calculated {
+  background: #ffffff !important;
+  color: #0b3d35;
+}
+
+.house-sheet-warning {
+  background: #fff1cc !important;
+  color: #a85c00;
+  font-weight: 950;
+}
+
+.house-sheet-good {
+  background: #e6f8ed !important;
+  color: #087141;
+  font-weight: 950;
+}
+
+.house-sheet-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 11px;
+  background: #f6fbf8;
+  border-top: 1px solid rgba(8, 75, 64, 0.1);
+}
+
+.house-sheet-footer span {
+  border-radius: 999px;
+  padding: 5px 9px;
+  background: #e8f6ef;
+  color: #075142;
+  font-size: 9px;
+  font-weight: 900;
+}
+
+@media (max-width: 1200px) {
+  .house-sheet-kpi-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .house-sheet-control-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .house-sheet-control-row select {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+/* House Sheet status/comment helpers */
+
+.house-sheet-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 950;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+
+.house-sheet-status-saved {
+  background: #e4f6ec;
+  color: #137746;
+}
+
+.house-sheet-status-review,
+.house-sheet-status-warning {
+  background: #fff3d8;
+  color: #8a5a00;
+}
+
+.house-sheet-comment-cell {
+  min-width: 260px;
+  text-align: left !important;
+  white-space: normal !important;
+}
+
+
+/* =========================================================
+   OviCore House Sheet + Sidebar Clean Final Rules
+   Use this single block only. No other House Sheet sidebar
+   overrides should be below this section.
+   ========================================================= */
+
+/* House Sheet pages should not inherit normal main-panel padding */
+.main-panel.house-sheet-main {
+  padding: 0 !important;
+  min-height: 100vh !important;
+}
+
+/* Collapsed sidebar: make the real sidebar a 56px strip.
+   This avoids the translated-sidebar + fake grey strip problem. */
+body.broiler-sidebar-collapsed:has(.house-sheet-panel) .sidebar.sidebar-hidden {
+  transform: none !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  width: 56px !important;
+  min-width: 56px !important;
+  max-width: 56px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  box-shadow: none !important;
+  background: linear-gradient(180deg, #061a16 0%, #0b3129 68%, #102b27 100%) !important;
+}
+
+/* Remove the old fake collapsed strip on House Sheet pages */
+body.broiler-sidebar-collapsed:has(.house-sheet-panel) .sidebar.sidebar-hidden::after,
+body.broiler-sidebar-collapsed:has(.house-sheet-panel) .sidebar-hidden::after {
+  display: none !important;
+  content: none !important;
+  box-shadow: none !important;
+}
+
+/* Hide only the menu/logo content while collapsed — not the hamburger button */
+body.broiler-sidebar-collapsed:has(.house-sheet-panel) .sidebar.sidebar-hidden .brand-row,
+body.broiler-sidebar-collapsed:has(.house-sheet-panel) .sidebar.sidebar-hidden .sidebar-brand-premium,
+body.broiler-sidebar-collapsed:has(.house-sheet-panel) .sidebar.sidebar-hidden .sidebar-nav,
+body.broiler-sidebar-collapsed:has(.house-sheet-panel) .sidebar.sidebar-hidden .sidebar-note {
+  display: none !important;
+}
+
+/* Collapsed hamburger must stay visible */
+body.broiler-sidebar-collapsed:has(.house-sheet-panel) .sidebar-toggle.collapsed {
+  display: grid !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  position: fixed !important;
+  left: 11px !important;
+  top: 18px !important;
+  z-index: 9999 !important;
+  width: 34px !important;
+  height: 34px !important;
+  border-radius: 999px !important;
+  background: #0f513f !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.22) !important;
+  box-shadow: none !important;
+  place-items: center !important;
+}
+
+body.broiler-sidebar-collapsed:has(.house-sheet-panel) .sidebar-toggle.collapsed svg,
+body.broiler-sidebar-collapsed:has(.house-sheet-panel) .sidebar-toggle.collapsed span,
+body.broiler-sidebar-collapsed:has(.house-sheet-panel) .sidebar-toggle.collapsed i {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  color: #ffffff !important;
+}
+
+/* Page starts immediately after the real 56px collapsed sidebar */
+body.broiler-sidebar-collapsed:has(.house-sheet-panel) .main-panel.house-sheet-main {
+  margin-left: 56px !important;
+  padding: 0 !important;
+  background:
+    radial-gradient(circle at top left, rgba(217, 245, 233, 0.7), transparent 32%),
+    linear-gradient(180deg, #f4fbf8 0%, #fbfaf5 100%) !important;
+}
+
+/* Sidebar open state */
+body:not(.broiler-sidebar-collapsed):has(.house-sheet-panel) .main-panel.house-sheet-main {
+  margin-left: 260px !important;
+  padding: 0 !important;
+}
+
+body:not(.broiler-sidebar-collapsed):has(.house-sheet-panel) .sidebar-toggle:not(.collapsed) {
+  display: grid !important;
+  left: 248px !important;
+  z-index: 9999 !important;
+}
+
+body:not(.broiler-sidebar-collapsed):has(.house-sheet-panel) .sidebar-toggle.collapsed {
+  display: none !important;
+}
+
+/* House Sheet template spacing */
+.house-sheet-main .house-sheet-panel,
+body:has(.house-sheet-panel) .house-sheet-panel {
+  min-height: 100vh !important;
+  margin: 0 !important;
+  padding: 12px 12px 24px !important;
+  background:
+    radial-gradient(circle at top left, rgba(217, 245, 233, 0.7), transparent 32%),
+    linear-gradient(180deg, #f4fbf8 0%, #fbfaf5 100%) !important;
+}
+
+body:has(.house-sheet-panel) .sidebar {
+  box-shadow: none !important;
+}
+
+/* Breeder table should keep the same dense house-sheet scale */
+.breeder-house-sheet-table {
+  width: max-content !important;
+  min-width: 2600px !important;
+  table-layout: fixed !important;
+}
+
+.breeder-house-sheet-table th,
+.breeder-house-sheet-table td {
+  min-width: 82px !important;
+  height: 33px !important;
+  padding: 5px 6px !important;
+  font-size: 10px !important;
+  line-height: 1.15 !important;
+}
+
+.breeder-house-sheet-table th:nth-child(1),
+.breeder-house-sheet-table td:nth-child(1) {
+  min-width: 86px !important;
+}
+
+.breeder-house-sheet-table th:nth-child(2),
+.breeder-house-sheet-table td:nth-child(2) {
+  min-width: 70px !important;
+}
+
+.breeder-house-sheet-table th:nth-child(3),
+.breeder-house-sheet-table td:nth-child(3),
+.breeder-house-sheet-table th:nth-child(4),
+.breeder-house-sheet-table td:nth-child(4),
+.breeder-house-sheet-table th:nth-child(7),
+.breeder-house-sheet-table td:nth-child(7),
+.breeder-house-sheet-table th:nth-child(11),
+.breeder-house-sheet-table td:nth-child(11) {
+  min-width: 96px !important;
+}
+
+.breeder-house-sheet-table th:nth-child(22),
+.breeder-house-sheet-table td:nth-child(22) {
+  min-width: 120px !important;
+}
+
+.breeder-house-sheet-table th:nth-child(23),
+.breeder-house-sheet-table td:nth-child(23),
+.house-sheet-comment-cell {
+  min-width: 300px !important;
+}
+
+.house-sheet-table-scroll {
+  max-height: 290px !important;
+}
+
+/* =========================================================
+   FINAL FIX: remove light strip beside collapsed sidebar
+   Make collapsed sidebar fill the full 56px area
+   ========================================================= */
+
+body.broiler-sidebar-collapsed .sidebar.sidebar-hidden {
+  transform: none !important;
+  left: 0 !important;
+  width: 56px !important;
+  min-width: 56px !important;
+  max-width: 56px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  background: linear-gradient(180deg, #061a16 0%, #0b3129 68%, #102b27 100%) !important;
+  box-shadow: none !important;
+}
+
+/* Remove the old fake collapsed strip */
+body.broiler-sidebar-collapsed .sidebar.sidebar-hidden::after {
+  display: none !important;
+  content: none !important;
+}
+
+/* Keep only the dark sidebar strip visible when collapsed */
+body.broiler-sidebar-collapsed .sidebar.sidebar-hidden .brand-row,
+body.broiler-sidebar-collapsed .sidebar.sidebar-hidden .sidebar-brand-premium,
+body.broiler-sidebar-collapsed .sidebar.sidebar-hidden .sidebar-nav,
+body.broiler-sidebar-collapsed .sidebar.sidebar-hidden .sidebar-note {
+  display: none !important;
+}
+
+/* Content starts immediately after the 56px dark sidebar */
+body.broiler-sidebar-collapsed .main-panel.house-sheet-main {
+  margin-left: 56px !important;
+  padding-left: 0 !important;
+}
+
+/* The House Sheet template controls the internal spacing */
+body.broiler-sidebar-collapsed .house-sheet-main .house-sheet-panel {
+  margin-left: 0 !important;
+  padding-left: 12px !important;
+}
+
+/* Keep hamburger visible */
+body.broiler-sidebar-collapsed .sidebar-toggle.collapsed {
+  display: grid !important;
+  position: fixed !important;
+  left: 11px !important;
+  top: 18px !important;
+  z-index: 9999 !important;
+  box-shadow: none !important;
+}
+
+/* =========================================================
+   OviCore Sidebar collapsed mode - real 56px sidebar
+   Replaces old sidebar-hidden fake-strip behaviour
+   ========================================================= */
+
+.sidebar.sidebar-collapsed {
+  transform: none !important;
+  width: 56px !important;
+  min-width: 56px !important;
+  max-width: 56px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  pointer-events: auto !important;
+  box-shadow: none !important;
+  background: linear-gradient(180deg, #061a16 0%, #0b3129 68%, #102b27 100%) !important;
+}
+
+/* Hide menu/logo content when collapsed */
+.sidebar.sidebar-collapsed .brand-row,
+.sidebar.sidebar-collapsed .sidebar-brand-premium,
+.sidebar.sidebar-collapsed .sidebar-nav,
+.sidebar.sidebar-collapsed .sidebar-note {
+  display: none !important;
+}
+
+/* Remove old fake strip if any old class still appears elsewhere */
+.sidebar-hidden::after {
+  display: none !important;
+  content: none !important;
+  box-shadow: none !important;
+}
+
+/* Collapsed content alignment */
+body.broiler-sidebar-collapsed .main-panel.house-sheet-main {
+  margin-left: 56px !important;
+  padding-left: 0 !important;
+}
+
+/* House sheet starts straight after the dark sidebar */
+body.broiler-sidebar-collapsed .house-sheet-main .house-sheet-panel {
+  margin-left: 0 !important;
+  padding-left: 12px !important;
+}
+
+/* Hamburger button stays visible */
+body.broiler-sidebar-collapsed .sidebar-toggle.collapsed {
+  display: grid !important;
+  position: fixed !important;
+  left: 11px !important;
+  top: 18px !important;
+  z-index: 9999 !important;
+  box-shadow: none !important;
+}
+
+/* =========================================================
+   FINAL OVICORE OVERLAY SIDEBAR
+   Permanent 56px green rail
+   Open menu overlays page
+   Main content never resizes
+   KEEP THIS AS THE LAST BLOCK IN globals.css
+   ========================================================= */
+
+:root {
+  --ovicore-sidebar-width: 260px;
+  --ovicore-sidebar-strip: 56px;
+  --ovicore-sidebar-speed: 180ms;
+}
+
+/* =========================================================
+   LEGACY MODULE SHELL
+   Broilers, Breeders and other existing module pages
+   ========================================================= */
+
+.page-shell {
+  display: block !important;
+  position: relative !important;
+  min-height: 100vh !important;
+}
+
+/* Main content always stays after the permanent 56px rail */
+.main-panel,
+.main-panel.house-sheet-main,
+body.broiler-sidebar-collapsed .main-panel,
+body:not(.broiler-sidebar-collapsed) .main-panel,
+body.broiler-sidebar-collapsed .main-panel.house-sheet-main,
+body:not(.broiler-sidebar-collapsed) .main-panel.house-sheet-main {
+  margin-left: var(--ovicore-sidebar-strip) !important;
+  width: auto !important;
+  min-width: 0 !important;
+  transition: none !important;
+}
+
+/* Sidebar is fixed and overlays the page */
+.sidebar {
+  position: fixed !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
+
+  width: var(--ovicore-sidebar-width) !important;
+  min-width: var(--ovicore-sidebar-width) !important;
+  max-width: var(--ovicore-sidebar-width) !important;
+
+  height: 100vh !important;
+  min-height: 100vh !important;
+
+  padding: 22px 14px !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+
+  background:
+    linear-gradient(
+      180deg,
+      #061a16 0%,
+      #0b3129 68%,
+      #102b27 100%
+    ) !important;
+
+  z-index: 5000 !important;
+  transform: none !important;
+
+  transition:
+    width var(--ovicore-sidebar-speed) ease,
+    min-width var(--ovicore-sidebar-speed) ease,
+    max-width var(--ovicore-sidebar-speed) ease,
+    box-shadow var(--ovicore-sidebar-speed) ease !important;
+}
+
+/* Closed state = real 56px green rail */
+body.broiler-sidebar-collapsed .sidebar,
+.sidebar.sidebar-collapsed,
+.sidebar.sidebar-hidden {
+  width: var(--ovicore-sidebar-strip) !important;
+  min-width: var(--ovicore-sidebar-strip) !important;
+  max-width: var(--ovicore-sidebar-strip) !important;
+
+  padding: 0 !important;
+  overflow: hidden !important;
+
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* Open state overlays content */
+body:not(.broiler-sidebar-collapsed) .sidebar,
+.sidebar:not(.sidebar-collapsed):not(.sidebar-hidden) {
+  width: var(--ovicore-sidebar-width) !important;
+  min-width: var(--ovicore-sidebar-width) !important;
+  max-width: var(--ovicore-sidebar-width) !important;
+
+  padding: 22px 14px !important;
+
+  box-shadow:
+    16px 0 45px rgba(2, 8, 23, 0.24) !important;
+}
+
+/* Remove any old fake collapsed strip */
+.sidebar-hidden::after,
+.sidebar.sidebar-collapsed::after,
+body.broiler-sidebar-collapsed .sidebar::after {
+  display: none !important;
+  content: none !important;
+}
+
+/* Hide sidebar contents when collapsed */
+body.broiler-sidebar-collapsed .sidebar .brand-row,
+body.broiler-sidebar-collapsed .sidebar .sidebar-brand-premium,
+body.broiler-sidebar-collapsed .sidebar .sidebar-nav,
+body.broiler-sidebar-collapsed .sidebar .sidebar-note,
+.sidebar.sidebar-collapsed .brand-row,
+.sidebar.sidebar-collapsed .sidebar-brand-premium,
+.sidebar.sidebar-collapsed .sidebar-nav,
+.sidebar.sidebar-collapsed .sidebar-note,
+.sidebar.sidebar-hidden .brand-row,
+.sidebar.sidebar-hidden .sidebar-brand-premium,
+.sidebar.sidebar-hidden .sidebar-nav,
+.sidebar.sidebar-hidden .sidebar-note {
+  display: none !important;
+}
+
+/* Restore contents when open */
+body:not(.broiler-sidebar-collapsed) .sidebar .brand-row,
+body:not(.broiler-sidebar-collapsed) .sidebar .sidebar-brand-premium,
+body:not(.broiler-sidebar-collapsed) .sidebar .sidebar-nav,
+body:not(.broiler-sidebar-collapsed) .sidebar .sidebar-note {
+  display: flex;
+}
+
+/* Sidebar navigation still needs column layout */
+body:not(.broiler-sidebar-collapsed) .sidebar .sidebar-nav {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+/* Hamburger button */
+.sidebar-toggle,
+body.broiler-sidebar-collapsed .sidebar-toggle,
+body.broiler-sidebar-collapsed .sidebar-toggle.collapsed {
+  position: fixed !important;
+  top: 18px !important;
+  left: 11px !important;
+
+  width: 34px !important;
+  height: 34px !important;
+
+  display: grid !important;
+  place-items: center !important;
+
+  z-index: 5100 !important;
+}
+
+/* Open close button sits just outside the sidebar */
+body:not(.broiler-sidebar-collapsed)
+  .sidebar-toggle:not(.collapsed) {
+  left: 243px !important;
+}
+
+/* House Sheet pages keep zero outer panel padding */
+.main-panel.house-sheet-main {
+  padding: 0 !important;
+}
+
+/* House Sheet panel controls its own spacing */
+.house-sheet-main .house-sheet-panel,
+body:has(.house-sheet-panel) .house-sheet-panel {
+  margin-left: 0 !important;
+  padding-left: 12px !important;
+}
+
+/* =========================================================
+   SHARED OVICORE SHELL
+   Admin and future standardised pages
+   ========================================================= */
+
+.ovicore-shell {
+  display: block !important;
+  position: relative !important;
+  min-height: 100vh !important;
+}
+
+/* Shared main content also stays behind 56px rail */
+.ovicore-main {
+  margin-left: var(--ovicore-sidebar-strip) !important;
+  width: auto !important;
+  min-width: 0 !important;
+  min-height: 100vh !important;
+  transition: none !important;
+}
+
+/* Shared sidebar */
+.ovicore-sidebar {
+  position: fixed !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
+
+  width: var(--ovicore-sidebar-width) !important;
+  min-width: var(--ovicore-sidebar-width) !important;
+  max-width: var(--ovicore-sidebar-width) !important;
+
+  height: 100vh !important;
+  min-height: 100vh !important;
+
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+
+  background:
+    linear-gradient(
+      180deg,
+      #123c2f 0%,
+      #0d2d24 100%
+    ) !important;
+
+  z-index: 5000 !important;
+  transform: none !important;
+
+  transition:
+    width var(--ovicore-sidebar-speed) ease,
+    min-width var(--ovicore-sidebar-speed) ease,
+    max-width var(--ovicore-sidebar-speed) ease,
+    box-shadow var(--ovicore-sidebar-speed) ease !important;
+}
+
+/* Shared collapsed state */
+body.ovicore-sidebar-collapsed .ovicore-sidebar,
+.ovicore-sidebar.ovicore-sidebar-collapsed,
+.ovicore-sidebar.ovicore-sidebar-hidden {
+  width: var(--ovicore-sidebar-strip) !important;
+  min-width: var(--ovicore-sidebar-strip) !important;
+  max-width: var(--ovicore-sidebar-strip) !important;
+
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+
+  overflow: hidden !important;
+  box-shadow: none !important;
+}
+
+/* Shared open state */
+body:not(.ovicore-sidebar-collapsed) .ovicore-sidebar,
+.ovicore-sidebar:not(.ovicore-sidebar-collapsed) {
+  width: var(--ovicore-sidebar-width) !important;
+  min-width: var(--ovicore-sidebar-width) !important;
+  max-width: var(--ovicore-sidebar-width) !important;
+
+  box-shadow:
+    16px 0 45px rgba(2, 8, 23, 0.24) !important;
+}
+
+/* Hide shared contents when collapsed */
+body.ovicore-sidebar-collapsed
+  .ovicore-sidebar
+  .ovicore-sidebar-brand,
+body.ovicore-sidebar-collapsed
+  .ovicore-sidebar
+  .ovicore-sidebar-section,
+body.ovicore-sidebar-collapsed
+  .ovicore-sidebar
+  .ovicore-sidebar-footer,
+.ovicore-sidebar.ovicore-sidebar-collapsed
+  .ovicore-sidebar-brand,
+.ovicore-sidebar.ovicore-sidebar-collapsed
+  .ovicore-sidebar-section,
+.ovicore-sidebar.ovicore-sidebar-collapsed
+  .ovicore-sidebar-footer {
+  display: none !important;
+}
+
+/* =========================================================
+   RESPONSIVE
+   Still use overlay behaviour on smaller screens
+   ========================================================= */
+
+@media (max-width: 900px) {
+  .sidebar,
+  .ovicore-sidebar {
+    position: fixed !important;
+    height: 100vh !important;
+    min-height: 100vh !important;
+  }
+
+  .main-panel,
+  .main-panel.house-sheet-main,
+  .ovicore-main {
+    margin-left: var(--ovicore-sidebar-strip) !important;
+  }
+
+  .ovicore-shell {
+    display: block !important;
+  }
+}
+
+/* =========================================================
+   OVICORE SHARED APPLICATION SHELL
+   Sidebar is controlled by OviCoreSidebar.module.css.
+   Main content always reserves only the permanent 56px rail.
+   ========================================================= */
+
+.ovicore-app-shell {
+  display: block;
+  position: relative;
+  min-height: 100vh;
+  width: 100%;
+}
+
+.ovicore-app-main {
+  min-height: 100vh;
+  min-width: 0;
+  margin-left: 56px;
+  width: calc(100% - 56px);
+}
+
+/* Existing page components may use this wrapper */
+.ovicore-app-main > .ovicore-page,
+.ovicore-app-main > .house-sheet-panel,
+.ovicore-app-main > .module-home-shell {
+  width: 100%;
+}
+
+/* Remove old shared shell resizing */
+.ovicore-shell,
+.ovicore-main {
+  margin-left: 0 !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+/* =========================================================
+   FIX: legacy page inside shared sidebar shell
+   Prevent double 56px sidebar spacing
+   ========================================================= */
+
+.ovicore-app-main .main-panel,
+.ovicore-app-main .main-panel.house-sheet-main {
+  margin-left: 0 !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+.ovicore-app-main .house-sheet-panel {
+  margin-left: 0 !important;
+  width: 100% !important;
+}
+
+/* =========================================================
+   FINAL HOUSE SHEET POSITIONING — CORRECTED
+   Shared-shell pages and legacy pages handled separately.
+   KEEP THIS AS THE LAST BLOCK IN globals.css
+   ========================================================= */
+
+/* ---------------------------------------------------------
+   NEW SHARED SHELL
+   OviCore app main already reserves the permanent 56px rail.
+   Inner legacy wrappers must not add another margin.
+   --------------------------------------------------------- */
+
+body:has(.house-sheet-panel) .ovicore-app-main {
+  margin-left: 56px !important;
+  width: calc(100% - 56px) !important;
+  min-width: 0 !important;
+  padding: 0 !important;
+}
+
+body:has(.house-sheet-panel)
+  .ovicore-app-main
+  .page-shell,
+body:has(.house-sheet-panel)
+  .ovicore-app-main
+  .main-panel,
+body:has(.house-sheet-panel)
+  .ovicore-app-main
+  .main-panel.house-sheet-main {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+/* ---------------------------------------------------------
+   LEGACY PAGE STRUCTURE
+   Page is not yet inside OviCoreShell, so main-panel itself
+   must reserve the permanent 56px green rail.
+   --------------------------------------------------------- */
+
+body.broiler-sidebar-collapsed:not(:has(.ovicore-app-main)):has(.house-sheet-panel)
+  .main-panel.house-sheet-main,
+body:not(.broiler-sidebar-collapsed):not(:has(.ovicore-app-main)):has(.house-sheet-panel)
+  .main-panel.house-sheet-main {
+  margin-left: 56px !important;
+}
+
+/* Opening the menu is overlay-only.
+   The legacy page remains permanently positioned after 56px. */
+
+body:not(:has(.ovicore-app-main))
+  body.broiler-sidebar-collapsed:has(.house-sheet-panel)
+  .main-panel.house-sheet-main,
+body:not(:has(.ovicore-app-main))
+  body:not(.broiler-sidebar-collapsed):has(.house-sheet-panel)
+  .main-panel.house-sheet-main {
+  margin-left: 56px !important;
+}
+
+/* House Sheet controls only its internal page padding */
+
+body:has(.house-sheet-panel) .house-sheet-panel,
+body:has(.house-sheet-panel)
+  .house-sheet-main
+  .house-sheet-panel {
+  margin: 0 !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  padding: 12px 12px 24px !important;
+}
+
+/* =========================================================
+   FINAL LEGACY PAGE GAP FIX
+   Shared shell owns the 56px sidebar rail.
+   Legacy page wrappers must not add another outside gap.
+   ========================================================= */
+
+.ovicore-app-main .page-shell {
+  margin: 0 !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+}
+
+.ovicore-app-main .main-panel {
+  margin: 0 !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  padding: 0 !important;
+}
+
+/* Normal module pages keep only a small internal page edge */
+.ovicore-app-main .main-panel > :first-child {
+  margin-left: 0 !important;
+}
+
+/* House Sheets continue controlling their own internal padding */
+.ovicore-app-main .main-panel.house-sheet-main {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.ovicore-app-main .house-sheet-panel {
+  margin: 0 !important;
+  width: 100% !important;
 }

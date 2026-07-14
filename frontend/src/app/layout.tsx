@@ -3,6 +3,8 @@ import "@ag-grid-community/styles/ag-grid.css";
 import "@ag-grid-community/styles/ag-theme-quartz.css";
 import "./globals.css";
 
+import IdleLogout from "@/components/auth/IdleLogout";
+
 export const metadata: Metadata = {
   title: "OviCore",
   description: "Plan with confidence. Forecast with precision.",
@@ -13,10 +15,16 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <IdleLogout>{children}</IdleLogout>
+      </body>
     </html>
   );
 }

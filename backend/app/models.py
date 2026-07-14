@@ -9,6 +9,14 @@ class Company(Base):
     company_name = Column(String(255), nullable=False, unique=True, index=True)
     trading_name = Column(String(255), nullable=True)
     active = Column(Boolean, nullable=False, default=True)
+
+    # Module enablement controlled by Global Admin / OviCore Admin
+    enable_broilers = Column(Boolean, nullable=False, default=True)
+    enable_breeders = Column(Boolean, nullable=False, default=False)
+    enable_layers = Column(Boolean, nullable=False, default=False)
+    enable_hatchery = Column(Boolean, nullable=False, default=False)
+    enable_processing = Column(Boolean, nullable=False, default=False)
+
     created_at = Column(DateTime, server_default=func.now())
 
     users = relationship("AppUser", back_populates="company")
@@ -20,18 +28,76 @@ class AppUser(Base):
 
     id = Column(Integer, primary_key=True, index=True)
 
-    company_id = Column(Integer, ForeignKey("companies.id"), nullable=True, index=True)
+    company_id = Column(
+        Integer,
+        ForeignKey("companies.id"),
+        nullable=True,
+        index=True,
+    )
 
     full_name = Column(String(255), nullable=False)
-    email = Column(String(255), nullable=False, unique=True, index=True)
 
-    is_global_admin = Column(Boolean, nullable=False, default=False)
-    is_company_admin = Column(Boolean, nullable=False, default=False)
+    email = Column(
+        String(255),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
 
-    active = Column(Boolean, nullable=False, default=True)
-    created_at = Column(DateTime, server_default=func.now())
+    # Login and password security
+    password_hash = Column(String(255), nullable=True)
 
-    company = relationship("Company", back_populates="users")
+    must_change_password = Column(
+        Boolean,
+        nullable=False,
+        default=True,
+    )
+
+    password_changed_at = Column(
+        DateTime,
+        nullable=True,
+    )
+
+    last_login_at = Column(
+        DateTime,
+        nullable=True,
+    )
+
+    # Access roles
+    is_global_admin = Column(
+        Boolean,
+        nullable=False,
+        default=False,
+    )
+
+    is_company_admin = Column(
+        Boolean,
+        nullable=False,
+        default=False,
+    )
+
+    active = Column(
+        Boolean,
+        nullable=False,
+        default=True,
+    )
+
+    created_at = Column(
+        DateTime,
+        server_default=func.now(),
+    )
+
+    updated_at = Column(
+        DateTime,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    company = relationship(
+        "Company",
+        back_populates="users",
+    )
+
     farm_access = relationship(
         "UserFarmAccess",
         back_populates="user",

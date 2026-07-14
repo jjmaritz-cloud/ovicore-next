@@ -1,80 +1,484 @@
-import Link from "next/link";
+"use client";
 
-export default function AdminFarmsPage() {
-  return (
-    <main className="admin-page">
-      <section className="page-card">
-        <p className="eyebrow">Global Admin</p>
-        <h1>Farm Setup</h1>
-        <p>
-          Create and maintain farms as a controlled OviCore setup function.
-          Company Admin users should not create new farms.
-        </p>
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AgGridReact } from "ag-grid-react";
+import {
+  AllCommunityModule,
+  ModuleRegistry,
+  type ColDef,
+  type GridReadyEvent,
+  type ValueFormatterParams,
+} from "ag-grid-community";
 
-        <div className="actions">
-          <Link href="/admin">Back to Admin</Link>
-          <Link href="/home">Home</Link>
-        </div>
-      </section>
+ModuleRegistry.registerModules([AllCommunityModule]);
 
-      <style>{styles}</style>
-    </main>
-  );
+import "ag-grid-community/styles/ag-grid.css";
+import "ag-grid-community/styles/ag-theme-quartz.css";
+
+import OviCoreActionBar from "@/components/ovicore/OviCoreActionBar";
+import OviCoreKpiStrip from "@/components/ovicore/OviCoreKpiStrip";
+import OviCorePageHeader from "@/components/ovicore/OviCorePageHeader";
+import OviCoreShell from "@/components/ovicore/OviCoreShell";
+import OviCoreTableCard from "@/components/ovicore/OviCoreTableCard";
+
+type CompanyRow = {
+  id: number;
+  company_name: string;
+  trading_name: string | null;
+  active: boolean;
+  created_at: string | null;
+};
+
+type FarmRow = {
+  id: number;
+  company_id: number;
+  farm_name: string;
+  farm_code: string | null;
+  active: boolean;
+};
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+const COMPANIES_ENDPOINT = `${API_BASE}/api/admin/companies`;
+const FARMS_ENDPOINT = `${API_BASE}/api/broilers/farms`;
+
+function activeFormatter(params: ValueFormatterParams) {
+  return params.value ? "Active" : "Inactive";
 }
 
-const styles = `
-  .admin-page {
-    min-height: 100vh;
-    padding: 24px;
-    background: linear-gradient(135deg, #f6fbf8, #fbfaf3);
-    color: #06251f;
-  }
+export default function AdminFarmRegisterPage() {
+  const gridRef = useRef<AgGridReact<FarmRow>>(null);
 
-  .page-card {
-    border: 1px solid rgba(6, 70, 56, 0.12);
-    border-radius: 24px;
-    padding: 24px;
-    background: rgba(255, 255, 255, 0.82);
-    box-shadow: 0 18px 42px rgba(2, 37, 29, 0.08);
-  }
+  const [rows, setRows] = useState<FarmRow[]>([]);
+  const [companies, setCompanies] = useState<CompanyRow[]>([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
 
-  .eyebrow {
-    margin: 0;
-    font-size: 10px;
-    font-weight: 950;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: #087052;
-  }
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
-  h1 {
-    margin: 6px 0;
-    font-size: 42px;
-    letter-spacing: -0.06em;
-  }
+  const dirtyRowIds = useRef<Set<number>>(new Set());
 
-  p:not(.eyebrow) {
-    margin: 0;
-    max-width: 760px;
-    font-size: 13px;
-    line-height: 1.45;
-    font-weight: 800;
-    color: #45635c;
-  }
+  const selectedCompany = useMemo(() => {
+    return companies.find((company) => company.id === selectedCompanyId) ?? null;
+  }, [companies, selectedCompanyId]);
 
-  .actions {
-    display: flex;
-    gap: 8px;
-    margin-top: 18px;
-  }
+  const fetchCompanies = useCallback(async () => {
+    const response = await fetch(COMPANIES_ENDPOINT, {
+      cache: "no-store",
+    });
 
-  .actions a {
-    border-radius: 999px;
-    padding: 10px 13px;
-    background: #073f34;
-    color: white;
-    font-size: 11px;
-    font-weight: 950;
-    text-decoration: none;
-  }
-`;
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(
+        `Could not load companies. ${response.status}: ${errorText}`
+      );
+    }
+
+    const data: CompanyRow[] = await response.json();
+
+    setCompanies(data);
+
+    setSelectedCompanyId((currentCompanyId) => {
+      if (currentCompanyId && data.some((company) => company.id === currentCompanyId)) {
+        return currentCompanyId;
+      }
+
+      const firstActiveCompany = data.find((company) => company.active) ?? data[0];
+      return firstActiveCompany?.id ?? null;
+    });
+
+    return data;
+  }, []);
+
+  const fetchRows = useCallback(async (companyId?: number | null) => {
+    const resolvedCompanyId = companyId ?? selectedCompanyId;
+
+    if (!resolvedCompanyId) {
+      setRows([]);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const response = await fetch(`${FARMS_ENDPOINT}?company_id=${resolvedCompanyId}`, {
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Could not load farms. ${response.status}: ${errorText}`);
+      }
+
+      const data = await response.json();
+      setRows(data);
+      dirtyRowIds.current.clear();
+    } catch (error) {
+      console.error(error);
+      alert("Could not load farms. Check that the backend is running.");
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedCompanyId]);
+
+  useEffect(() => {
+    async function loadInitialData() {
+      setLoading(true);
+
+      try {
+        const loadedCompanies = await fetchCompanies();
+        const firstActiveCompany =
+          loadedCompanies.find((company) => company.active) ?? loadedCompanies[0];
+
+        if (firstActiveCompany) {
+          await fetchRows(firstActiveCompany.id);
+        } else {
+          setRows([]);
+        }
+      } catch (error) {
+        console.error(error);
+        alert("Could not load companies/farms. Check that the backend is running.");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadInitialData();
+  }, [fetchCompanies, fetchRows]);
+
+  useEffect(() => {
+    if (selectedCompanyId) {
+      fetchRows(selectedCompanyId);
+    }
+  }, [selectedCompanyId, fetchRows]);
+
+  const activeFarmCount = useMemo(
+    () => rows.filter((row) => row.active).length,
+    [rows]
+  );
+
+  const inactiveFarmCount = useMemo(
+    () => rows.filter((row) => !row.active).length,
+    [rows]
+  );
+
+  const defaultColDef = useMemo<ColDef<FarmRow>>(
+    () => ({
+      resizable: true,
+      sortable: true,
+      filter: true,
+      minWidth: 130,
+      cellClass: "center-cell",
+      headerClass: "center-header",
+    }),
+    []
+  );
+
+  const columnDefs = useMemo<ColDef<FarmRow>[]>(
+    () => [
+      {
+        field: "farm_name",
+        headerName: "Farm Name",
+        editable: true,
+        minWidth: 260,
+        flex: 1,
+        cellClass: "editable-cell",
+      },
+      {
+        field: "farm_code",
+        headerName: "Farm Code",
+        editable: true,
+        minWidth: 160,
+        cellClass: "editable-cell",
+      },
+      {
+        field: "company_id",
+        headerName: "Company ID",
+        editable: false,
+        minWidth: 140,
+      },
+      {
+        field: "active",
+        headerName: "Status",
+        editable: true,
+        minWidth: 140,
+        valueFormatter: activeFormatter,
+        cellEditor: "agSelectCellEditor",
+        cellEditorParams: {
+          values: [true, false],
+        },
+        cellClass: "editable-cell",
+      },
+    ],
+    []
+  );
+
+  const onGridReady = useCallback((params: GridReadyEvent) => {
+    setTimeout(() => {
+      params.api.sizeColumnsToFit();
+    }, 100);
+  }, []);
+
+  const addFarm = useCallback(async () => {
+    if (!selectedCompanyId) {
+      alert("Select a company before creating a farm.");
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const response = await fetch(FARMS_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          company_id: selectedCompanyId,
+          farm_name: "New Farm",
+          farm_code: "",
+          active: true,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Could not create farm. ${response.status}: ${errorText}`);
+      }
+
+      await response.json();
+      await fetchRows(selectedCompanyId);
+    } catch (error) {
+      console.error(error);
+      alert("Could not create farm.");
+    } finally {
+      setSaving(false);
+    }
+  }, [fetchRows, selectedCompanyId]);
+
+  const saveDirtyRows = useCallback(async () => {
+    const api = gridRef.current?.api;
+    if (!api) return;
+
+    api.stopEditing();
+
+    const dirtyIds = Array.from(dirtyRowIds.current);
+
+    if (dirtyIds.length === 0) {
+      alert("No changes to save.");
+      return;
+    }
+
+    const rowMap = new Map<number, FarmRow>();
+
+    api.forEachNode((node) => {
+      if (node.data) rowMap.set(node.data.id, node.data);
+    });
+
+    setSaving(true);
+
+    try {
+      for (const id of dirtyIds) {
+        const row = rowMap.get(id);
+        if (!row) continue;
+
+        if (!row.farm_name || row.farm_name.trim() === "") {
+          alert("Farm name is required.");
+          setSaving(false);
+          return;
+        }
+
+        const response = await fetch(`${FARMS_ENDPOINT}/${id}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            farm_name: row.farm_name,
+            farm_code: row.farm_code ?? "",
+            active: row.active,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(
+            `Could not save farm ${row.farm_name}. ${response.status}: ${errorText}`
+          );
+        }
+      }
+
+      dirtyRowIds.current.clear();
+      await fetchRows(selectedCompanyId);
+      alert("Farms saved.");
+    } catch (error) {
+      console.error(error);
+      alert("Could not save farms.");
+    } finally {
+      setSaving(false);
+    }
+  }, [fetchRows, selectedCompanyId]);
+
+  const deleteSelectedFarm = useCallback(async () => {
+    const api = gridRef.current?.api;
+    if (!api) return;
+
+    const selectedRows = api.getSelectedRows();
+
+    if (selectedRows.length === 0) {
+      alert("Select a farm to delete.");
+      return;
+    }
+
+    const row = selectedRows[0];
+
+    const confirmed = window.confirm(
+      `Delete ${row.farm_name}? If this farm has linked sheds or cycles, the backend will block deletion.`
+    );
+
+    if (!confirmed) return;
+
+    setSaving(true);
+
+    try {
+      const response = await fetch(`${FARMS_ENDPOINT}/${row.id}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText);
+      }
+
+      await fetchRows(selectedCompanyId);
+    } catch (error) {
+      console.error(error);
+      alert(
+        "Could not delete farm. If it is linked to sheds or cycles, set it inactive instead."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }, [fetchRows, selectedCompanyId]);
+
+  return (
+    <OviCoreShell module="admin">
+      <OviCorePageHeader
+        title="Farm Register"
+        subtitle="Global Admin setup screen for shared farm master data used by Broilers, Breeders, Layers and future modules."
+      >
+        <span className="ovicore-pill ovicore-pill-green">Global Admin</span>
+      </OviCorePageHeader>
+
+      <OviCoreKpiStrip
+        items={[
+          { label: "Selected Company", value: selectedCompany?.company_name ?? "None" },
+          { label: "Total Farms", value: rows.length },
+          { label: "Active", value: activeFarmCount },
+          { label: "Inactive", value: inactiveFarmCount },
+        ]}
+      />
+
+      <OviCoreActionBar
+        left={
+          <>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                fontSize: 12,
+                fontWeight: 800,
+                color: "var(--ovicore-green-900)",
+              }}
+            >
+              Company
+              <select
+                className="ovicore-select"
+                value={selectedCompanyId ?? ""}
+                onChange={(event) => {
+                  const nextCompanyId = Number(event.target.value);
+                  setSelectedCompanyId(Number.isNaN(nextCompanyId) ? null : nextCompanyId);
+                }}
+                disabled={saving || companies.length === 0}
+              >
+                {companies.map((company) => (
+                  <option key={company.id} value={company.id}>
+                    {company.company_name}
+                    {company.active ? "" : " (Inactive)"}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <button
+              type="button"
+              className="ovicore-btn ovicore-btn-primary"
+              onClick={addFarm}
+              disabled={saving || !selectedCompanyId}
+            >
+              New farm
+            </button>
+
+            <button
+              type="button"
+              className="ovicore-btn ovicore-btn-danger"
+              onClick={deleteSelectedFarm}
+              disabled={saving}
+            >
+              Delete selected
+            </button>
+          </>
+        }
+        right={
+          <>
+            <button
+              type="button"
+              className="ovicore-btn"
+              onClick={() => fetchRows(selectedCompanyId)}
+              disabled={saving || !selectedCompanyId}
+            >
+              Reload
+            </button>
+
+            <button
+              type="button"
+              className="ovicore-btn ovicore-btn-primary"
+              onClick={saveDirtyRows}
+              disabled={saving}
+            >
+              {saving ? "Saving..." : "Save changes"}
+            </button>
+          </>
+        }
+      />
+
+      <OviCoreTableCard
+        title="Farms"
+        subtitle="One shared farm register controlled through Global Admin setup. Farms are now filtered and created by selected company."
+      >
+        <div className="ag-theme-quartz broiler-grid">
+          <AgGridReact<FarmRow>
+            ref={gridRef}
+            rowData={rows}
+            columnDefs={columnDefs}
+            defaultColDef={defaultColDef}
+            getRowId={(params) => String(params.data.id)}
+            rowSelection="single"
+            suppressRowClickSelection={false}
+            animateRows
+            rowHeight={38}
+            headerHeight={38}
+            loading={loading}
+            onGridReady={onGridReady}
+            onCellValueChanged={(event) => {
+              if (event.data?.id) {
+                dirtyRowIds.current.add(event.data.id);
+              }
+            }}
+          />
+        </div>
+      </OviCoreTableCard>
+    </OviCoreShell>
+  );
+}

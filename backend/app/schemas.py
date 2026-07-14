@@ -92,11 +92,25 @@ class CompanyCreate(BaseModel):
     trading_name: Optional[str] = None
     active: bool = True
 
+    # Module enablement controlled by Global Admin / OviCore Admin
+    enable_broilers: bool = True
+    enable_breeders: bool = False
+    enable_layers: bool = False
+    enable_hatchery: bool = False
+    enable_processing: bool = False
+
 
 class CompanyPatch(BaseModel):
     company_name: Optional[str] = None
     trading_name: Optional[str] = None
     active: Optional[bool] = None
+
+    # Module enablement controlled by Global Admin / OviCore Admin
+    enable_broilers: Optional[bool] = None
+    enable_breeders: Optional[bool] = None
+    enable_layers: Optional[bool] = None
+    enable_hatchery: Optional[bool] = None
+    enable_processing: Optional[bool] = None
 
 
 class CompanyOut(BaseModel):
@@ -104,6 +118,13 @@ class CompanyOut(BaseModel):
     company_name: str
     trading_name: Optional[str] = None
     active: bool
+
+    enable_broilers: bool = True
+    enable_breeders: bool = False
+    enable_layers: bool = False
+    enable_hatchery: bool = False
+    enable_processing: bool = False
+
     created_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -111,31 +132,57 @@ class CompanyOut(BaseModel):
 
 class AppUserCreate(BaseModel):
     company_id: Optional[int] = None
+
     full_name: str
     email: str
+
+    # Used when Global Admin or Company Admin creates a user.
+    temporary_password: str
+
     is_global_admin: bool = False
     is_company_admin: bool = False
+
     active: bool = True
+    must_change_password: bool = True
 
 
 class AppUserPatch(BaseModel):
     company_id: Optional[int] = None
+
     full_name: Optional[str] = None
     email: Optional[str] = None
+
     is_global_admin: Optional[bool] = None
     is_company_admin: Optional[bool] = None
-    active: Optional[bool] = None
 
+    active: Optional[bool] = None
+    must_change_password: Optional[bool] = None
+
+    # Optional admin password reset.
+    temporary_password: Optional[str] = None
+
+class AppUserPasswordReset(BaseModel):
+    temporary_password: str
+    must_change_password: bool = True
 
 class AppUserOut(BaseModel):
     id: int
     company_id: Optional[int] = None
+
     full_name: str
     email: str
+
     is_global_admin: bool
     is_company_admin: bool
+
     active: bool
+    must_change_password: bool
+
+    last_login_at: Optional[datetime] = None
+    password_changed_at: Optional[datetime] = None
+
     created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 

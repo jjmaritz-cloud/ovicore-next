@@ -7,10 +7,20 @@ from app.routers import broiler_processing
 from app.routers import app_notes
 from app.routers import broiler_supply
 from app.routers import access
+from app.routers import auth
 
 from .db import Base, engine, SessionLocal, get_db
-from .models import BroilerFarm, BroilerShed, BroilerPlacementPlan, BroilerDailyPerformance
+from .models import (
+    Company,
+    BroilerFarm,
+    BroilerShed,
+    BroilerPlacementPlan,
+    BroilerDailyPerformance,
+)
 from .schemas import (
+    CompanyCreate,
+    CompanyPatch,
+    CompanyOut,
     BroilerDemandPlanCreate,
     BroilerDemandPlanOut,
     BroilerDemandPlanPatch,
@@ -32,11 +42,22 @@ app.include_router(broiler_processing.router)
 app.include_router(app_notes.router)
 app.include_router(broiler_supply.router)
 app.include_router(access.router)
+app.include_router(auth.router)
 
-origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+]
+
+env_origins = os.getenv("CORS_ORIGINS")
+if env_origins:
+    origins.extend([origin.strip() for origin in env_origins.split(",") if origin.strip()])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[origin.strip() for origin in origins],
+    allow_origins=list(set(origins)),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -125,6 +146,115 @@ def startup():
 def health():
     return {"status": "ok", "module": "broilers"}
 
+# ---------------------------------------------------------------------
+# Companies - Global Admin Master Data
+# ---------------------------------------------------------------------
+
+
+@app.get("/api/admin/companies", response_model=list[CompanyOut])
+def list_companies(db: Session = Depends(get_db)):
+    companies = (
+        db.query(Company)
+        .order_by(Company.company_name.asc())
+        .all()
+    )
+
+    return companies
+
+
+@app.post("/api/admin/companies", response_model=CompanyOut)
+def create_company(payload: CompanyCreate, db: Session = Depends(get_db)):
+    existing = (
+        db.query(Company)
+        .filter(Company.company_name == payload.company_name)
+        .first()
+    )
+
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail="A company with this name already exists.",
+        )
+
+    company = Company(
+        company_name=payload.company_name,
+        trading_name=payload.trading_name,
+        active=payload.active,
+        enable_broilers=payload.enable_broilers,
+        enable_breeders=payload.enable_breeders,
+        enable_layers=payload.enable_layers,
+        enable_hatchery=payload.enable_hatchery,
+        enable_processing=payload.enable_processing,
+    )
+
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    return company
+
+
+@app.patch("/api/admin/companies/{company_id}", response_model=CompanyOut)
+def update_company(
+    company_id: int,
+    payload: CompanyPatch,
+    db: Session = Depends(get_db),
+):
+    company = db.query(Company).filter(Company.id == company_id).first()
+
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    data = payload.model_dump(exclude_unset=True)
+
+    if "company_name" in data and data["company_name"]:
+        duplicate = (
+            db.query(Company)
+            .filter(
+                Company.company_name == data["company_name"],
+                Company.id != company_id,
+            )
+            .first()
+        )
+
+        if duplicate:
+            raise HTTPException(
+                status_code=400,
+                detail="Another company with this name already exists.",
+            )
+
+    for field, value in data.items():
+        setattr(company, field, value)
+
+    db.commit()
+    db.refresh(company)
+
+    return company
+
+
+@app.delete("/api/admin/companies/{company_id}")
+def delete_company(company_id: int, db: Session = Depends(get_db)):
+    company = db.query(Company).filter(Company.id == company_id).first()
+
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    linked_farms = (
+        db.query(BroilerFarm)
+        .filter(BroilerFarm.company_id == company_id)
+        .count()
+    )
+
+    if linked_farms > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete company because it has linked farms. Set the company inactive instead.",
+        )
+
+    db.delete(company)
+    db.commit()
+
+    return {"deleted": True, "id": company_id}
 
 @app.get("/api/broilers/demand-plans", response_model=list[BroilerDemandPlanOut])
 def list_demand_plans(company_id: int = 1, db: Session = Depends(get_db)):

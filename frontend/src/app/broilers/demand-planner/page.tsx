@@ -17,7 +17,11 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-quartz.css";
-import BroilerSidebar from "@/components/BroilerSidebar";
+import OviCoreActionBar from "@/components/ovicore/OviCoreActionBar";
+import OviCoreKpiStrip from "@/components/ovicore/OviCoreKpiStrip";
+import OviCorePageHeader from "@/components/ovicore/OviCorePageHeader";
+import OviCoreShell from "@/components/ovicore/OviCoreShell";
+import OviCoreTableCard from "@/components/ovicore/OviCoreTableCard";
 
 type BroilerPlanRow = {
   id: number;
@@ -814,139 +818,163 @@ export default function BroilerDemandPlannerPage() {
   }, [rows]);
 
 return (
-  <main className="page-shell">
-    <BroilerSidebar />
+  <OviCoreShell module="broilers">
+    <OviCorePageHeader
+      title="Placement Demand Planner"
+      subtitle="Plan broiler placements by farm, shed, cycle, floor capacity and required chicks."
+    >
+      <div className="top-actions">
+        <input
+          className="search-box"
+          value={searchText}
+          onChange={(event) => setSearchText(event.target.value)}
+          placeholder="Search farm, shed, cycle or note"
+        />
+        <div className="avatar">JJ</div>
+      </div>
+    </OviCorePageHeader>
 
-    <section className="main-panel">
-        <header className="topbar">
-          <div>
-            <p className="eyebrow">Broiler Demand Planner</p>
-            <h2>Placement demand by shed and cycle</h2>
-          </div>
+    <OviCoreKpiStrip
+      items={[
+        {
+          label: "Total Planned Birds",
+          value: kpis.totalPlannedBirds.toLocaleString(),
+        },
+        {
+          label: "Required Chicks",
+          value: Math.round(kpis.requiredChicks).toLocaleString(),
+        },
+        {
+          label: "Rows Needing Review",
+          value: kpis.rowsNeedingReview,
+        },
+        {
+          label: "Avg Planned kg/m²",
+          value: kpis.avgKgM2.toFixed(2),
+        },
+      ]}
+    />
 
-          <div className="top-actions">
-            <input
-              className="search-box"
-              value={searchText}
-              onChange={(event) => setSearchText(event.target.value)}
-              placeholder="Search farm, shed, cycle or note"
-            />
-            <div className="avatar">JJ</div>
-          </div>
-        </header>
+    <OviCoreActionBar
+      left={
+        <>
+          <span
+            className={
+              dirtyCount > 0
+                ? "ovicore-pill ovicore-pill-amber"
+                : "ovicore-pill ovicore-pill-green"
+            }
+          >
+            {dirtyCount > 0
+              ? `${dirtyCount} unsaved row${dirtyCount === 1 ? "" : "s"}`
+              : "All rows saved"}
+          </span>
 
-        <section className="kpi-grid">
-          <div className="kpi-card">
-            <span>Total planned birds</span>
-            <strong>{kpis.totalPlannedBirds.toLocaleString()}</strong>
-            <p>Demand entered by shed</p>
-          </div>
+          {lastError ? (
+            <span className="ovicore-pill ovicore-pill-red">{lastError}</span>
+          ) : null}
+        </>
+      }
+      right={
+        <>
+          <button
+            type="button"
+            className="ovicore-btn ovicore-btn-primary"
+            onClick={addNewPlacementRow}
+            disabled={saving}
+          >
+            New placement row
+          </button>
 
-          <div className="kpi-card">
-            <span>Required chicks</span>
-            <strong>{Math.round(kpis.requiredChicks).toLocaleString()}</strong>
-            <p>Includes chick allowance</p>
-          </div>
+          <button
+            type="button"
+            className="ovicore-btn"
+            onClick={duplicateSelectedRow}
+            disabled={saving}
+          >
+            Duplicate selected
+          </button>
 
-          <div className="kpi-card">
-            <span>Rows needing review</span>
-            <strong>{kpis.rowsNeedingReview}</strong>
-            <p>Density / missing data</p>
-          </div>
+          <button
+            type="button"
+            className="ovicore-btn ovicore-btn-danger"
+            onClick={deleteSelectedRow}
+            disabled={saving}
+          >
+            Delete selected
+          </button>
 
-          <div className="kpi-card">
-            <span>Avg planned kg/m²</span>
-            <strong>{kpis.avgKgM2.toFixed(2)}</strong>
-            <p>Capacity engine output</p>
-          </div>
-        </section>
+          <button
+            type="button"
+            className="ovicore-btn"
+            onClick={autosizeColumns}
+          >
+            Autosize
+          </button>
 
-        <section className="grid-card">
-          <div className="grid-card-head">
-            <div>
-              <h3>Broiler Demand Entry</h3>
-              <p>
-                Excel-style planner with frozen identity columns, centred values,
-                autosized columns and real backend saves.
-              </p>
+          <button
+            type="button"
+            className="ovicore-btn"
+            onClick={() => fetchRows()}
+          >
+            Reload
+          </button>
 
-              <div className="dirty-status">
-                {dirtyCount > 0 ? (
-                  <span className="dirty-warning">{dirtyCount} unsaved row{dirtyCount === 1 ? "" : "s"}</span>
-                ) : (
-                  <span className="dirty-clean">All rows saved</span>
-                )}
+          <button
+            type="button"
+            className="ovicore-btn ovicore-btn-primary"
+            onClick={saveDirtyRows}
+            disabled={saving}
+          >
+            {saving ? "Saving..." : "Save dirty rows"}
+          </button>
+        </>
+      }
+    />
 
-                {lastError ? <span className="error-text">{lastError}</span> : null}
-              </div>
-            </div>
+    <OviCoreTableCard
+      title="Broiler Demand Entry"
+      subtitle="Excel-style planner with frozen identity columns, grouped headers, editable yellow cells and calculated review columns."
+    >
+      <div className="formula-bar">
+        <div className="formula-name">Capacity</div>
+        <div className="formula-text">
+          Floor area m² × target kg/m² ÷ target liveweight kg = calculated
+          shed bird capacity
+        </div>
+      </div>
 
-            <div className="grid-buttons">
-              <button type="button" onClick={addNewPlacementRow} disabled={saving}>
-                New placement row
-              </button>
+      <div className="ag-theme-quartz broiler-grid demand-planner-grid">
+        <AgGridReact<BroilerPlanRow>
+          ref={gridRef}
+          rowData={rows}
+          columnDefs={columnDefs}
+          defaultColDef={defaultColDef}
+          getRowId={(params) => String(params.data.id)}
+          quickFilterText={searchText}
+          animateRows
+          suppressDragLeaveHidesColumns
+          stopEditingWhenCellsLoseFocus
+          rowSelection="single"
+          suppressRowClickSelection={false}
+          rowHeight={38}
+          headerHeight={38}
+          groupHeaderHeight={34}
+          loading={loading}
+          onGridReady={onGridReady}
+          onFirstDataRendered={autosizeColumns}
+          onCellValueChanged={(event) => {
+            if (!event.data?.id) return;
 
-              <button type="button" onClick={duplicateSelectedRow} disabled={saving}>
-                Duplicate selected row
-              </button>
+            const recalculated = recalculateRow(event.data);
 
-              <button type="button" onClick={deleteSelectedRow} disabled={saving}>
-                Delete selected row
-              </button>
-
-              <button type="button" onClick={autosizeColumns}>
-                Autosize columns
-              </button>
-
-              <button type="button" onClick={() => fetchRows()}>
-                Reload data
-              </button>
-
-              <button type="button" className="primary" onClick={saveDirtyRows} disabled={saving}>
-                {saving ? "Saving..." : "Save all dirty rows"}
-              </button>
-            </div>
-          </div>
-
-          <div className="formula-bar">
-            <div className="formula-name">Capacity</div>
-            <div className="formula-text">
-              Floor area m² × target kg/m² ÷ target liveweight kg = calculated shed bird capacity
-            </div>
-          </div>
-
-          <div className="ag-theme-quartz broiler-grid">
-            <AgGridReact<BroilerPlanRow>
-              ref={gridRef}
-              rowData={rows}
-              columnDefs={columnDefs}
-              defaultColDef={defaultColDef}
-              getRowId={(params) => String(params.data.id)}
-              quickFilterText={searchText}
-              animateRows
-              suppressDragLeaveHidesColumns
-              stopEditingWhenCellsLoseFocus
-              rowSelection="single"
-              suppressRowClickSelection={false}
-              rowHeight={38}
-              headerHeight={38}
-              groupHeaderHeight={34}
-              loading={loading}
-              onGridReady={onGridReady}
-              onFirstDataRendered={autosizeColumns}
-							onCellValueChanged={(event) => {
-								if (!event.data?.id) return;
-
-								const recalculated = recalculateRow(event.data);
-
-								console.log("Cell changed:", recalculated);
-								markRowDirty(recalculated);
-								refreshGridRow(recalculated);
-							}}
-            />
-          </div>
-        </section>
-      </section>
-    </main>
+            console.log("Cell changed:", recalculated);
+            markRowDirty(recalculated);
+            refreshGridRow(recalculated);
+          }}
+        />
+      </div>
+    </OviCoreTableCard>
+  </OviCoreShell>
   );
 }

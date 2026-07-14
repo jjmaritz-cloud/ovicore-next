@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import BroilerSidebar from "@/components/BroilerSidebar";
+import OviCoreModuleHeader from "@/components/OviCoreModuleHeader";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
@@ -655,146 +656,220 @@ export default function BroilerHomePage() {
       <BroilerSidebar />
 
       <main className="main-panel">
-				<section className="broiler-ai-hero">
-					<div>
-						<h2>Broiler AI Home</h2>
-					</div>
+        <OviCoreModuleHeader
+          eyebrow="OviCore Broiler Module"
+          title="Broiler Home"
+          description="Command view for placement pressure, chick supply, Daily House Sheet actuals, weather risk and processing readiness."
+          actions={[
+            {
+              label: "OviCore Home",
+              href: "/home",
+              type: "home",
+            },
+            {
+              label: "Refresh",
+              type: "refresh",
+              onClick: loadData,
+            },
+            {
+              label: `Weather: ${getWeatherRisk(insights.tomorrowWeather)}`,
+              type: "warning",
+            },
+          ]}
+        />
 
-					<button className="primary-button" type="button" onClick={loadData}>
-						Refresh
-					</button>
-				</section>
-				<section className="weather-drawer-card">
-					<button
-						type="button"
-						className="weather-drawer-toggle"
-						onClick={() => setWeatherOpen((current) => !current)}
-					>
-						<div>
-							<p className="eyebrow">Weather Intelligence</p>
-							<h3>Weather & Ventilation Risk</h3>
-							<span>
-								Demo forecast for tomorrow and the next 7 days. Live farm weather will be connected later.
-							</span>
-						</div>
+        <section className="chick-supply-card">
+          <div className="chick-supply-head">
+            <div>
+              <p className="eyebrow">Broiler Command Snapshot</p>
+              <h3>Current Planning Position</h3>
+              <span>
+                Compact overview of broiler demand, live production actuals,
+                chick supply pressure and near-term placement risk.
+              </span>
+            </div>
 
-						<div className="weather-toggle-right">
-							<span
-								className={
-									getWeatherRisk(insights.tomorrowWeather) === "High"
-										? "weather-risk-high"
-										: getWeatherRisk(insights.tomorrowWeather) === "Watch"
-											? "weather-risk-watch"
-											: "weather-risk-normal"
-								}
-							>
-								Tomorrow: {getWeatherRisk(insights.tomorrowWeather)}
-							</span>
-							<strong>{weatherOpen ? "Hide" : "Show"}</strong>
-						</div>
-					</button>
+            <strong
+              className={
+                insights.chickSupplyRisk === "High" ||
+                insights.chickSupplyRisk === "No Supply" ||
+                insights.performanceWatchCycles.length > 0
+                  ? "supply-risk-watch"
+                  : "supply-risk-covered"
+              }
+            >
+              {loading ? "Loading" : "Live"}
+            </strong>
+          </div>
 
-					{weatherOpen && (
-						<div className="weather-drawer-body">
-							<div className="weather-summary-grid">
-								<div className="weather-summary-card">
-									<span>Tomorrow Rain</span>
-									<strong>{insights.tomorrowWeather.rainMm} mm</strong>
-									<p>{insights.tomorrowWeather.rainChancePct}% chance</p>
-								</div>
+          <div className="chick-supply-grid">
+            <div>
+              <span>Planned Birds</span>
+              <strong>{formatNumber(insights.totalPlannedBirds)}</strong>
+              <p>Total birds from Broiler Demand Planner.</p>
+            </div>
 
-								<div className="weather-summary-card">
-									<span>Humidity</span>
-									<strong>{insights.tomorrowWeather.humidityPct}%</strong>
-									<p>Moisture load risk</p>
-								</div>
+            <div>
+              <span>Forecast Live Kg</span>
+              <strong>{formatNumber(insights.forecastLiveKg)}</strong>
+              <p>Planned birds multiplied by target liveweight.</p>
+            </div>
 
-								<div className="weather-summary-card">
-									<span>Temperature</span>
-									<strong>
-										{insights.tomorrowWeather.minTempC}–{insights.tomorrowWeather.maxTempC}°C
-									</strong>
-									<p>Ventilation balance</p>
-								</div>
+            <div>
+              <span>Active Cycles</span>
+              <strong>{formatNumber(insights.activeCycles)}</strong>
+              <p>Cycles reporting Daily House Sheet actuals.</p>
+            </div>
 
-								<div className="weather-summary-card">
-									<span>7 Day Wet Risk</span>
-									<strong>{insights.wetDays.length} days</strong>
-									<p>Rain above 5 mm</p>
-								</div>
-							</div>
+            <div>
+              <span>Chick Balance</span>
+              <strong
+                className={
+                  insights.chickSurplusShortfall < 0
+                    ? "negative-supply"
+                    : "positive-supply"
+                }
+              >
+                {formatNumber(insights.chickSurplusShortfall)}
+              </strong>
+              <p>Available chicks less required chicks.</p>
+            </div>
+          </div>
+        </section>
 
-							<div className="weather-content-grid">
-								<div className="weather-ai-panel">
-									<div className="broiler-ai-card-head">
-										<div>
-											<p className="eyebrow">AI Ventilation Guidance</p>
-											<h3>Farmer Notes</h3>
-										</div>
-									</div>
+        <section className="weather-drawer-card">
+          <button
+            type="button"
+            className="weather-drawer-toggle"
+            onClick={() => setWeatherOpen((current) => !current)}
+          >
+            <div>
+              <p className="eyebrow">Weather Intelligence</p>
+              <h3>Weather & Ventilation Risk</h3>
+              <span>
+                Demo forecast for tomorrow and the next 7 days. Live farm
+                weather can be connected later.
+              </span>
+            </div>
 
-									<div className="ai-briefing-stack">
-										{insights.weatherBriefing.map((item) => (
-											<div className="ai-brief-row" key={item}>
-												<span>AI</span>
-												<p>{item}</p>
-											</div>
-										))}
-									</div>
-								</div>
+            <div className="weather-toggle-right">
+              <span
+                className={
+                  getWeatherRisk(insights.tomorrowWeather) === "High"
+                    ? "weather-risk-high"
+                    : getWeatherRisk(insights.tomorrowWeather) === "Watch"
+                      ? "weather-risk-watch"
+                      : "weather-risk-normal"
+                }
+              >
+                Tomorrow: {getWeatherRisk(insights.tomorrowWeather)}
+              </span>
+              <strong>{weatherOpen ? "Hide" : "Show"}</strong>
+            </div>
+          </button>
 
-								<div className="weather-week-panel">
-									<div className="weather-week-header">
-										<p className="eyebrow">Next 7 Days</p>
-										<h3>Forecast Watch</h3>
-									</div>
+          {weatherOpen && (
+            <div className="weather-drawer-body">
+              <div className="weather-summary-grid">
+                <div className="weather-summary-card">
+                  <span>Tomorrow Rain</span>
+                  <strong>{insights.tomorrowWeather.rainMm} mm</strong>
+                  <p>{insights.tomorrowWeather.rainChancePct}% chance</p>
+                </div>
 
-									<div className="weather-week-list">
-										{demoWeather.map((day) => {
-											const risk = getWeatherRisk(day);
+                <div className="weather-summary-card">
+                  <span>Humidity</span>
+                  <strong>{insights.tomorrowWeather.humidityPct}%</strong>
+                  <p>Moisture load risk</p>
+                </div>
 
-											return (
-												<div className="weather-day-row" key={day.day}>
-													<div>
-														<strong>{day.day}</strong>
-														<span>{day.condition}</span>
-													</div>
+                <div className="weather-summary-card">
+                  <span>Temperature</span>
+                  <strong>
+                    {insights.tomorrowWeather.minTempC}–
+                    {insights.tomorrowWeather.maxTempC}°C
+                  </strong>
+                  <p>Ventilation balance</p>
+                </div>
 
-													<div>
-														<b>{day.rainMm} mm</b>
-														<span>Rain</span>
-													</div>
+                <div className="weather-summary-card">
+                  <span>7 Day Wet Risk</span>
+                  <strong>{insights.wetDays.length} days</strong>
+                  <p>Rain above 5 mm</p>
+                </div>
+              </div>
 
-													<div>
-														<b>{day.humidityPct}%</b>
-														<span>Humidity</span>
-													</div>
+              <div className="weather-content-grid">
+                <div className="weather-ai-panel">
+                  <div className="broiler-ai-card-head">
+                    <div>
+                      <p className="eyebrow">AI Ventilation Guidance</p>
+                      <h3>Farmer Notes</h3>
+                    </div>
+                  </div>
 
-													<div>
-														<b>{day.maxTempC}°C</b>
-														<span>Max</span>
-													</div>
+                  <div className="ai-briefing-stack">
+                    {insights.weatherBriefing.map((item) => (
+                      <div className="ai-brief-row" key={item}>
+                        <span>AI</span>
+                        <p>{item}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
 
-													<em
-														className={
-															risk === "High"
-																? "weather-risk-high"
-																: risk === "Watch"
-																	? "weather-risk-watch"
-																	: "weather-risk-normal"
-														}
-													>
-														{risk}
-													</em>
-												</div>
-											);
-										})}
-									</div>
-								</div>
-							</div>
-						</div>
-					)}
-				</section>
+                <div className="weather-week-panel">
+                  <div className="weather-week-header">
+                    <p className="eyebrow">Next 7 Days</p>
+                    <h3>Forecast Watch</h3>
+                  </div>
+
+                  <div className="weather-week-list">
+                    {demoWeather.map((day) => {
+                      const risk = getWeatherRisk(day);
+
+                      return (
+                        <div className="weather-day-row" key={day.day}>
+                          <div>
+                            <strong>{day.day}</strong>
+                            <span>{day.condition}</span>
+                          </div>
+
+                          <div>
+                            <b>{day.rainMm} mm</b>
+                            <span>Rain</span>
+                          </div>
+
+                          <div>
+                            <b>{day.humidityPct}%</b>
+                            <span>Humidity</span>
+                          </div>
+
+                          <div>
+                            <b>{day.maxTempC}°C</b>
+                            <span>Max</span>
+                          </div>
+
+                          <em
+                            className={
+                              risk === "High"
+                                ? "weather-risk-high"
+                                : risk === "Watch"
+                                  ? "weather-risk-watch"
+                                  : "weather-risk-normal"
+                            }
+                          >
+                            {risk}
+                          </em>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
 
         <section className="broiler-ai-layout">
           <div className="broiler-ai-card broiler-ai-brief-card">
@@ -803,6 +878,7 @@ export default function BroilerHomePage() {
                 <p className="eyebrow">AI Briefing</p>
                 <h3>Today’s Broiler Readout</h3>
               </div>
+
               <span className="ai-version-chip">Rule AI v1</span>
             </div>
 
@@ -830,164 +906,179 @@ export default function BroilerHomePage() {
               </div>
             </div>
 
-						<div className="ai-action-stack">
-							<ActionCard
-								title="Production pressure"
-								value={insights.performanceWatchCycles.length}
-								detail="Cycles with mortality or cull pressure from Daily House Sheet."
-								tone={insights.performanceWatchCycles.length > 0 ? "warning" : "good"}
-							/>
-							<ActionCard
-								title="Chick supply pressure"
-								value={insights.chickSurplusShortfall < 0 ? Math.abs(insights.chickSurplusShortfall) : 0}
-								detail="Chick shortfall against broiler demand."
-								tone={insights.chickSurplusShortfall < 0 ? "bad" : "good"}
-							/>
+            <div className="ai-action-stack">
+              <ActionCard
+                title="Production pressure"
+                value={insights.performanceWatchCycles.length}
+                detail="Cycles with mortality or cull pressure from Daily House Sheet."
+                tone={
+                  insights.performanceWatchCycles.length > 0
+                    ? "warning"
+                    : "good"
+                }
+              />
 
-							<ActionCard
-								title="Density watch"
-								value={insights.highDensityPlans.length}
-								detail="Cycles at or above 39 kg/m²."
-								tone={insights.highDensityPlans.length > 0 ? "warning" : "good"}
-							/>
+              <ActionCard
+                title="Chick supply pressure"
+                value={
+                  insights.chickSurplusShortfall < 0
+                    ? Math.abs(insights.chickSurplusShortfall)
+                    : 0
+                }
+                detail="Chick shortfall against broiler demand."
+                tone={insights.chickSurplusShortfall < 0 ? "bad" : "good"}
+              />
 
-							<ActionCard
-								title="Upcoming placements"
-								value={insights.upcomingPlacements.length}
-								detail="Placements planned in the next 60 days."
-								tone={insights.upcomingPlacements.length > 0 ? "good" : "warning"}
-							/>
-						</div>
+              <ActionCard
+                title="Density watch"
+                value={insights.highDensityPlans.length}
+                detail="Cycles at or above 39 kg/m²."
+                tone={
+                  insights.highDensityPlans.length > 0 ? "warning" : "good"
+                }
+              />
+
+              <ActionCard
+                title="Upcoming placements"
+                value={insights.upcomingPlacements.length}
+                detail="Placements planned in the next 60 days."
+                tone={
+                  insights.upcomingPlacements.length > 0 ? "good" : "warning"
+                }
+              />
+            </div>
           </div>
         </section>
 
-				<section className="chick-supply-card">
-					<div className="chick-supply-head">
-						<div>
-							<p className="eyebrow">Live Production Position</p>
-							<h3>Daily House Sheet Actuals</h3>
-							<span>
-								Current stock and loss pressure calculated from saved Daily House Sheet rows.
-							</span>
-						</div>
+        <section className="chick-supply-card">
+          <div className="chick-supply-head">
+            <div>
+              <p className="eyebrow">Live Production Position</p>
+              <h3>Daily House Sheet Actuals</h3>
+              <span>
+                Current stock and loss pressure calculated from saved Daily
+                House Sheet rows.
+              </span>
+            </div>
 
-						<strong
-							className={
-								insights.performanceWatchCycles.length > 0
-									? "supply-risk-watch"
-									: "supply-risk-covered"
-							}
-						>
-							{insights.performanceWatchCycles.length > 0 ? "Review" : "Stable"}
-						</strong>
-					</div>
+            <strong
+              className={
+                insights.performanceWatchCycles.length > 0
+                  ? "supply-risk-watch"
+                  : "supply-risk-covered"
+              }
+            >
+              {insights.performanceWatchCycles.length > 0 ? "Review" : "Stable"}
+            </strong>
+          </div>
 
-					<div className="chick-supply-grid">
-						<div>
-							<span>Active Cycles</span>
-							<strong>{formatNumber(insights.activeCycles)}</strong>
-							<p>Cycles with saved Daily House Sheet rows.</p>
-						</div>
+          <div className="chick-supply-grid">
+            <div>
+              <span>Active Cycles</span>
+              <strong>{formatNumber(insights.activeCycles)}</strong>
+              <p>Cycles with saved Daily House Sheet rows.</p>
+            </div>
 
-						<div>
-							<span>Current Birds</span>
-							<strong>{formatNumber(insights.currentClosingBirds)}</strong>
-							<p>Latest closing birds by active cycle.</p>
-						</div>
+            <div>
+              <span>Current Birds</span>
+              <strong>{formatNumber(insights.currentClosingBirds)}</strong>
+              <p>Latest closing birds by active cycle.</p>
+            </div>
 
-						<div>
-							<span>Actual Losses</span>
-							<strong>
-								{formatNumber(
-									insights.totalActualMortality + insights.totalActualCulls,
-								)}
-							</strong>
-							<p>Mortality plus culls from Daily House Sheet.</p>
-						</div>
+            <div>
+              <span>Actual Losses</span>
+              <strong>
+                {formatNumber(
+                  insights.totalActualMortality + insights.totalActualCulls,
+                )}
+              </strong>
+              <p>Mortality plus culls from Daily House Sheet.</p>
+            </div>
 
-						<div>
-							<span>Livability</span>
-							<strong>{formatNumber(insights.actualLivability, 2)}%</strong>
-							<p>Current closing birds vs planned birds.</p>
-						</div>
-					</div>
-				</section>
+            <div>
+              <span>Livability</span>
+              <strong>{formatNumber(insights.actualLivability, 2)}%</strong>
+              <p>Current closing birds vs planned birds.</p>
+            </div>
+          </div>
+        </section>
 
-				<section className="chick-supply-card">
-					<div className="chick-supply-head">
-						<div>
-							<p className="eyebrow">Chick Supply Pressure</p>
-							<h3>Hatchery Supply vs Broiler Demand</h3>
-							<span>
-								First integration bridge: required chicks from Broiler planning compared
-								with available chick supply.
-							</span>
-						</div>
+        <section className="chick-supply-card">
+          <div className="chick-supply-head">
+            <div>
+              <p className="eyebrow">Chick Supply Pressure</p>
+              <h3>Hatchery Supply vs Broiler Demand</h3>
+              <span>
+                First integration bridge: required chicks from Broiler planning
+                compared with available chick supply.
+              </span>
+            </div>
 
-						<strong
-							className={
-								insights.chickSupplyRisk === "High" ||
-								insights.chickSupplyRisk === "No Supply"
-									? "supply-risk-high"
-									: insights.chickSupplyRisk === "Watch" ||
-											insights.chickSupplyRisk === "Minor"
-										? "supply-risk-watch"
-										: "supply-risk-covered"
-							}
-						>
-							{insights.chickSupplyRisk}
-						</strong>
-					</div>
+            <strong
+              className={
+                insights.chickSupplyRisk === "High" ||
+                insights.chickSupplyRisk === "No Supply"
+                  ? "supply-risk-high"
+                  : insights.chickSupplyRisk === "Watch" ||
+                      insights.chickSupplyRisk === "Minor"
+                    ? "supply-risk-watch"
+                    : "supply-risk-covered"
+              }
+            >
+              {insights.chickSupplyRisk}
+            </strong>
+          </div>
 
-					<div className="chick-supply-grid">
-						<div>
-							<span>Required Chicks</span>
-							<strong>{formatNumber(insights.totalRequiredChicks)}</strong>
-							<p>Calculated from the Broiler Demand Planner.</p>
-						</div>
+          <div className="chick-supply-grid">
+            <div>
+              <span>Required Chicks</span>
+              <strong>{formatNumber(insights.totalRequiredChicks)}</strong>
+              <p>Calculated from the Broiler Demand Planner.</p>
+            </div>
 
-						<div>
-							<span>Available Chicks</span>
-							<strong>{formatNumber(insights.availableChicks)}</strong>
-							<p>Entered as hatchery/chick supply.</p>
-						</div>
+            <div>
+              <span>Available Chicks</span>
+              <strong>{formatNumber(insights.availableChicks)}</strong>
+              <p>Entered as hatchery/chick supply.</p>
+            </div>
 
-						<div>
-							<span>Surplus / Shortfall</span>
-							<strong
-								className={
-									insights.chickSurplusShortfall < 0
-										? "negative-supply"
-										: "positive-supply"
-								}
-							>
-								{formatNumber(insights.chickSurplusShortfall)}
-							</strong>
-							<p>Negative means placement risk.</p>
-						</div>
+            <div>
+              <span>Surplus / Shortfall</span>
+              <strong
+                className={
+                  insights.chickSurplusShortfall < 0
+                    ? "negative-supply"
+                    : "positive-supply"
+                }
+              >
+                {formatNumber(insights.chickSurplusShortfall)}
+              </strong>
+              <p>Negative means placement risk.</p>
+            </div>
 
-						<div>
-							<span>Planning Signal</span>
-							<strong>
-								{insights.chickSurplusShortfall < 0
-									? "Review placements"
-									: insights.availableChicks > 0
-										? "Covered"
-										: "Awaiting supply"}
-							</strong>
-							<p>Next step is linking this to Hatchery output.</p>
-						</div>
-					</div>
-				</section>
+            <div>
+              <span>Planning Signal</span>
+              <strong>
+                {insights.chickSurplusShortfall < 0
+                  ? "Review placements"
+                  : insights.availableChicks > 0
+                    ? "Covered"
+                    : "Awaiting supply"}
+              </strong>
+              <p>Next step is linking this to Hatchery output.</p>
+            </div>
+          </div>
+        </section>
 
-				<section className="grid-card broiler-ai-table-card">
+        <section className="grid-card broiler-ai-table-card">
           <div className="grid-card-head">
             <div>
-							<h3>Upcoming Placement Timeline</h3>
-							<p>
-								Next 60 days from the Demand Planner. Use this to check placement timing,
-								required chicks, shed density, and farm readiness.
-							</p>
+              <h3>Processing Forecast Timeline</h3>
+              <p>
+                Next forecast processing weeks grouped by planned processing
+                date. This gives the broiler team an early pressure view before
+                actual processing is entered.
+              </p>
             </div>
           </div>
 
@@ -995,30 +1086,89 @@ export default function BroilerHomePage() {
             <table className="ai-home-table">
               <thead>
                 <tr>
-									<th>Placement Date</th>
-									<th>Farm</th>
-									<th>Shed</th>
-									<th>Cycle</th>
-									<th>Planned Birds</th>
-									<th>Required Chicks</th>
-									<th>kg/m²</th>
-									<th>Planning Status</th>
+                  <th>Week Ending</th>
+                  <th>Cycles</th>
+                  <th>Planned Birds</th>
+                  <th>Forecast Live Kg</th>
+                  <th>Avg Target LW</th>
+                  <th>Pressure</th>
                 </tr>
               </thead>
 
               <tbody>
-								{insights.upcomingPlacements.length === 0 ? (
-									<tr>
-										<td colSpan={8}>No placements planned in the next 60 days.</td>
-									</tr>
-								) : (
-									insights.upcomingPlacements.map((plan) => {
+                {insights.forecastWeeks.length === 0 ? (
+                  <tr>
+                    <td colSpan={6}>No processing forecast weeks available.</td>
+                  </tr>
+                ) : (
+                  insights.forecastWeeks.map((week) => (
+                    <tr key={week.weekEnding}>
+                      <td>{isoToDisplayDate(week.weekEnding)}</td>
+                      <td>{formatNumber(week.cycleCount)}</td>
+                      <td>{formatNumber(week.plannedBirds)}</td>
+                      <td>{formatNumber(week.forecastLiveKg)}</td>
+                      <td>{formatNumber(week.avgTargetLw, 2)} kg</td>
+                      <td>
+                        <span
+                          className={
+                            week.risk === "High"
+                              ? "review-pill"
+                              : week.risk === "Watch"
+                                ? "review-pill"
+                                : "ready-pill"
+                          }
+                        >
+                          {week.risk}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="grid-card broiler-ai-table-card">
+          <div className="grid-card-head">
+            <div>
+              <h3>Upcoming Placement Timeline</h3>
+              <p>
+                Next 60 days from the Demand Planner. Use this to check
+                placement timing, required chicks, shed density, and farm
+                readiness.
+              </p>
+            </div>
+          </div>
+
+          <div className="ai-table-scroll">
+            <table className="ai-home-table">
+              <thead>
+                <tr>
+                  <th>Placement Date</th>
+                  <th>Farm</th>
+                  <th>Shed</th>
+                  <th>Cycle</th>
+                  <th>Planned Birds</th>
+                  <th>Required Chicks</th>
+                  <th>kg/m²</th>
+                  <th>Planning Status</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {insights.upcomingPlacements.length === 0 ? (
+                  <tr>
+                    <td colSpan={8}>
+                      No placements planned in the next 60 days.
+                    </td>
+                  </tr>
+                ) : (
+                  insights.upcomingPlacements.map((plan) => {
                     const density = Number(plan.planned_kg_m2 || 0);
 
                     const status =
-                      density >= 39
-                        ? "Density review"
-                        : "Ready watch";
+                      density >= 39 ? "Density review" : "Ready watch";
 
                     return (
                       <tr key={plan.id}>

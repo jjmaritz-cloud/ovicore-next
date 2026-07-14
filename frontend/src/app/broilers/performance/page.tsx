@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import BroilerSidebar from "@/components/BroilerSidebar";
+import OviCoreHouseSheetTemplate from "@/components/OviCoreHouseSheetTemplate";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
@@ -625,26 +626,22 @@ export default function DailyPerformancePage() {
 		setMessage("Unsaved changes discarded.");
 	}
 
-  return (
+    return (
     <div className="page-shell">
       <BroilerSidebar />
 
-      <main className="main-panel">
-        <section className="topbar">
-          <div>
-						<p className="eyebrow">OviCore Broiler Module</p>
-						<h2>Daily House Sheet</h2>
-          </div>
-
-          <button className="primary-button" type="button" onClick={loadData}>
-            Refresh
-          </button>
-        </section>
-
-				<section className="daily-cycle-selector">
-					<label>
-						Select Cycle
-						<select
+			<div className="main-panel house-sheet-main">
+				<OviCoreHouseSheetTemplate
+          moduleLabel="Broiler Production"
+          title="Daily House Sheet"
+          description="Dense broiler house entry for mortality, culls, feed, water, bodyweight and daily shed comments."
+          homeHref="/broilers"
+          homeLabel="Broiler Home"
+          secondaryHref="/broilers/performance"
+          secondaryLabel="Refresh"
+          selectorLabel="Select Cycle"
+          selector={
+            <select
               value={selectedPlanId}
               onChange={(event) => setSelectedPlanId(Number(event.target.value))}
             >
@@ -655,337 +652,313 @@ export default function DailyPerformancePage() {
                 </option>
               ))}
             </select>
-          </label>
+          }
+          onDiscard={discardChanges}
+          onSave={saveAllChanges}
+          discardDisabled={dirtyKeys.size === 0 || saving}
+          saveDisabled={dirtyKeys.size === 0 || saving}
+          saving={saving}
+          unsavedCount={dirtyKeys.size}
+          kpis={[
+            {
+              label: "Total Mortality",
+              value: formatNumber(totals.totalMortality),
+              helper: "Front + middle + back + other.",
+            },
+            {
+              label: "Total Culls",
+              value: formatNumber(totals.totalCulls),
+              helper: "Legs + runts + beak + other.",
+            },
+            {
+              label: "Total Bird Loss",
+              value: formatNumber(totals.totalLoss),
+              helper: "Mortality plus culls.",
+            },
+            {
+              label: "Closing Birds",
+              value: formatNumber(totals.latestClosing),
+              helper: "Latest calculated closing stock.",
+            },
+            {
+              label: "Livability",
+              value: `${formatNumber(totals.latestLivability, 2)}%`,
+              helper: "Latest closing birds vs placed birds.",
+            },
+            {
+              label: "Unsaved Rows",
+              value: dirtyKeys.size,
+              helper:
+                dirtyKeys.size > 0 ? "Changes not saved." : "All rows saved.",
+              tone: dirtyKeys.size > 0 ? "warning" : "good",
+            },
+          ]}
+          tableTitle="Daily House Sheet Entry"
+          tableDescription="Yellow cells are editable. Calculated review columns are shown beside entry fields."
+          tableSummary={`Closing birds: ${formatNumber(
+            totals.latestClosing,
+          )} · Livability: ${formatNumber(totals.latestLivability, 2)}%`}
+          message={message}
+          footerPills={[
+            { label: "Mortality", value: formatNumber(totals.totalMortality) },
+            { label: "Culls", value: formatNumber(totals.totalCulls) },
+            { label: "Total loss", value: formatNumber(totals.totalLoss) },
+            { label: "Unsaved rows", value: dirtyKeys.size },
+          ]}
+        >
+          <table className="house-sheet-table broiler-house-sheet-table">
+            <thead>
+              <tr>
+                <th colSpan={2}>Day</th>
+                <th colSpan={6}>Bird Count</th>
+                <th colSpan={5}>Mortality Location</th>
+                <th colSpan={5}>Cull Reasons</th>
+                <th colSpan={4}>Daily Inputs</th>
+                <th colSpan={6}>Review</th>
+              </tr>
 
-					<div className="daily-save-actions">
-						<button
-							type="button"
-							className="daily-action-pill daily-discard-pill"
-							onClick={discardChanges}
-							disabled={dirtyKeys.size === 0 || saving}
-						>
-							Discard Changes
-						</button>
+              <tr>
+                {[
+                  "Date",
+                  "Age",
 
-						<button
-							type="button"
-							className="daily-action-pill daily-save-pill"
-							onClick={saveAllChanges}
-							disabled={dirtyKeys.size === 0 || saving}
-						>
-							{saving
-								? "Saving..."
-								: dirtyKeys.size > 0
-									? `Save Changes (${dirtyKeys.size})`
-									: "Save Changes"}
-						</button>
-					</div>
+                  "Opening",
+                  "Mort Total",
+                  "Cull Total",
+                  "Total Loss",
+                  "Closing",
+                  "Bird Balance",
 
-        </section>
+                  "Front",
+                  "Middle",
+                  "Back",
+                  "Other",
+                  "Mort %",
 
-        <section className="kpi-grid">
-          <div className="kpi-card">
-            <span>Total Mortality</span>
-            <strong>{formatNumber(totals.totalMortality)}</strong>
-            <p>Front + middle + back + other.</p>
-          </div>
+                  "Legs",
+                  "Runts",
+                  "Beak",
+                  "Other",
+                  "Cull %",
 
-          <div className="kpi-card">
-            <span>Total Culls</span>
-            <strong>{formatNumber(totals.totalCulls)}</strong>
-            <p>Legs + runts + beak + other.</p>
-          </div>
+                  "Feed kg",
+                  "Water L",
+                  "Bodyweight kg",
+                  "Notes",
 
-          <div className="kpi-card">
-            <span>Total Bird Loss</span>
-            <strong>{formatNumber(totals.totalLoss)}</strong>
-            <p>Total mortality + total culls.</p>
-          </div>
+                  "Livability %",
+                  "kg/m²",
+                  "FCR",
+                  "Mort Flag",
+                  "Cull Flag",
+                  "AI Review",
+                ].map((heading) => (
+                  <th key={heading}>{heading}</th>
+                ))}
+              </tr>
+            </thead>
 
-          <div className="kpi-card">
-            <span>Closing Birds</span>
-            <strong>{formatNumber(totals.latestClosing)}</strong>
-            <p>Latest calculated closing stock.</p>
-          </div>
-
-          <div className="kpi-card">
-            <span>Livability</span>
-            <strong>{formatNumber(totals.latestLivability, 2)}%</strong>
-            <p>Latest closing birds vs placed birds.</p>
-          </div>
-        </section>
-
-        <section className="grid-card daily-performance-card">
-          <div className="grid-card-head">
-            <div>
-							<h3>Daily Shed Entry</h3>
-							<p>
-								Rows are generated from placement to planned depop. Enter daily shed
-								actuals once, then save all changes together.
-							</p>
-            </div>
-
-						{message && (
-							<span className="daily-message-pill">{message}</span>
-						)}
-          </div>
-
-          <div className="daily-grid-scroll">
-            <table className="daily-performance-table">
-              <thead>
+            <tbody>
+              {loading ? (
                 <tr>
-                  <th colSpan={2}>Day</th>
-                  <th colSpan={6}>Bird Count</th>
-                  <th colSpan={5}>Mortality Location</th>
-                  <th colSpan={5}>Cull Reasons</th>
-                  <th colSpan={4}>Daily Inputs</th>
-									<th colSpan={6}>Review</th>
+                  <td colSpan={28}>Loading daily performance...</td>
                 </tr>
-
+              ) : rows.length === 0 ? (
                 <tr>
-                  {[
-                    "Date",
-                    "Age",
-
-                    "Opening",
-                    "Mort Total",
-                    "Cull Total",
-                    "Total Loss",
-                    "Closing",
-                    "Bird Balance",
-
-                    "Front",
-                    "Middle",
-                    "Back",
-                    "Other",
-                    "Mort %",
-
-                    "Legs",
-                    "Runts",
-                    "Beak",
-                    "Other",
-                    "Cull %",
-
-                    "Feed kg",
-                    "Water L",
-                    "Bodyweight kg",
-                    "Notes",
-
-                    "Livability %",
-                    "kg/m²",
-                    "FCR",
-                    "Mort Flag",
-                    "Cull Flag",
-                    "AI Review",
-
-                  ].map((heading) => (
-                    <th key={heading}>{heading}</th>
-                  ))}
+                  <td colSpan={28}>
+                    No cycle selected. Add demand plan rows first.
+                  </td>
                 </tr>
-              </thead>
+              ) : (
+                rows.map((row) => (
+                  <tr key={row.local_key}>
+                    <td>{row.entry_date}</td>
+                    <td>{row.age_days}</td>
 
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={28}>Loading daily performance...</td>
-                  </tr>
-                ) : rows.length === 0 ? (
-                  <tr>
-                    <td colSpan={28}>
-                      No cycle selected. Add demand plan rows first.
+                    <EditableCell
+                      value={row.opening_birds}
+                      type="number"
+                      onChange={(value) =>
+                        updateRow(row.local_key, "opening_birds", value)
+                      }
+                    />
+
+                    <td className="house-sheet-calculated">
+                      {formatNumber(row.mortality_birds)}
+                    </td>
+
+                    <td className="house-sheet-calculated">
+                      {formatNumber(row.cull_birds)}
+                    </td>
+
+                    <td className="house-sheet-calculated">
+                      {formatNumber(row.total_bird_loss)}
+                    </td>
+
+                    <td className="house-sheet-calculated">
+                      {formatNumber(row.closing_birds)}
+                    </td>
+
+                    <td className="house-sheet-calculated">
+                      {Number(row.opening_birds || 0) -
+                        Number(row.total_bird_loss || 0) ===
+                      Number(row.closing_birds || 0)
+                        ? "OK"
+                        : "Check"}
+                    </td>
+
+                    <EditableCell
+                      value={row.mortality_front}
+                      type="number"
+                      onChange={(value) =>
+                        updateRow(row.local_key, "mortality_front", value)
+                      }
+                    />
+
+                    <EditableCell
+                      value={row.mortality_middle}
+                      type="number"
+                      onChange={(value) =>
+                        updateRow(row.local_key, "mortality_middle", value)
+                      }
+                    />
+
+                    <EditableCell
+                      value={row.mortality_back}
+                      type="number"
+                      onChange={(value) =>
+                        updateRow(row.local_key, "mortality_back", value)
+                      }
+                    />
+
+                    <EditableCell
+                      value={row.mortality_other}
+                      type="number"
+                      onChange={(value) =>
+                        updateRow(row.local_key, "mortality_other", value)
+                      }
+                    />
+
+                    <td className="house-sheet-calculated">
+                      {formatNumber(row.mortality_pct, 2)}
+                    </td>
+
+                    <EditableCell
+                      value={row.cull_legs}
+                      type="number"
+                      onChange={(value) =>
+                        updateRow(row.local_key, "cull_legs", value)
+                      }
+                    />
+
+                    <EditableCell
+                      value={row.cull_runts}
+                      type="number"
+                      onChange={(value) =>
+                        updateRow(row.local_key, "cull_runts", value)
+                      }
+                    />
+
+                    <EditableCell
+                      value={row.cull_beak}
+                      type="number"
+                      onChange={(value) =>
+                        updateRow(row.local_key, "cull_beak", value)
+                      }
+                    />
+
+                    <EditableCell
+                      value={row.cull_other}
+                      type="number"
+                      onChange={(value) =>
+                        updateRow(row.local_key, "cull_other", value)
+                      }
+                    />
+
+                    <td className="house-sheet-calculated">
+                      {formatNumber(row.cull_pct, 2)}
+                    </td>
+
+                    <EditableCell
+                      value={row.feed_kg}
+                      type="number"
+                      onChange={(value) =>
+                        updateRow(row.local_key, "feed_kg", value)
+                      }
+                    />
+
+                    <EditableCell
+                      value={row.water_litres}
+                      type="number"
+                      onChange={(value) =>
+                        updateRow(row.local_key, "water_litres", value)
+                      }
+                    />
+
+                    <EditableCell
+                      value={row.body_weight_kg}
+                      type="number"
+                      step="0.001"
+                      onChange={(value) =>
+                        updateRow(row.local_key, "body_weight_kg", value)
+                      }
+                    />
+
+                    <EditableCell
+                      value={row.notes}
+                      onChange={(value) =>
+                        updateRow(row.local_key, "notes", value)
+                      }
+                    />
+
+                    <td className="house-sheet-calculated">
+                      {formatNumber(row.livability_pct, 2)}
+                    </td>
+
+                    <td className="house-sheet-calculated">
+                      {formatNumber(row.kg_m2, 2)}
+                    </td>
+
+                    <td className="house-sheet-calculated">
+                      {formatNumber(row.fcr, 2)}
+                    </td>
+
+                    <td
+                      className={
+                        row.review_status.includes("Mortality")
+                          ? "house-sheet-warning"
+                          : "house-sheet-calculated"
+                      }
+                    >
+                      {row.review_status.includes("Mortality") ? "Review" : "OK"}
+                    </td>
+
+                    <td
+                      className={
+                        row.review_status.includes("Cull")
+                          ? "house-sheet-warning"
+                          : "house-sheet-calculated"
+                      }
+                    >
+                      {row.review_status.includes("Cull") ? "Review" : "OK"}
+                    </td>
+
+                    <td
+                      className={
+                        row.review_status === "OK"
+                          ? "house-sheet-good"
+                          : "house-sheet-warning"
+                      }
+                    >
+                      {row.review_status}
                     </td>
                   </tr>
-                ) : (
-                  rows.map((row) => (
-                    <tr key={row.local_key}>
-                      <td>{row.entry_date}</td>
-                      <td>{row.age_days}</td>
-
-                      <EditableCell
-                        value={row.opening_birds}
-                        type="number"
-                        onChange={(value) =>
-                          updateRow(row.local_key, "opening_birds", value)
-                        }
-                      />
-
-                      <td className="daily-calculated">
-                        {formatNumber(row.mortality_birds)}
-                      </td>
-
-                      <td className="daily-calculated">
-                        {formatNumber(row.cull_birds)}
-                      </td>
-
-                      <td className="daily-calculated">
-                        {formatNumber(row.total_bird_loss)}
-                      </td>
-
-                      <td className="daily-calculated">
-                        {formatNumber(row.closing_birds)}
-                      </td>
-
-                      <td className="daily-calculated">
-                        {Number(row.opening_birds || 0) -
-                          Number(row.total_bird_loss || 0) ===
-                        Number(row.closing_birds || 0)
-                          ? "OK"
-                          : "Check"}
-                      </td>
-
-                      <EditableCell
-                        value={row.mortality_front}
-                        type="number"
-                        onChange={(value) =>
-                          updateRow(row.local_key, "mortality_front", value)
-                        }
-                      />
-
-                      <EditableCell
-                        value={row.mortality_middle}
-                        type="number"
-                        onChange={(value) =>
-                          updateRow(row.local_key, "mortality_middle", value)
-                        }
-                      />
-
-                      <EditableCell
-                        value={row.mortality_back}
-                        type="number"
-                        onChange={(value) =>
-                          updateRow(row.local_key, "mortality_back", value)
-                        }
-                      />
-
-                      <EditableCell
-                        value={row.mortality_other}
-                        type="number"
-                        onChange={(value) =>
-                          updateRow(row.local_key, "mortality_other", value)
-                        }
-                      />
-
-                      <td className="daily-calculated">
-                        {formatNumber(row.mortality_pct, 2)}
-                      </td>
-
-                      <EditableCell
-                        value={row.cull_legs}
-                        type="number"
-                        onChange={(value) =>
-                          updateRow(row.local_key, "cull_legs", value)
-                        }
-                      />
-
-                      <EditableCell
-                        value={row.cull_runts}
-                        type="number"
-                        onChange={(value) =>
-                          updateRow(row.local_key, "cull_runts", value)
-                        }
-                      />
-
-                      <EditableCell
-                        value={row.cull_beak}
-                        type="number"
-                        onChange={(value) =>
-                          updateRow(row.local_key, "cull_beak", value)
-                        }
-                      />
-
-                      <EditableCell
-                        value={row.cull_other}
-                        type="number"
-                        onChange={(value) =>
-                          updateRow(row.local_key, "cull_other", value)
-                        }
-                      />
-
-                      <td className="daily-calculated">
-                        {formatNumber(row.cull_pct, 2)}
-                      </td>
-
-                      <EditableCell
-                        value={row.feed_kg}
-                        type="number"
-                        onChange={(value) =>
-                          updateRow(row.local_key, "feed_kg", value)
-                        }
-                      />
-
-                      <EditableCell
-                        value={row.water_litres}
-                        type="number"
-                        onChange={(value) =>
-                          updateRow(row.local_key, "water_litres", value)
-                        }
-                      />
-
-                      <EditableCell
-                        value={row.body_weight_kg}
-                        type="number"
-                        step="0.001"
-                        onChange={(value) =>
-                          updateRow(row.local_key, "body_weight_kg", value)
-                        }
-                      />
-
-                      <EditableCell
-                        value={row.notes}
-                        onChange={(value) =>
-                          updateRow(row.local_key, "notes", value)
-                        }
-                      />
-
-                      <td className="daily-calculated">
-                        {formatNumber(row.livability_pct, 2)}
-                      </td>
-
-                      <td className="daily-calculated">
-                        {formatNumber(row.kg_m2, 2)}
-                      </td>
-
-                      <td className="daily-calculated">
-                        {formatNumber(row.fcr, 2)}
-                      </td>
-
-                      <td
-                        className={
-                          row.review_status.includes("Mortality")
-                            ? "daily-warning"
-                            : "daily-calculated"
-                        }
-                      >
-                        {row.review_status.includes("Mortality") ? "Review" : "OK"}
-                      </td>
-
-                      <td
-                        className={
-                          row.review_status.includes("Cull")
-                            ? "daily-warning"
-                            : "daily-calculated"
-                        }
-                      >
-                        {row.review_status.includes("Cull") ? "Review" : "OK"}
-                      </td>
-
-                      <td
-                        className={
-                          row.review_status === "OK"
-                            ? "daily-calculated"
-                            : "daily-warning"
-                        }
-                      >
-                        {row.review_status}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </main>
+                ))
+              )}
+            </tbody>
+          </table>
+        </OviCoreHouseSheetTemplate>
+      </div>
     </div>
   );
 }
@@ -1002,7 +975,7 @@ function EditableCell({
   step?: string;
 }) {
   return (
-    <td className="daily-editable">
+    <td className="house-sheet-editable">
       <input
         type={type}
         step={step}
