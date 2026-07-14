@@ -1,7 +1,6 @@
 import os
 from datetime import datetime
 from typing import Optional
-from fastapi.responses import JSONResponse
 
 from fastapi import (
     APIRouter,
@@ -11,6 +10,7 @@ from fastapi import (
     Response,
     status,
 )
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -20,6 +20,7 @@ from app.security import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     create_access_token,
     decode_access_token,
+    hash_password,
     verify_password,
 )
 
@@ -32,16 +33,33 @@ router = APIRouter(
 COOKIE_NAME = "ovicore_access_token"
 
 COOKIE_SECURE = (
-    os.getenv("COOKIE_SECURE", "false")
+    os.getenv("COOKIE_SECURE", "true")
     .strip()
     .lower()
     == "true"
 )
 
+COOKIE_SAMESITE = (
+    os.getenv("COOKIE_SAMESITE", "none")
+    .strip()
+    .lower()
+)
 
-# ---------------------------------------------------------------------
-# Request / response models
-# ---------------------------------------------------------------------
+EMERGENCY_ADMIN_EMAIL = (
+    os.getenv("EMERGENCY_ADMIN_EMAIL", "")
+    .strip()
+    .lower()
+)
+
+EMERGENCY_ADMIN_PASSWORD = os.getenv(
+    "EMERGENCY_ADMIN_PASSWORD",
+    "",
+).strip()
+
+EMERGENCY_ADMIN_NAME = os.getenv(
+    "EMERGENCY_ADMIN_NAME",
+    "OviCore Administrator",
+).strip()
 
 
 class LoginRequest(BaseModel):
@@ -74,11 +92,6 @@ class CurrentUserResponse(BaseModel):
     enable_processing: bool = False
 
     farm_ids: list[int]
-
-
-# ---------------------------------------------------------------------
-# Current user dependency
-# ---------------------------------------------------------------------
 
 
 def get_current_user(
@@ -128,9 +141,42 @@ def get_current_user(
     return user
 
 
-# ---------------------------------------------------------------------
-# Login
-# ---------------------------------------------------------------------
+def get_or_create_emergency_admin(
+    db: Session,
+    email: str,
+    password: str,
+) -> models.AppUser:
+    user = (
+        db.query(models.AppUser)
+        .filter(models.AppUser.email == email)
+        .first()
+    )
+
+    if user is None:
+        user = models.AppUser(
+            full_name=EMERGENCY_ADMIN_NAME,
+            email=email,
+            password_hash=hash_password(password),
+            active=True,
+            is_global_admin=True,
+            is_company_admin=True,
+            must_change_password=False,
+        )
+
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    else:
+        user.active = True
+        user.is_global_admin = True
+        user.is_company_admin = True
+        user.must_change_password = False
+
+        db.commit()
+        db.refresh(user)
+
+    return user
 
 
 @router.post(
@@ -143,44 +189,58 @@ def login(
     db: Session = Depends(get_db),
 ):
     normalised_email = payload.email.strip().lower()
+    supplied_password = payload.password
 
-    user = (
-        db.query(models.AppUser)
-        .filter(
-            models.AppUser.email == normalised_email,
-        )
-        .first()
+    emergency_login_matches = (
+        bool(EMERGENCY_ADMIN_EMAIL)
+        and bool(EMERGENCY_ADMIN_PASSWORD)
+        and normalised_email == EMERGENCY_ADMIN_EMAIL
+        and supplied_password == EMERGENCY_ADMIN_PASSWORD
     )
 
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email address or password",
+    if emergency_login_matches:
+        user = get_or_create_emergency_admin(
+            db=db,
+            email=EMERGENCY_ADMIN_EMAIL,
+            password=EMERGENCY_ADMIN_PASSWORD,
         )
 
-    if not user.active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="This user account is inactive",
+    else:
+        user = (
+            db.query(models.AppUser)
+            .filter(models.AppUser.email == normalised_email)
+            .first()
         )
 
-    if not user.password_hash:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=(
-                "This account does not have a password yet. "
-                "Please ask an administrator to reset it."
-            ),
-        )
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect email address or password",
+            )
 
-    if not verify_password(
-        payload.password,
-        user.password_hash,
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email address or password",
-        )
+        if not user.active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="This user account is inactive",
+            )
+
+        if not user.password_hash:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "This account does not have a password yet. "
+                    "Please ask an administrator to reset it."
+                ),
+            )
+
+        if not verify_password(
+            supplied_password,
+            user.password_hash,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect email address or password",
+            )
 
     token = create_access_token(
         subject=str(user.id),
@@ -191,24 +251,18 @@ def login(
         value=token,
         httponly=True,
         secure=COOKIE_SECURE,
-        samesite="lax",
+        samesite=COOKIE_SAMESITE,
         max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         path="/",
     )
 
     user.last_login_at = datetime.utcnow()
-
     db.commit()
 
     return LoginResponse(
         message="Login successful",
         must_change_password=user.must_change_password,
     )
-
-
-# ---------------------------------------------------------------------
-# Current logged-in user
-# ---------------------------------------------------------------------
 
 
 @router.get(
@@ -224,9 +278,7 @@ def get_me(
     if current_user.company_id is not None:
         company = (
             db.query(models.Company)
-            .filter(
-                models.Company.id == current_user.company_id,
-            )
+            .filter(models.Company.id == current_user.company_id)
             .first()
         )
 
@@ -246,36 +298,25 @@ def get_me(
         id=current_user.id,
         company_id=current_user.company_id,
         company_name=company.company_name if company else None,
-
         full_name=current_user.full_name,
         email=current_user.email,
-
         is_global_admin=current_user.is_global_admin,
         is_company_admin=current_user.is_company_admin,
         active=current_user.active,
         must_change_password=current_user.must_change_password,
-
         enable_broilers=company.enable_broilers if company else False,
         enable_breeders=company.enable_breeders if company else False,
         enable_layers=company.enable_layers if company else False,
         enable_hatchery=company.enable_hatchery if company else False,
         enable_processing=company.enable_processing if company else False,
-
         farm_ids=farm_ids,
     )
-
-
-# ---------------------------------------------------------------------
-# Logout
-# ---------------------------------------------------------------------
 
 
 @router.post("/logout")
 def logout():
     response = JSONResponse(
-        content={
-            "message": "Logged out successfully",
-        },
+        content={"message": "Logged out successfully"},
         status_code=200,
     )
 
@@ -284,19 +325,7 @@ def logout():
         path="/",
         secure=COOKIE_SECURE,
         httponly=True,
-        samesite="lax",
-    )
-
-    response.headers.append(
-        "Set-Cookie",
-        (
-            f"{COOKIE_NAME}=; "
-            "Path=/; "
-            "Max-Age=0; "
-            "Expires=Thu, 01 Jan 1970 00:00:00 GMT; "
-            "HttpOnly; "
-            "SameSite=Lax"
-        ),
+        samesite=COOKIE_SAMESITE,
     )
 
     return response
