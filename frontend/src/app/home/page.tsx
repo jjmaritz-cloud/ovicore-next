@@ -1,323 +1,286 @@
-import Image from "next/image";
-import Link from "next/link";
-import {
-  Bird,
-  Egg,
-  Drumstick,
-  Factory,
-  Network,
-  ShieldCheck,
-} from "lucide-react";
+"use client";
 
-const modules = [
+import Link from "next/link";
+
+type ModuleCard = {
+  name: string;
+  eyebrow: string;
+  description: string;
+  tags: string[];
+  signalLabel: string;
+  signalText: string;
+  href?: string;
+  status: string;
+  statusClass: string;
+  icon: string;
+  iconClass: string;
+  adminOnly?: boolean;
+};
+
+const topRowModules: ModuleCard[] = [
   {
-    title: "Planning",
-    eyebrow: "Command Centre",
-    status: "Foundation",
+    name: "Breeders",
+    eyebrow: "Parent stock",
     description:
-      "Connect breeder supply, hatchery capacity, broiler placements and processing demand in one integrated planning view.",
-    chips: ["Supply vs Demand", "Chick Gap", "Risk Weeks"],
-    signalText: "Connects all production modules",
-    href: "/planning",
-    icon: Network,
-  },
-  {
-    title: "Breeders",
-    eyebrow: "Parent Stock",
-    status: "Planned",
-    description:
-      "Manage breeder flock output, fertility, hatch egg flow, male/female performance, and parent stock planning.",
-    chips: ["Fertility", "Settable Eggs", "Parent Flocks"],
+      "Manage breeder flock output, fertility, hatch egg flow, male and female performance, and parent stock planning.",
+    tags: ["Fertility", "Settable eggs", "Parent flocks"],
+    signalLabel: "Planning signal",
     signalText: "Feeds Hatchery egg supply",
     href: "/breeders",
-    icon: Bird,
+    status: "Planned",
+    statusClass: "home-status-planned",
+    icon: "♞",
+    iconClass: "home-icon-breeders",
   },
   {
-    title: "Hatchery",
-    eyebrow: "Eggs to Chicks",
-    status: "Planned",
+    name: "Hatchery",
+    eyebrow: "Eggs to chicks",
     description:
-      "Track egg receiving, setters, hatchability, chick output, and weekly chick availability for broiler placements.",
-    chips: ["Eggs Set", "Hatch %", "Chicks Available"],
+      "Track egg receiving, setters, hatchability, chick output and weekly chick availability for broiler placements.",
+    tags: ["Eggs set", "Hatch %", "Chicks available"],
+    signalLabel: "Planning signal",
     signalText: "Feeds Broiler chick supply",
     href: "/hatchery",
-    icon: Egg,
+    status: "Planned",
+    statusClass: "home-status-planned",
+    icon: "◯",
+    iconClass: "home-icon-hatchery",
   },
   {
-    title: "Broilers",
-    eyebrow: "Placement Planning",
-    status: "Live",
+    name: "Broilers",
+    eyebrow: "Placement planning",
     description:
-      "Plan placements, shed density, required chicks, daily house sheets, growth signals, and broiler supply pressure.",
-    chips: ["Placements", "Density", "Required Chicks"],
+      "Plan placements, shed density, required chicks, daily house sheets, growth signals and broiler supply pressure.",
+    tags: ["Placements", "Density", "Required chicks"],
+    signalLabel: "Planning signal",
     signalText: "Feeds Processing demand",
     href: "/broilers",
-    icon: Drumstick,
+    status: "Live",
+    statusClass: "home-status-live",
+    icon: "↗",
+    iconClass: "home-icon-broilers",
   },
   {
-    title: "Processing",
-    eyebrow: "Plant Output",
-    status: "Next",
+    name: "Processing",
+    eyebrow: "Plant output",
     description:
-      "Manage plant load, processing actuals, average liveweight, dressed weight, yield, condemnation, and close-out.",
-    chips: ["Plant Load", "Yield", "Condemnation"],
+      "Manage plant load, processing actuals, average liveweight, dressed weight, yield, condemnation and close-out.",
+    tags: ["Plant load", "Yield", "Condemnation"],
+    signalLabel: "Planning signal",
     signalText: "Closes the production cycle",
-    href: "/processing",
-    icon: Factory,
+    href: "/broilers/processing",
+    status: "Next",
+    statusClass: "home-status-next",
+    icon: "▥",
+    iconClass: "home-icon-processing",
   },
-	{
-    title: "Admin",
-    eyebrow: "OviCore Setup",
-    status: "Global Admin",
+  {
+    name: "Planning",
+    eyebrow: "Command centre",
     description:
-      "Manage companies, farms, sheds, users, access levels, module settings and controlled OviCore setup actions.",
-    chips: ["Companies", "Farms & Sheds", "Users", "Modules"],
-    signalText: "Controls setup and access",
-    href: "/admin",
-    icon: ShieldCheck,
+      "Connect breeder supply, hatchery capacity, broiler placements and processing demand in one integrated planning view.",
+    tags: ["Supply vs demand", "Chick gap", "Risk weeks"],
+    signalLabel: "Planning signal",
+    signalText: "Connects all production modules",
+    href: "/planning",
+    status: "Foundation",
+    statusClass: "home-status-foundation",
+    icon: "⌘",
+    iconClass: "home-icon-planning",
   },
 ];
 
+const secondRowModules: ModuleCard[] = [
+  {
+    name: "Rearing",
+    eyebrow: "Pullet development",
+    description:
+      "Manage pullet placements, growth, bodyweight, uniformity, feed, mortality and transfer readiness.",
+    tags: ["Growth", "Uniformity", "Transfers"],
+    signalLabel: "Future module",
+    signalText: "Prepares pullets for laying",
+    status: "Coming soon",
+    statusClass: "home-status-future",
+    icon: "♧",
+    iconClass: "home-icon-rearing",
+  },
+  {
+    name: "Layers",
+    eyebrow: "Egg production",
+    description:
+      "Track egg production, feed intake, mortality, bird performance, standards and flock profitability.",
+    tags: ["Production", "Feed", "Performance"],
+    signalLabel: "Future module",
+    signalText: "Feeds egg supply and grading",
+    status: "Coming soon",
+    statusClass: "home-status-future",
+    icon: "◒",
+    iconClass: "home-icon-layers",
+  },
+  {
+    name: "Grading",
+    eyebrow: "Egg packing",
+    description:
+      "Manage egg receipts, grading results, pack sizes, rejects, stock movements and customer dispatch.",
+    tags: ["Egg receipts", "Pack sizes", "Dispatch"],
+    signalLabel: "Future module",
+    signalText: "Converts production into sales",
+    status: "Coming soon",
+    statusClass: "home-status-future",
+    icon: "▤",
+    iconClass: "home-icon-grading",
+  },
+  {
+    name: "Admin",
+    eyebrow: "OviCore setup",
+    description:
+      "Manage companies, farms, sheds, users, access levels, module settings and controlled OviCore setup actions.",
+    tags: ["Companies", "Farms & sheds", "Users"],
+    signalLabel: "Administration",
+    signalText: "Controls setup and access",
+    href: "/admin",
+    status: "Global admin",
+    statusClass: "home-status-admin",
+    icon: "◇",
+    iconClass: "home-icon-admin",
+    adminOnly: true,
+  },
+];
+
+function ModuleCardView({ module }: { module: ModuleCard }) {
+  const cardContent = (
+    <>
+      <div className="home-module-card-top">
+        <div className={`home-module-icon ${module.iconClass}`}>
+          {module.icon}
+        </div>
+
+        <div className="home-module-heading">
+          <span className="home-module-eyebrow">{module.eyebrow}</span>
+          <h2>{module.name}</h2>
+        </div>
+
+        <span className={`home-module-status ${module.statusClass}`}>
+          {module.status}
+        </span>
+      </div>
+
+      <p className="home-module-description">{module.description}</p>
+
+      <div className="home-module-tags">
+        {module.tags.map((tag) => (
+          <span key={tag}>{tag}</span>
+        ))}
+      </div>
+
+      <div className="home-module-signal">
+        <span>{module.signalLabel}</span>
+        <strong>{module.signalText}</strong>
+      </div>
+
+      <div className="home-module-footer">
+        <span>{module.href ? "Open module" : "Module planned"}</span>
+        <span className="home-module-arrow">
+          {module.href ? "→" : "•"}
+        </span>
+      </div>
+    </>
+  );
+
+  if (!module.href) {
+    return (
+      <article
+        className="home-module-card home-module-card-disabled"
+        aria-disabled="true"
+      >
+        {cardContent}
+      </article>
+    );
+  }
+
+  return (
+    <Link className="home-module-card" href={module.href}>
+      {cardContent}
+    </Link>
+  );
+}
+
 export default function HomePage() {
   return (
-    <main className="module-home-shell">
-      <section className="module-home-hero">
-        <div className="module-home-brand">
-          <div className="module-home-logo">
-            <Image
-              src="/assets/ovicore-icon.png"
-              alt="OviCore"
-              width={74}
-              height={74}
-              priority
-            />
+    <main className="ovicore-home-shell">
+      <section className="ovicore-home-content">
+        <div className="home-hero">
+          <div className="home-hero-brand">
+            <div className="home-hero-logo">◉</div>
+
+            <div>
+              <span className="home-hero-eyebrow">
+                OviCore intelligence platform
+              </span>
+
+              <h1>
+                Integrated poultry planning, from breeder flock to processing
+                plant
+              </h1>
+
+              <p>
+                Separate modules. Shared planning logic. One connected
+                production chain.
+              </p>
+            </div>
           </div>
 
+          <div className="home-production-flow">
+            <span>Breeders</span>
+            <b>→</b>
+            <span>Hatchery</span>
+            <b>→</b>
+            <span>Broilers</span>
+            <b>→</b>
+            <span>Processing</span>
+          </div>
+        </div>
+
+        <section
+          className="home-module-grid home-module-grid-primary"
+          aria-label="Primary OviCore modules"
+        >
+          {topRowModules.map((module) => (
+            <ModuleCardView key={module.name} module={module} />
+          ))}
+        </section>
+
+        <section
+          className="home-module-grid home-module-grid-secondary"
+          aria-label="Additional OviCore modules"
+        >
+          {secondRowModules.map((module) => (
+            <ModuleCardView key={module.name} module={module} />
+          ))}
+        </section>
+
+        <section className="home-build-direction">
           <div>
-            <p className="eyebrow">OviCore Intelligence Platform</p>
-            <h1>
-              Integrated poultry planning, from breeder flock to processing
-              plant.
-            </h1>
-            <span>
-              Separate modules. Shared planning logic. One connected production
-              chain.
-            </span>
+            <span>Build direction</span>
+            <strong>
+              Current focus: Broilers first, then Processing, Hatchery and
+              Breeders.
+            </strong>
+            <p>
+              Rearing, Layers and Grading are displayed as planned modules
+              while the core production chain is completed.
+            </p>
           </div>
-        </div>
 
-        <div className="module-home-flow">
-          <div>Breeders</div>
-          <span>→</span>
-          <div>Hatchery</div>
-          <span>→</span>
-          <div>Broilers</div>
-          <span>→</span>
-          <div>Processing</div>
-        </div>
-      </section>
-
-      <section className="module-card-grid">
-        {modules.map((module) => {
-          const Icon = module.icon;
-
-          return (
-            <Link
-              key={module.title}
-              href={module.href}
-							className={`module-card ${
-								module.status === "Live" ? "module-card-live" : ""
-							} ${module.title === "Planning" ? "module-card-planning" : ""} ${
-								module.title === "Admin" ? "module-card-admin" : ""
-							}`}
-            >
-              <div className="module-card-top">
-                <div className="module-title-row">
-                  <div
-                    className={`module-icon-wrap ${module.title.toLowerCase()}`}
-                  >
-                    <Icon size={24} strokeWidth={2.2} />
-                  </div>
-
-                  <div>
-                    <p>{module.eyebrow}</p>
-                    <h2>{module.title}</h2>
-                  </div>
-                </div>
-
-								<strong
-									className={
-										module.status === "Live"
-											? "module-status-live"
-											: module.status === "Next"
-												? "module-status-next"
-												: module.status === "Foundation"
-													? "module-status-foundation"
-													: module.status === "Global Admin"
-														? "module-status-admin"
-														: "module-status-planned"
-									}
-								>
-									{module.status}
-								</strong>
-              </div>
-
-              <p className="module-card-description">{module.description}</p>
-
-              <div className="module-metric-row">
-                {module.chips.map((chip) => (
-                  <span key={chip}>{chip}</span>
-                ))}
-              </div>
-
-              <div className="module-signal">
-                <span>Planning Signal</span>
-                <strong>{module.signalText}</strong>
-              </div>
-
-              <div className="module-open-row">
-                <span>Open module</span>
-                <b>→</b>
-              </div>
+          <div className="home-build-actions">
+            <Link href="/admin">Open Admin</Link>
+            <Link href="/planning">Open Planning</Link>
+            <Link className="home-build-primary" href="/broilers">
+              Continue to Broilers
             </Link>
-          );
-        })}
+          </div>
+        </section>
       </section>
-
-      <section className="module-home-bottom">
-        <div>
-          <p className="eyebrow">Build Direction</p>
-          <h3>
-            Current focus: Broilers first, then Processing, Hatchery, and
-            Breeders.
-          </h3>
-          <span>
-            Processing is temporarily accessible from Broilers while we build.
-            Later it becomes a dedicated top-level module. Planning now sits
-            above all modules as the integration layer.
-          </span>
-        </div>
-
-				<div className="module-bottom-actions">
-					<Link href="/admin" className="module-secondary-link">
-						Open Admin
-					</Link>
-
-					<Link href="/planning" className="module-secondary-link">
-						Open Planning
-					</Link>
-
-					<Link href="/broilers" className="module-primary-link">
-						Continue to Broilers
-					</Link>
-				</div>
-      </section>
-
-      <style>{`
-        .module-title-row {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          min-width: 0;
-        }
-
-				.module-icon-wrap.admin {
-					background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
-					color: #064e3b;
-				}
-
-        .module-icon-wrap {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          width: 44px;
-          height: 44px;
-          border-radius: 15px;
-          border: 1px solid rgba(15, 93, 67, 0.12);
-          flex-shrink: 0;
-          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
-        }
-
-        .module-icon-wrap.planning {
-          background: linear-gradient(135deg, #f0fdfa 0%, #ccfbf1 100%);
-          color: #0f766e;
-        }
-
-        .module-icon-wrap.breeders {
-          background: linear-gradient(135deg, #eef8f2 0%, #dff3e8 100%);
-          color: #0f5d43;
-        }
-
-        .module-icon-wrap.hatchery {
-          background: linear-gradient(135deg, #fff7e8 0%, #ffefc9 100%);
-          color: #9a6400;
-        }
-
-        .module-icon-wrap.broilers {
-          background: linear-gradient(135deg, #eef4ff 0%, #dce9ff 100%);
-          color: #2956a3;
-        }
-
-        .module-icon-wrap.processing {
-          background: linear-gradient(135deg, #fff0ec 0%, #ffe0d7 100%);
-          color: #a0442b;
-        }
-
-        .module-card-planning {
-          border-color: rgba(15, 118, 110, 0.22);
-          background:
-            linear-gradient(135deg, rgba(240, 253, 250, 0.8), rgba(255, 255, 255, 1) 45%),
-            #ffffff;
-        }
-
-				.module-card-admin {
-					border-color: rgba(6, 78, 59, 0.22);
-					background:
-						linear-gradient(135deg, rgba(236, 253, 245, 0.9), rgba(255, 255, 255, 1) 48%),
-						#ffffff;
-				}
-
-        .module-status-foundation {
-          color: #0f766e;
-          background: #ccfbf1;
-          border: 1px solid #99f6e4;
-        }
-
-				.module-status-admin {
-					color: #064e3b;
-					background: #d1fae5;
-					border: 1px solid #a7f3d0;
-				}
-
-        .module-bottom-actions {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          flex-wrap: wrap;
-        }
-
-        .module-secondary-link {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          min-height: 42px;
-          padding: 0 16px;
-          border-radius: 14px;
-          border: 1px solid rgba(15, 23, 42, 0.12);
-          background: #ffffff;
-          color: #0f172a;
-          font-size: 14px;
-          font-weight: 800;
-          text-decoration: none;
-          transition: all 0.18s ease;
-        }
-
-        .module-secondary-link:hover {
-          transform: translateY(-1px);
-          border-color: rgba(15, 23, 42, 0.22);
-          box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
-        }
-      `}</style>
     </main>
   );
 }
