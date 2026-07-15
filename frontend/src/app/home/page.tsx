@@ -1,6 +1,25 @@
 "use client";
 
 import Link from "next/link";
+import type { ComponentType } from "react";
+
+import {
+  Bird,
+  ChartNoAxesCombined,
+  Drumstick,
+  Egg,
+  Factory,
+  Network,
+  PackageCheck,
+  ShieldCheck,
+  Sprout,
+} from "lucide-react";
+
+type ModuleIcon = ComponentType<{
+  size?: number;
+  strokeWidth?: number;
+  "aria-hidden"?: boolean;
+}>;
 
 type ModuleCard = {
   name: string;
@@ -12,7 +31,7 @@ type ModuleCard = {
   href?: string;
   status: string;
   statusClass: string;
-  icon: string;
+  icon: ModuleIcon;
   iconClass: string;
   adminOnly?: boolean;
 };
@@ -29,7 +48,7 @@ const topRowModules: ModuleCard[] = [
     href: "/breeders",
     status: "Planned",
     statusClass: "home-status-planned",
-    icon: "♞",
+    icon: Bird,
     iconClass: "home-icon-breeders",
   },
   {
@@ -43,7 +62,7 @@ const topRowModules: ModuleCard[] = [
     href: "/hatchery",
     status: "Planned",
     statusClass: "home-status-planned",
-    icon: "◯",
+    icon: Egg,
     iconClass: "home-icon-hatchery",
   },
   {
@@ -57,7 +76,7 @@ const topRowModules: ModuleCard[] = [
     href: "/broilers",
     status: "Live",
     statusClass: "home-status-live",
-    icon: "↗",
+    icon: Drumstick,
     iconClass: "home-icon-broilers",
   },
   {
@@ -71,7 +90,7 @@ const topRowModules: ModuleCard[] = [
     href: "/broilers/processing",
     status: "Next",
     statusClass: "home-status-next",
-    icon: "▥",
+    icon: Factory,
     iconClass: "home-icon-processing",
   },
   {
@@ -85,7 +104,7 @@ const topRowModules: ModuleCard[] = [
     href: "/planning",
     status: "Foundation",
     statusClass: "home-status-foundation",
-    icon: "⌘",
+    icon: Network,
     iconClass: "home-icon-planning",
   },
 ];
@@ -101,7 +120,7 @@ const secondRowModules: ModuleCard[] = [
     signalText: "Prepares pullets for laying",
     status: "Coming soon",
     statusClass: "home-status-future",
-    icon: "♧",
+    icon: Sprout,
     iconClass: "home-icon-rearing",
   },
   {
@@ -114,7 +133,7 @@ const secondRowModules: ModuleCard[] = [
     signalText: "Feeds egg supply and grading",
     status: "Coming soon",
     statusClass: "home-status-future",
-    icon: "◒",
+    icon: ChartNoAxesCombined,
     iconClass: "home-icon-layers",
   },
   {
@@ -127,7 +146,7 @@ const secondRowModules: ModuleCard[] = [
     signalText: "Converts production into sales",
     status: "Coming soon",
     statusClass: "home-status-future",
-    icon: "▤",
+    icon: PackageCheck,
     iconClass: "home-icon-grading",
   },
   {
@@ -141,31 +160,44 @@ const secondRowModules: ModuleCard[] = [
     href: "/admin",
     status: "Global admin",
     statusClass: "home-status-admin",
-    icon: "◇",
+    icon: ShieldCheck,
     iconClass: "home-icon-admin",
     adminOnly: true,
   },
 ];
 
 function ModuleCardView({ module }: { module: ModuleCard }) {
+  const Icon = module.icon;
+
   const cardContent = (
     <>
       <div className="home-module-card-top">
         <div className={`home-module-icon ${module.iconClass}`}>
-          {module.icon}
+          <Icon
+            size={18}
+            strokeWidth={2.25}
+            aria-hidden={true}
+          />
         </div>
 
         <div className="home-module-heading">
-          <span className="home-module-eyebrow">{module.eyebrow}</span>
+          <span className="home-module-eyebrow">
+            {module.eyebrow}
+          </span>
+
           <h2>{module.name}</h2>
         </div>
 
-        <span className={`home-module-status ${module.statusClass}`}>
+        <span
+          className={`home-module-status ${module.statusClass}`}
+        >
           {module.status}
         </span>
       </div>
 
-      <p className="home-module-description">{module.description}</p>
+      <p className="home-module-description">
+        {module.description}
+      </p>
 
       <div className="home-module-tags">
         {module.tags.map((tag) => (
@@ -179,7 +211,10 @@ function ModuleCardView({ module }: { module: ModuleCard }) {
       </div>
 
       <div className="home-module-footer">
-        <span>{module.href ? "Open module" : "Module planned"}</span>
+        <span>
+          {module.href ? "Open module" : "Module planned"}
+        </span>
+
         <span className="home-module-arrow">
           {module.href ? "→" : "•"}
         </span>
@@ -199,7 +234,10 @@ function ModuleCardView({ module }: { module: ModuleCard }) {
   }
 
   return (
-    <Link className="home-module-card" href={module.href}>
+    <Link
+      className="home-module-card"
+      href={module.href}
+    >
       {cardContent}
     </Link>
   );
@@ -211,7 +249,9 @@ export default function HomePage() {
       <section className="ovicore-home-content">
         <div className="home-hero">
           <div className="home-hero-brand">
-            <div className="home-hero-logo">◉</div>
+            <div className="home-hero-logo">
+              <span className="home-hero-logo-ring" />
+            </div>
 
             <div>
               <span className="home-hero-eyebrow">
@@ -219,13 +259,13 @@ export default function HomePage() {
               </span>
 
               <h1>
-                Integrated poultry planning, from breeder flock to processing
-                plant
+                Integrated poultry planning, from breeder flock
+                to processing plant
               </h1>
 
               <p>
-                Separate modules. Shared planning logic. One connected
-                production chain.
+                Separate modules. Shared planning logic. One
+                connected production chain.
               </p>
             </div>
           </div>
@@ -246,7 +286,10 @@ export default function HomePage() {
           aria-label="Primary OviCore modules"
         >
           {topRowModules.map((module) => (
-            <ModuleCardView key={module.name} module={module} />
+            <ModuleCardView
+              key={module.name}
+              module={module}
+            />
           ))}
         </section>
 
@@ -255,27 +298,42 @@ export default function HomePage() {
           aria-label="Additional OviCore modules"
         >
           {secondRowModules.map((module) => (
-            <ModuleCardView key={module.name} module={module} />
+            <ModuleCardView
+              key={module.name}
+              module={module}
+            />
           ))}
         </section>
 
         <section className="home-build-direction">
           <div>
             <span>Build direction</span>
+
             <strong>
-              Current focus: Broilers first, then Processing, Hatchery and
-              Breeders.
+              Current focus: Broilers first, then Processing,
+              Hatchery and Breeders.
             </strong>
+
             <p>
-              Rearing, Layers and Grading are displayed as planned modules
-              while the core production chain is completed.
+              Rearing, Layers and Grading are displayed as
+              planned modules while the core production chain is
+              completed.
             </p>
           </div>
 
           <div className="home-build-actions">
-            <Link href="/admin">Open Admin</Link>
-            <Link href="/planning">Open Planning</Link>
-            <Link className="home-build-primary" href="/broilers">
+            <Link href="/admin">
+              Open Admin
+            </Link>
+
+            <Link href="/planning">
+              Open Planning
+            </Link>
+
+            <Link
+              className="home-build-primary"
+              href="/broilers"
+            >
               Continue to Broilers
             </Link>
           </div>

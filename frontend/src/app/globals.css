@@ -7436,8 +7436,22 @@ body:has(.house-sheet-panel)
   color: #ffffff;
   background: linear-gradient(145deg, #ff7a19, #f0b22a);
   box-shadow: 0 12px 26px rgba(2, 18, 13, 0.22);
-  font-size: clamp(22px, 2vw, 32px);
-  font-weight: 1000;
+}
+
+.home-hero-logo-ring {
+  position: relative;
+  width: 38%;
+  aspect-ratio: 1;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+}
+
+.home-hero-logo-ring::after {
+  content: "";
+  position: absolute;
+  inset: 22%;
+  border: 1.5px solid #ffffff;
+  border-radius: 50%;
 }
 
 .home-hero-eyebrow {
@@ -7999,4 +8013,65 @@ a.home-module-card:hover {
     padding-top: 8px;
     padding-bottom: 8px;
   }
+}
+
+.ovicore-brand-icon {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 28%;
+}
+
+.ovicore-brand-icon-small {
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+}
+
+.ovicore-brand-icon-medium {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+}
+
+.ovicore-brand-icon-large {
+  width: 60px;
+  height: 60px;
+  border-radius: 17px;
+}
+
+.ovicore-brand-icon-orange {
+  color: #ffffff;
+  background: linear-gradient(
+    145deg,
+    #ff7b1b 0%,
+    #ff941c 52%,
+    #f5b322 100%
+  );
+}
+
+.ovicore-brand-icon-white {
+  color: #07513f;
+  background: linear-gradient(
+    145deg,
+    #ffffff 0%,
+    #edf9f2 100%
+  );
+}
+
+.ovicore-brand-icon-ring {
+  position: relative;
+  width: 43%;
+  aspect-ratio: 1;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+}
+
+.ovicore-brand-icon-ring::after {
+  content: "";
+  position: absolute;
+  inset: 22%;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
 }

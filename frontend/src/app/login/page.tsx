@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import OviCoreBrandIcon from "@/components/OviCoreBrandIcon";
 
 const API_BASE = "";
 
@@ -110,7 +111,11 @@ export default function LoginPage() {
 
         <div className="brand-content">
           <div className="brand-mark">
-            <div className="brand-icon">O</div>
+            <OviCoreBrandIcon
+							variant="white"
+							size="small"
+							className="login-brand-icon"
+						/>
 
             <div>
               <div className="brand-name">OviCore</div>
@@ -144,7 +149,11 @@ export default function LoginPage() {
       <section className="login-form-panel">
         <div className="login-card">
           <div className="mobile-brand">
-            <div className="brand-icon">O</div>
+            <OviCoreBrandIcon
+							variant="orange"
+							size="small"
+							className="login-mobile-brand-icon"
+						/>
 
             <div>
               <div className="brand-name dark">OviCore</div>
@@ -351,20 +360,19 @@ export default function LoginPage() {
           gap: 12px;
         }
 
-        .brand-icon {
-          width: 42px;
-          height: 42px;
-          border-radius: 13px;
-          display: grid;
-          place-items: center;
-          background: linear-gradient(145deg, #ffffff, #dff6e7);
-          color: #07523c;
-          font-weight: 950;
-          font-size: 22px;
-          box-shadow:
-            0 9px 25px rgba(0, 0, 0, 0.18),
-            inset 0 0 0 1px rgba(255, 255, 255, 0.75);
-        }
+				.login-brand-icon {
+					flex: 0 0 auto;
+					box-shadow:
+						0 9px 25px rgba(0, 0, 0, 0.18),
+						inset 0 1px 0 rgba(255, 255, 255, 0.7);
+				}
+
+				.login-mobile-brand-icon {
+					flex: 0 0 auto;
+					box-shadow:
+						0 8px 20px rgba(15, 23, 42, 0.14),
+						inset 0 1px 0 rgba(255, 255, 255, 0.28);
+				}
 
         .brand-name {
           color: #ffffff;
