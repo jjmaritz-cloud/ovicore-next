@@ -51,11 +51,34 @@ type ShedRow = {
   active: boolean;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8001";
 
 const COMPANIES_ENDPOINT = `${API_BASE}/api/admin/companies`;
 const FARMS_ENDPOINT = `${API_BASE}/api/broilers/farms`;
 const SHEDS_ENDPOINT = `${API_BASE}/api/broilers/sheds`;
+
+async function authenticatedFetch(
+  input: RequestInfo | URL,
+  init: RequestInit = {}
+) {
+  const response = await fetch(input, {
+    ...init,
+    credentials: "include",
+  });
+
+  if (response.status === 401) {
+    const nextPath =
+      `${window.location.pathname}${window.location.search}`;
+
+    window.location.href =
+      `/login?next=${encodeURIComponent(nextPath)}`;
+
+    throw new Error("Your login session has expired.");
+  }
+
+  return response;
+}
 
 function numberFormatter(params: ValueFormatterParams) {
   if (params.value === null || params.value === undefined || params.value === "") {
@@ -107,7 +130,7 @@ export default function AdminShedRegisterPage() {
   }, [farms, selectedFarmId]);
 
   const fetchCompanies = useCallback(async () => {
-    const response = await fetch(COMPANIES_ENDPOINT, {
+    const response = await authenticatedFetch(COMPANIES_ENDPOINT, {
       cache: "no-store",
     });
 
@@ -123,7 +146,7 @@ export default function AdminShedRegisterPage() {
   }, []);
 
   const fetchFarmsForCompany = useCallback(async (companyId: number) => {
-    const response = await fetch(`${FARMS_ENDPOINT}?company_id=${companyId}`, {
+    const response = await authenticatedFetch(`${FARMS_ENDPOINT}?company_id=${companyId}`, {
       cache: "no-store",
     });
 
@@ -142,7 +165,7 @@ export default function AdminShedRegisterPage() {
   }, []);
 
   const fetchShedsForCompany = useCallback(async (companyId: number) => {
-    const response = await fetch(`${SHEDS_ENDPOINT}?company_id=${companyId}`, {
+    const response = await authenticatedFetch(`${SHEDS_ENDPOINT}?company_id=${companyId}`, {
       cache: "no-store",
     });
 
@@ -360,7 +383,7 @@ export default function AdminShedRegisterPage() {
     setSaving(true);
 
     try {
-      const response = await fetch(SHEDS_ENDPOINT, {
+      const response = await authenticatedFetch(SHEDS_ENDPOINT, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -459,7 +482,7 @@ export default function AdminShedRegisterPage() {
           return;
         }
 
-        const response = await fetch(`${SHEDS_ENDPOINT}/${id}`, {
+        const response = await authenticatedFetch(`${SHEDS_ENDPOINT}/${id}`, {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
@@ -521,7 +544,7 @@ export default function AdminShedRegisterPage() {
     setSaving(true);
 
     try {
-      const response = await fetch(`${SHEDS_ENDPOINT}/${row.id}`, {
+      const response = await authenticatedFetch(`${SHEDS_ENDPOINT}/${row.id}`, {
         method: "DELETE",
       });
 

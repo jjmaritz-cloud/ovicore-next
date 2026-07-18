@@ -66,6 +66,9 @@ class LoginRequest(BaseModel):
     email: str
     password: str
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
 
 class LoginResponse(BaseModel):
     message: str
@@ -172,6 +175,11 @@ def get_or_create_emergency_admin(
         user.is_global_admin = True
         user.is_company_admin = True
         user.must_change_password = False
+
+        # Keep the database password hash aligned with the
+        # emergency-admin password used for login.
+        user.password_hash = hash_password(password)
+        user.password_changed_at = datetime.utcnow()
 
         db.commit()
         db.refresh(user)
@@ -312,6 +320,52 @@ def get_me(
         farm_ids=farm_ids,
     )
 
+@router.post("/change-password")
+def change_password(
+    payload: ChangePasswordRequest,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not current_user.password_hash:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This account does not have an existing password.",
+        )
+
+    if not verify_password(
+        payload.current_password,
+        current_user.password_hash,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect.",
+        )
+
+    if payload.current_password == payload.new_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be different from the current password.",
+        )
+
+    try:
+        current_user.password_hash = hash_password(
+            payload.new_password
+        )
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(error),
+        )
+
+    current_user.must_change_password = False
+    current_user.password_changed_at = datetime.utcnow()
+
+    db.commit()
+
+    return {
+        "message": "Password changed successfully",
+        "must_change_password": False,
+    }
 
 @router.post("/logout")
 def logout():

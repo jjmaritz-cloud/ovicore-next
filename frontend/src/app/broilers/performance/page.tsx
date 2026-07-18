@@ -1,11 +1,41 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
+import { useSearchParams } from "next/navigation";
 import BroilerSidebar from "@/components/BroilerSidebar";
 import OviCoreHouseSheetTemplate from "@/components/OviCoreHouseSheetTemplate";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8001";
+
+async function authenticatedFetch(
+  input: RequestInfo | URL,
+  init: RequestInit = {}
+) {
+  const response = await fetch(input, {
+    ...init,
+    credentials: "include",
+  });
+
+  if (response.status === 401) {
+    const nextPath =
+      `${window.location.pathname}${window.location.search}`;
+
+    window.location.href =
+      `/login?next=${encodeURIComponent(nextPath)}`;
+
+    throw new Error("Your login session has expired.");
+  }
+
+  return response;
+}
 
 type DemandPlan = {
   id: number;
@@ -289,6 +319,36 @@ function recalculateStockFlow(rows: DailyRow[], plan: DemandPlan): DailyRow[] {
 }
 
 export default function DailyPerformancePage() {
+  const searchParams = useSearchParams();
+
+  const {
+    currentUser,
+    loadingUser,
+    userError,
+  } = useCurrentUser();
+
+  const activeCompanyId = useMemo(() => {
+    const companyParam = searchParams.get("company_id");
+    const parsedCompanyId = Number(companyParam);
+
+    if (currentUser?.is_global_admin) {
+      if (
+        Number.isInteger(parsedCompanyId) &&
+        parsedCompanyId > 0
+      ) {
+        return parsedCompanyId;
+      }
+
+      return null;
+    }
+
+    return currentUser?.company_id ?? null;
+  }, [
+    currentUser?.company_id,
+    currentUser?.is_global_admin,
+    searchParams,
+  ]);
+
   const [plans, setPlans] = useState<DemandPlan[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<number | "">("");
   const [records, setRecords] = useState<PerformanceRecord[]>([]);
@@ -302,65 +362,118 @@ export default function DailyPerformancePage() {
     return plans.find((plan) => plan.id === selectedPlanId);
   }, [plans, selectedPlanId]);
 
-	async function loadData() {
+	const loadData = useCallback(async () => {
+		if (loadingUser) {
+			return;
+		}
+
+		if (!activeCompanyId) {
+			setPlans([]);
+			setRecords([]);
+			setRows([]);
+			setSelectedPlanId("");
+			setLoading(false);
+
+			setMessage(
+				currentUser?.is_global_admin
+					? "Select a company before loading Daily House Sheet data."
+					: "Your user account is not assigned to a company."
+			);
+
+			return;
+		}
+
 		setLoading(true);
 		setMessage("");
 
 		try {
-			const plansResponse = await fetch(`${API_BASE}/api/broilers/demand-plans`);
+			const plansResponse = await authenticatedFetch(
+				`${API_BASE}/api/broilers/demand-plans?company_id=${activeCompanyId}`,
+				{
+					cache: "no-store",
+				}
+			);
 
 			if (!plansResponse.ok) {
-				throw new Error(`Could not load plans: ${plansResponse.status}`);
+				throw new Error(
+					`Could not load plans: ${plansResponse.status}`
+				);
 			}
 
-			const plansData: DemandPlan[] = await plansResponse.json();
+			const plansData: DemandPlan[] =
+				await plansResponse.json();
 
 			setPlans(plansData);
 
-			if (!selectedPlanId && plansData.length > 0) {
-				setSelectedPlanId(plansData[0].id);
-			}
-
-			try {
-				const performanceResponse = await fetch(
-					`${API_BASE}/api/broilers/performance`,
+			setSelectedPlanId((currentPlanId) => {
+				const currentStillExists = plansData.some(
+					(plan) => plan.id === currentPlanId
 				);
 
-				if (!performanceResponse.ok) {
-					const errorText = await performanceResponse.text();
-					console.error("Performance load failed:", errorText);
-					setRecords([]);
-					setMessage(
-						`Performance records not loaded yet: ${performanceResponse.status}`,
-					);
-				} else {
-					const performanceData: PerformanceRecord[] =
-						await performanceResponse.json();
-
-					setRecords(performanceData);
-					setDirtyKeys(new Set());
+				if (currentStillExists) {
+					return currentPlanId;
 				}
-			} catch (performanceError) {
-				console.error(performanceError);
+
+				return plansData.length > 0
+					? plansData[0].id
+					: "";
+			});
+
+			const performanceResponse =
+				await authenticatedFetch(
+					`${API_BASE}/api/broilers/performance?company_id=${activeCompanyId}`,
+					{
+						cache: "no-store",
+					}
+				);
+
+			if (!performanceResponse.ok) {
+				const errorText =
+					await performanceResponse.text();
+
+				console.error(
+					"Performance load failed:",
+					errorText
+				);
+
 				setRecords([]);
 				setDirtyKeys(new Set());
-				setMessage("Performance records not loaded yet.");
+
+				setMessage(
+					`Performance records not loaded yet: ${performanceResponse.status}`
+				);
+
+				return;
 			}
+
+			const performanceData: PerformanceRecord[] =
+				await performanceResponse.json();
+
+			setRecords(performanceData);
+			setDirtyKeys(new Set());
 		} catch (error) {
 			console.error(error);
+
+			setPlans([]);
+			setRecords([]);
+
 			setMessage(
 				error instanceof Error
 					? error.message
-					: "Could not load Daily Performance.",
+					: "Could not load Daily Performance."
 			);
 		} finally {
 			setLoading(false);
 		}
-	}
+	}, [
+		activeCompanyId,
+		currentUser?.is_global_admin,
+		loadingUser,
+	]);
 
-  useEffect(() => {
-    loadData();
-  }, []);
+	useEffect(() => {
+		void loadData();
+	}, [loadData]);
 
   useEffect(() => {
     if (!selectedPlan) {
@@ -566,7 +679,7 @@ export default function DailyPerformancePage() {
 			? `${API_BASE}/api/broilers/performance/${recordId}`
 			: `${API_BASE}/api/broilers/performance`;
 
-		const response = await fetch(url, {
+		const response = await authenticatedFetch(url, {
 			method: recordId ? "PATCH" : "POST",
 			headers: {
 				"Content-Type": "application/json",
@@ -637,7 +750,11 @@ export default function DailyPerformancePage() {
           description="Dense broiler house entry for mortality, culls, feed, water, bodyweight and daily shed comments."
           homeHref="/broilers"
           homeLabel="Broiler Home"
-          secondaryHref="/broilers/performance"
+          secondaryHref={
+						activeCompanyId
+							? `/broilers/performance?company_id=${activeCompanyId}`
+							: "/broilers/performance"
+					}
           secondaryLabel="Refresh"
           selectorLabel="Select Cycle"
           selector={
@@ -698,7 +815,7 @@ export default function DailyPerformancePage() {
           tableSummary={`Closing birds: ${formatNumber(
             totals.latestClosing,
           )} · Livability: ${formatNumber(totals.latestLivability, 2)}%`}
-          message={message}
+          message={userError || message}
           footerPills={[
             { label: "Mortality", value: formatNumber(totals.totalMortality) },
             { label: "Culls", value: formatNumber(totals.totalCulls) },
@@ -759,7 +876,7 @@ export default function DailyPerformancePage() {
             </thead>
 
             <tbody>
-              {loading ? (
+              {loading || loadingUser ? (
                 <tr>
                   <td colSpan={28}>Loading daily performance...</td>
                 </tr>

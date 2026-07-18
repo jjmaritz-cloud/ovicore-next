@@ -8,6 +8,8 @@ from app.routers import app_notes
 from app.routers import broiler_supply
 from app.routers import access
 from app.routers import auth
+from app.routers.auth import get_current_user
+from app import models
 
 from .db import Base, engine, SessionLocal, get_db
 from .models import (
@@ -18,9 +20,6 @@ from .models import (
     BroilerDailyPerformance,
 )
 from .schemas import (
-    CompanyCreate,
-    CompanyPatch,
-    CompanyOut,
     BroilerDemandPlanCreate,
     BroilerDemandPlanOut,
     BroilerDemandPlanPatch,
@@ -62,6 +61,81 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+def resolve_company_id(
+    current_user: models.AppUser,
+    requested_company_id: int | None = None,
+) -> int:
+    """
+    Normal company users are always restricted to their own company.
+
+    Global Admin may optionally supply a company ID when managing
+    another company.
+    """
+
+    if current_user.is_global_admin:
+        if requested_company_id is None:
+            raise HTTPException(
+                status_code=400,
+                detail="company_id is required for Global Admin access",
+            )
+
+        return requested_company_id
+
+    if current_user.company_id is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Your account is not assigned to a company",
+        )
+
+    return current_user.company_id
+
+
+def require_farm_access(
+    db: Session,
+    current_user: models.AppUser,
+    farm_id: int,
+) -> BroilerFarm:
+    farm = (
+        db.query(BroilerFarm)
+        .filter(BroilerFarm.id == farm_id)
+        .first()
+    )
+
+    if not farm:
+        raise HTTPException(
+            status_code=404,
+            detail="Broiler farm not found",
+        )
+
+    if current_user.is_global_admin:
+        return farm
+
+    if farm.company_id != current_user.company_id:
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have access to this company",
+        )
+
+    if current_user.is_company_admin:
+        return farm
+
+    access = (
+        db.query(models.UserFarmAccess)
+        .filter(
+            models.UserFarmAccess.user_id == current_user.id,
+            models.UserFarmAccess.farm_id == farm_id,
+        )
+        .first()
+    )
+
+    if not access:
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have access to this farm",
+        )
+
+    return farm
 
 def build_daily_performance_response(
     entry: BroilerDailyPerformance,
@@ -154,228 +228,183 @@ def startup():
 def health():
     return {"status": "ok", "module": "broilers"}
 
-# ---------------------------------------------------------------------
-# Companies - Global Admin Master Data
-# ---------------------------------------------------------------------
-
-
-@app.get("/api/admin/companies", response_model=list[CompanyOut])
-def list_companies(db: Session = Depends(get_db)):
-    companies = (
-        db.query(Company)
-        .order_by(Company.company_name.asc())
-        .all()
-    )
-
-    return companies
-
-
-@app.post("/api/admin/companies", response_model=CompanyOut)
-def create_company(payload: CompanyCreate, db: Session = Depends(get_db)):
-    existing = (
-        db.query(Company)
-        .filter(Company.company_name == payload.company_name)
-        .first()
-    )
-
-    if existing:
-        raise HTTPException(
-            status_code=400,
-            detail="A company with this name already exists.",
-        )
-
-    company = Company(
-        company_name=payload.company_name,
-        trading_name=payload.trading_name,
-        active=payload.active,
-        enable_broilers=payload.enable_broilers,
-        enable_breeders=payload.enable_breeders,
-        enable_layers=payload.enable_layers,
-        enable_hatchery=payload.enable_hatchery,
-        enable_processing=payload.enable_processing,
-    )
-
-    db.add(company)
-    db.commit()
-    db.refresh(company)
-
-    return company
-
-
-@app.patch("/api/admin/companies/{company_id}", response_model=CompanyOut)
-def update_company(
-    company_id: int,
-    payload: CompanyPatch,
+@app.get(
+    "/api/broilers/demand-plans",
+    response_model=list[BroilerDemandPlanOut],
+)
+def list_demand_plans(
+    company_id: int | None = None,
+    current_user: models.AppUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    company = db.query(Company).filter(Company.id == company_id).first()
-
-    if not company:
-        raise HTTPException(status_code=404, detail="Company not found")
-
-    data = payload.model_dump(exclude_unset=True)
-
-    if "company_name" in data and data["company_name"]:
-        duplicate = (
-            db.query(Company)
-            .filter(
-                Company.company_name == data["company_name"],
-                Company.id != company_id,
-            )
-            .first()
-        )
-
-        if duplicate:
-            raise HTTPException(
-                status_code=400,
-                detail="Another company with this name already exists.",
-            )
-
-    for field, value in data.items():
-        setattr(company, field, value)
-
-    db.commit()
-    db.refresh(company)
-
-    return company
-
-
-@app.delete("/api/admin/companies/{company_id}")
-def delete_company(company_id: int, db: Session = Depends(get_db)):
-    company = db.query(Company).filter(Company.id == company_id).first()
-
-    if not company:
-        raise HTTPException(status_code=404, detail="Company not found")
-
-    linked_farms = (
-        db.query(BroilerFarm)
-        .filter(BroilerFarm.company_id == company_id)
-        .count()
+    resolved_company_id = resolve_company_id(
+        current_user,
+        company_id,
     )
 
-    if linked_farms > 0:
-        raise HTTPException(
-            status_code=400,
-            detail="Cannot delete company because it has linked farms. Set the company inactive instead.",
+    query = (
+        db.query(BroilerPlacementPlan)
+        .options(
+            joinedload(BroilerPlacementPlan.farm),
+            joinedload(BroilerPlacementPlan.shed),
+        )
+        .filter(
+            BroilerPlacementPlan.company_id
+            == resolved_company_id
+        )
+    )
+
+    if not (
+        current_user.is_global_admin
+        or current_user.is_company_admin
+    ):
+        permitted_farm_ids = (
+            db.query(models.UserFarmAccess.farm_id)
+            .filter(
+                models.UserFarmAccess.user_id
+                == current_user.id
+            )
         )
 
-    db.delete(company)
-    db.commit()
+        query = query.filter(
+            BroilerPlacementPlan.farm_id.in_(
+                permitted_farm_ids
+            )
+        )
 
-    return {"deleted": True, "id": company_id}
-
-@app.get("/api/broilers/demand-plans", response_model=list[BroilerDemandPlanOut])
-def list_demand_plans(company_id: int = 1, db: Session = Depends(get_db)):
     plans = (
-        db.query(BroilerPlacementPlan)
-        .options(joinedload(BroilerPlacementPlan.farm), joinedload(BroilerPlacementPlan.shed))
-        .filter(BroilerPlacementPlan.company_id == company_id)
-        .order_by(BroilerPlacementPlan.placement_date.asc(), BroilerPlacementPlan.id.asc())
+        query
+        .order_by(
+            BroilerPlacementPlan.placement_date.asc(),
+            BroilerPlacementPlan.id.asc(),
+        )
         .all()
     )
-    return [build_plan_response(plan) for plan in plans]
+
+    return [
+        build_plan_response(plan)
+        for plan in plans
+    ]
 
 
-@app.patch("/api/broilers/demand-plans/{plan_id}", response_model=BroilerDemandPlanOut)
-def update_demand_plan(plan_id: int, payload: BroilerDemandPlanPatch, db: Session = Depends(get_db)):
+@app.patch(
+    "/api/broilers/demand-plans/{plan_id}",
+    response_model=BroilerDemandPlanOut,
+)
+def update_demand_plan(
+    plan_id: int,
+    payload: BroilerDemandPlanPatch,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     plan = (
         db.query(BroilerPlacementPlan)
-        .options(joinedload(BroilerPlacementPlan.farm), joinedload(BroilerPlacementPlan.shed))
-        .filter(BroilerPlacementPlan.id == plan_id)
+        .options(
+            joinedload(BroilerPlacementPlan.farm),
+            joinedload(BroilerPlacementPlan.shed),
+        )
+        .filter(
+            BroilerPlacementPlan.id == plan_id
+        )
         .first()
     )
-    if not plan:
-        raise HTTPException(status_code=404, detail="Broiler demand plan not found")
 
-    data = payload.model_dump(exclude_unset=True)
+    if not plan:
+        raise HTTPException(
+            status_code=404,
+            detail="Broiler demand plan not found",
+        )
+
+    require_farm_access(
+        db,
+        current_user,
+        plan.farm_id,
+    )
+
+    if (
+        not current_user.is_global_admin
+        and plan.company_id != current_user.company_id
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have access to this company",
+        )
+
+    data = payload.model_dump(
+        exclude_unset=True
+    )
+
     for field, value in data.items():
         setattr(plan, field, value)
+
+    plan.last_saved_by = current_user.full_name
     plan.last_saved_at = datetime.utcnow()
+
     db.commit()
     db.refresh(plan)
+
     return build_plan_response(plan)
 
 
-@app.post("/api/broilers/demand-plans", response_model=BroilerDemandPlanOut)
-def create_demand_plan(payload: BroilerDemandPlanCreate, db: Session = Depends(get_db)):
-    shed = db.query(BroilerShed).filter(BroilerShed.id == payload.shed_id).first()
-    farm = db.query(BroilerFarm).filter(BroilerFarm.id == payload.farm_id).first()
-    if not farm or not shed:
-        raise HTTPException(status_code=400, detail="Valid farm_id and shed_id are required")
-
-    plan = BroilerPlacementPlan(**payload.model_dump())
-    plan.last_saved_at = datetime.utcnow()
-    db.add(plan)
-    db.commit()
-    db.refresh(plan)
-    plan = (
-        db.query(BroilerPlacementPlan)
-        .options(joinedload(BroilerPlacementPlan.farm), joinedload(BroilerPlacementPlan.shed))
-        .filter(BroilerPlacementPlan.id == plan.id)
-        .first()
+@app.post(
+    "/api/broilers/demand-plans",
+    response_model=BroilerDemandPlanOut,
+)
+def create_demand_plan(
+    payload: BroilerDemandPlanCreate,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    farm = require_farm_access(
+        db,
+        current_user,
+        payload.farm_id,
     )
-    return build_plan_response(plan)
-
-
-@app.delete("/api/broilers/demand-plans/{plan_id}")
-def delete_demand_plan(plan_id: int, db: Session = Depends(get_db)):
-    plan = db.query(BroilerPlacementPlan).filter(BroilerPlacementPlan.id == plan_id).first()
-    if not plan:
-        raise HTTPException(status_code=404, detail="Broiler demand plan not found")
-    db.delete(plan)
-    db.commit()
-    return {"deleted": True, "id": plan_id}
-
-@app.post("/api/broilers/demand-plans/new-row", response_model=BroilerDemandPlanOut)
-def create_broiler_demand_plan_new_row(db: Session = Depends(get_db)):
-    """
-    Create a blank/default broiler placement plan row.
-    This endpoint is used by the frontend 'New placement row' button.
-    It does not require a request body.
-    """
 
     shed = (
         db.query(BroilerShed)
-        .filter(BroilerShed.active == True)
-        .order_by(BroilerShed.id.asc())
+        .filter(
+            BroilerShed.id == payload.shed_id
+        )
         .first()
     )
 
-    if shed is None:
+    if not shed:
         raise HTTPException(
-            status_code=400,
-            detail="No active broiler sheds available. Create a broiler shed first.",
+            status_code=404,
+            detail="Broiler shed not found",
         )
 
-    farm = (
-        db.query(BroilerFarm)
-        .filter(BroilerFarm.id == shed.farm_id)
-        .first()
-    )
-
-    if farm is None:
+    if (
+        shed.farm_id != farm.id
+        or shed.company_id != farm.company_id
+    ):
         raise HTTPException(
             status_code=400,
-            detail="Default broiler shed does not have a valid farm.",
+            detail=(
+                "The selected shed does not belong "
+                "to the selected farm."
+            ),
         )
-
-    existing_count = db.query(BroilerPlacementPlan).count()
-    next_number = existing_count + 1
 
     plan = BroilerPlacementPlan(
-        company_id=shed.company_id,
-        farm_id=shed.farm_id,
+        company_id=farm.company_id,
+        farm_id=farm.id,
         shed_id=shed.id,
-        cycle_code=f"BR-NEW-{next_number:03d}",
-        placement_date=None,
-        planned_birds=None,
-        target_density_kg_m2=shed.default_density_kg_m2,
-        target_lw_kg=shed.default_target_lw_kg,
-        growout_days=shed.default_growout_days,
-        chick_allowance_pct=1.5,
-        notes="",
-        status="Draft",
-        last_saved_by="JJ",
+        cycle_code=payload.cycle_code,
+        placement_date=payload.placement_date,
+        planned_birds=payload.planned_birds,
+        target_density_kg_m2=(
+            payload.target_density_kg_m2
+        ),
+        target_lw_kg=payload.target_lw_kg,
+        growout_days=payload.growout_days,
+        chick_allowance_pct=(
+            payload.chick_allowance_pct
+        ),
+        notes=payload.notes,
+        status=payload.status,
+        last_saved_by=current_user.full_name,
         last_saved_at=datetime.utcnow(),
     )
 
@@ -389,30 +418,312 @@ def create_broiler_demand_plan_new_row(db: Session = Depends(get_db)):
             joinedload(BroilerPlacementPlan.farm),
             joinedload(BroilerPlacementPlan.shed),
         )
-        .filter(BroilerPlacementPlan.id == plan.id)
+        .filter(
+            BroilerPlacementPlan.id == plan.id,
+            BroilerPlacementPlan.company_id
+            == farm.company_id,
+        )
         .first()
     )
 
     return build_plan_response(plan)
 
-@app.get("/api/broilers/farms", response_model=list[BroilerFarmOut])
-def list_broiler_farms(company_id: int = 1, db: Session = Depends(get_db)):
-    farms = (
+
+@app.delete("/api/broilers/demand-plans/{plan_id}")
+def delete_demand_plan(
+    plan_id: int,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not (
+        current_user.is_global_admin
+        or current_user.is_company_admin
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Admin access required",
+        )
+
+    plan = (
+        db.query(BroilerPlacementPlan)
+        .filter(
+            BroilerPlacementPlan.id == plan_id
+        )
+        .first()
+    )
+
+    if not plan:
+        raise HTTPException(
+            status_code=404,
+            detail="Broiler demand plan not found",
+        )
+
+    require_farm_access(
+        db,
+        current_user,
+        plan.farm_id,
+    )
+
+    linked_entries = (
+        db.query(BroilerDailyPerformance)
+        .filter(
+            BroilerDailyPerformance.company_id
+            == plan.company_id,
+            BroilerDailyPerformance.placement_plan_id
+            == plan.id,
+        )
+        .count()
+    )
+
+    if linked_entries > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Cannot delete this plan because it has "
+                "daily performance records."
+            ),
+        )
+
+    db.delete(plan)
+    db.commit()
+
+    return {
+        "deleted": True,
+        "id": plan_id,
+    }
+
+
+@app.post(
+    "/api/broilers/demand-plans/new-row",
+    response_model=BroilerDemandPlanOut,
+)
+def create_broiler_demand_plan_new_row(
+    company_id: int | None = None,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    resolved_company_id = resolve_company_id(
+        current_user,
+        company_id,
+    )
+
+    query = (
+        db.query(BroilerShed)
+        .join(
+            BroilerFarm,
+            BroilerFarm.id == BroilerShed.farm_id,
+        )
+        .filter(
+            BroilerShed.active == True,
+            BroilerShed.company_id
+            == resolved_company_id,
+            BroilerFarm.company_id
+            == resolved_company_id,
+        )
+    )
+
+    if not (
+        current_user.is_global_admin
+        or current_user.is_company_admin
+    ):
+        permitted_farm_ids = (
+            db.query(models.UserFarmAccess.farm_id)
+            .filter(
+                models.UserFarmAccess.user_id
+                == current_user.id
+            )
+        )
+
+        query = query.filter(
+            BroilerShed.farm_id.in_(
+                permitted_farm_ids
+            )
+        )
+
+    shed = (
+        query
+        .order_by(BroilerShed.id.asc())
+        .first()
+    )
+
+    if not shed:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "No active broiler sheds are available "
+                "for this user and company."
+            ),
+        )
+
+    farm = require_farm_access(
+        db,
+        current_user,
+        shed.farm_id,
+    )
+
+    existing_count = (
+        db.query(BroilerPlacementPlan)
+        .filter(
+            BroilerPlacementPlan.company_id
+            == resolved_company_id
+        )
+        .count()
+    )
+
+    next_number = existing_count + 1
+
+    plan = BroilerPlacementPlan(
+        company_id=resolved_company_id,
+        farm_id=farm.id,
+        shed_id=shed.id,
+        cycle_code=f"BR-NEW-{next_number:03d}",
+        placement_date=None,
+        planned_birds=None,
+        target_density_kg_m2=(
+            shed.default_density_kg_m2
+        ),
+        target_lw_kg=shed.default_target_lw_kg,
+        growout_days=shed.default_growout_days,
+        chick_allowance_pct=1.5,
+        notes="",
+        status="Draft",
+        last_saved_by=current_user.full_name,
+        last_saved_at=datetime.utcnow(),
+    )
+
+    db.add(plan)
+    db.commit()
+    db.refresh(plan)
+
+    plan = (
+        db.query(BroilerPlacementPlan)
+        .options(
+            joinedload(BroilerPlacementPlan.farm),
+            joinedload(BroilerPlacementPlan.shed),
+        )
+        .filter(
+            BroilerPlacementPlan.id == plan.id,
+            BroilerPlacementPlan.company_id
+            == resolved_company_id,
+        )
+        .first()
+    )
+
+    return build_plan_response(plan)
+
+@app.get(
+    "/api/broilers/farms",
+    response_model=list[BroilerFarmOut],
+)
+def list_broiler_farms(
+    company_id: int | None = None,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    resolved_company_id = resolve_company_id(
+        current_user,
+        company_id,
+    )
+
+    query = (
         db.query(BroilerFarm)
-        .filter(BroilerFarm.company_id == company_id)
+        .filter(
+            BroilerFarm.company_id == resolved_company_id
+        )
+    )
+
+    if not (
+        current_user.is_global_admin
+        or current_user.is_company_admin
+    ):
+        permitted_farm_ids = (
+            db.query(models.UserFarmAccess.farm_id)
+            .filter(
+                models.UserFarmAccess.user_id
+                == current_user.id
+            )
+        )
+
+        query = query.filter(
+            BroilerFarm.id.in_(permitted_farm_ids)
+        )
+
+    return (
+        query
         .order_by(BroilerFarm.farm_name.asc())
         .all()
     )
 
-    return farms
 
+@app.post(
+    "/api/broilers/farms",
+    response_model=BroilerFarmOut,
+)
+def create_broiler_farm(
+    payload: BroilerFarmCreate,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not (
+        current_user.is_global_admin
+        or current_user.is_company_admin
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Admin access required",
+        )
 
-@app.post("/api/broilers/farms", response_model=BroilerFarmOut)
-def create_broiler_farm(payload: BroilerFarmCreate, db: Session = Depends(get_db)):
+    resolved_company_id = resolve_company_id(
+        current_user,
+        payload.company_id,
+    )
+
+    if not current_user.is_global_admin:
+        resolved_company_id = current_user.company_id
+
+    company = (
+        db.query(Company)
+        .filter(
+            Company.id == resolved_company_id,
+            Company.active == True,
+        )
+        .first()
+    )
+
+    if not company:
+        raise HTTPException(
+            status_code=404,
+            detail="Company not found or inactive",
+        )
+
+    existing = (
+        db.query(BroilerFarm)
+        .filter(
+            BroilerFarm.company_id
+            == resolved_company_id,
+            BroilerFarm.farm_name
+            == payload.farm_name.strip(),
+        )
+        .first()
+    )
+
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "A farm with this name already exists "
+                "for the company."
+            ),
+        )
+
     farm = BroilerFarm(
-        company_id=payload.company_id,
-        farm_name=payload.farm_name,
-        farm_code=payload.farm_code,
+        company_id=resolved_company_id,
+        farm_name=payload.farm_name.strip(),
+        farm_code=(
+            payload.farm_code.strip()
+            if payload.farm_code
+            else None
+        ),
         active=payload.active,
     )
 
@@ -423,18 +734,61 @@ def create_broiler_farm(payload: BroilerFarmCreate, db: Session = Depends(get_db
     return farm
 
 
-@app.patch("/api/broilers/farms/{farm_id}", response_model=BroilerFarmOut)
+@app.patch(
+    "/api/broilers/farms/{farm_id}",
+    response_model=BroilerFarmOut,
+)
 def update_broiler_farm(
     farm_id: int,
     payload: BroilerFarmPatch,
+    current_user: models.AppUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    farm = db.query(BroilerFarm).filter(BroilerFarm.id == farm_id).first()
+    if not (
+        current_user.is_global_admin
+        or current_user.is_company_admin
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Admin access required",
+        )
 
-    if not farm:
-        raise HTTPException(status_code=404, detail="Broiler farm not found")
+    farm = require_farm_access(
+        db,
+        current_user,
+        farm_id,
+    )
 
     data = payload.model_dump(exclude_unset=True)
+
+    if "farm_name" in data and data["farm_name"]:
+        farm_name = data["farm_name"].strip()
+
+        duplicate = (
+            db.query(BroilerFarm)
+            .filter(
+                BroilerFarm.company_id
+                == farm.company_id,
+                BroilerFarm.farm_name
+                == farm_name,
+                BroilerFarm.id != farm.id,
+            )
+            .first()
+        )
+
+        if duplicate:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Another farm with this name already "
+                    "exists for the company."
+                ),
+            )
+
+        data["farm_name"] = farm_name
+
+    if "farm_code" in data and data["farm_code"]:
+        data["farm_code"] = data["farm_code"].strip()
 
     for field, value in data.items():
         setattr(farm, field, value)
@@ -446,33 +800,114 @@ def update_broiler_farm(
 
 
 @app.delete("/api/broilers/farms/{farm_id}")
-def delete_broiler_farm(farm_id: int, db: Session = Depends(get_db)):
-    farm = db.query(BroilerFarm).filter(BroilerFarm.id == farm_id).first()
+def delete_broiler_farm(
+    farm_id: int,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not current_user.is_global_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Global Admin access required",
+        )
 
-    if not farm:
-        raise HTTPException(status_code=404, detail="Broiler farm not found")
+    farm = require_farm_access(
+        db,
+        current_user,
+        farm_id,
+    )
 
-    linked_sheds = db.query(BroilerShed).filter(BroilerShed.farm_id == farm_id).count()
+    linked_sheds = (
+        db.query(BroilerShed)
+        .filter(
+            BroilerShed.farm_id == farm.id,
+            BroilerShed.company_id == farm.company_id,
+        )
+        .count()
+    )
 
     if linked_sheds > 0:
         raise HTTPException(
             status_code=400,
-            detail="Cannot delete farm because it has linked sheds. Set the farm inactive instead.",
+            detail=(
+                "Cannot delete farm because it has linked "
+                "sheds. Set the farm inactive instead."
+            ),
         )
 
     db.delete(farm)
     db.commit()
 
-    return {"deleted": True, "id": farm_id}
+    return {
+        "deleted": True,
+        "id": farm_id,
+    }
 
+@app.get(
+    "/api/broilers/sheds",
+    response_model=list[BroilerShedOut],
+)
+def list_broiler_sheds(
+    company_id: int | None = None,
+    farm_id: int | None = None,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    resolved_company_id = resolve_company_id(
+        current_user,
+        company_id,
+    )
 
-@app.get("/api/broilers/sheds", response_model=list[BroilerShedOut])
-def list_broiler_sheds(company_id: int = 1, db: Session = Depends(get_db)):
+    query = (
+        db.query(
+            BroilerShed,
+            BroilerFarm.farm_name,
+        )
+        .join(
+            BroilerFarm,
+            BroilerFarm.id == BroilerShed.farm_id,
+        )
+        .filter(
+            BroilerShed.company_id
+            == resolved_company_id,
+            BroilerFarm.company_id
+            == resolved_company_id,
+        )
+    )
+
+    if farm_id is not None:
+        require_farm_access(
+            db,
+            current_user,
+            farm_id,
+        )
+
+        query = query.filter(
+            BroilerShed.farm_id == farm_id
+        )
+
+    elif not (
+        current_user.is_global_admin
+        or current_user.is_company_admin
+    ):
+        permitted_farm_ids = (
+            db.query(models.UserFarmAccess.farm_id)
+            .filter(
+                models.UserFarmAccess.user_id
+                == current_user.id
+            )
+        )
+
+        query = query.filter(
+            BroilerShed.farm_id.in_(permitted_farm_ids)
+        )
+
     sheds = (
-        db.query(BroilerShed, BroilerFarm.farm_name)
-        .join(BroilerFarm, BroilerFarm.id == BroilerShed.farm_id)
-        .filter(BroilerShed.company_id == company_id)
-        .order_by(BroilerFarm.farm_name.asc(), BroilerShed.shed_name.asc())
+        query
+        .order_by(
+            BroilerFarm.farm_name.asc(),
+            BroilerShed.shed_name.asc(),
+        )
         .all()
     )
 
@@ -485,8 +920,12 @@ def list_broiler_sheds(company_id: int = 1, db: Session = Depends(get_db)):
             shed_name=shed.shed_name,
             shed_code=shed.shed_code,
             floor_area_m2=float(shed.floor_area_m2),
-            default_density_kg_m2=float(shed.default_density_kg_m2),
-            default_target_lw_kg=float(shed.default_target_lw_kg),
+            default_density_kg_m2=float(
+                shed.default_density_kg_m2
+            ),
+            default_target_lw_kg=float(
+                shed.default_target_lw_kg
+            ),
             default_growout_days=shed.default_growout_days,
             active=shed.active,
         )
@@ -494,22 +933,81 @@ def list_broiler_sheds(company_id: int = 1, db: Session = Depends(get_db)):
     ]
 
 
-@app.post("/api/broilers/sheds", response_model=BroilerShedOut)
-def create_broiler_shed(payload: BroilerShedCreate, db: Session = Depends(get_db)):
-    farm = db.query(BroilerFarm).filter(BroilerFarm.id == payload.farm_id).first()
+@app.post(
+    "/api/broilers/sheds",
+    response_model=BroilerShedOut,
+)
+def create_broiler_shed(
+    payload: BroilerShedCreate,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not (
+        current_user.is_global_admin
+        or current_user.is_company_admin
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Admin access required",
+        )
 
-    if not farm:
-        raise HTTPException(status_code=404, detail="Broiler farm not found")
+    farm = require_farm_access(
+        db,
+        current_user,
+        payload.farm_id,
+    )
+
+    if (
+        current_user.is_global_admin
+        and payload.company_id != farm.company_id
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "The selected company does not match "
+                "the farm company."
+            ),
+        )
+
+    existing = (
+        db.query(BroilerShed)
+        .filter(
+            BroilerShed.company_id == farm.company_id,
+            BroilerShed.farm_id == farm.id,
+            BroilerShed.shed_name
+            == payload.shed_name.strip(),
+        )
+        .first()
+    )
+
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "A shed with this name already exists "
+                "on the selected farm."
+            ),
+        )
 
     shed = BroilerShed(
-        company_id=payload.company_id,
-        farm_id=payload.farm_id,
-        shed_name=payload.shed_name,
-        shed_code=payload.shed_code,
+        company_id=farm.company_id,
+        farm_id=farm.id,
+        shed_name=payload.shed_name.strip(),
+        shed_code=(
+            payload.shed_code.strip()
+            if payload.shed_code
+            else None
+        ),
         floor_area_m2=payload.floor_area_m2,
-        default_density_kg_m2=payload.default_density_kg_m2,
-        default_target_lw_kg=payload.default_target_lw_kg,
-        default_growout_days=payload.default_growout_days,
+        default_density_kg_m2=(
+            payload.default_density_kg_m2
+        ),
+        default_target_lw_kg=(
+            payload.default_target_lw_kg
+        ),
+        default_growout_days=(
+            payload.default_growout_days
+        ),
         active=payload.active,
     )
 
@@ -525,30 +1023,107 @@ def create_broiler_shed(payload: BroilerShedCreate, db: Session = Depends(get_db
         shed_name=shed.shed_name,
         shed_code=shed.shed_code,
         floor_area_m2=float(shed.floor_area_m2),
-        default_density_kg_m2=float(shed.default_density_kg_m2),
-        default_target_lw_kg=float(shed.default_target_lw_kg),
+        default_density_kg_m2=float(
+            shed.default_density_kg_m2
+        ),
+        default_target_lw_kg=float(
+            shed.default_target_lw_kg
+        ),
         default_growout_days=shed.default_growout_days,
         active=shed.active,
     )
 
 
-@app.patch("/api/broilers/sheds/{shed_id}", response_model=BroilerShedOut)
+@app.patch(
+    "/api/broilers/sheds/{shed_id}",
+    response_model=BroilerShedOut,
+)
 def update_broiler_shed(
     shed_id: int,
     payload: BroilerShedPatch,
+    current_user: models.AppUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    shed = db.query(BroilerShed).filter(BroilerShed.id == shed_id).first()
+    if not (
+        current_user.is_global_admin
+        or current_user.is_company_admin
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Admin access required",
+        )
+
+    shed = (
+        db.query(BroilerShed)
+        .filter(BroilerShed.id == shed_id)
+        .first()
+    )
 
     if not shed:
-        raise HTTPException(status_code=404, detail="Broiler shed not found")
+        raise HTTPException(
+            status_code=404,
+            detail="Broiler shed not found",
+        )
+
+    require_farm_access(
+        db,
+        current_user,
+        shed.farm_id,
+    )
 
     data = payload.model_dump(exclude_unset=True)
 
     if "farm_id" in data:
-        farm_check = db.query(BroilerFarm).filter(BroilerFarm.id == data["farm_id"]).first()
-        if not farm_check:
-            raise HTTPException(status_code=404, detail="Broiler farm not found")
+        target_farm = require_farm_access(
+            db,
+            current_user,
+            data["farm_id"],
+        )
+
+        if target_farm.company_id != shed.company_id:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "A shed cannot be moved to a farm "
+                    "belonging to another company."
+                ),
+            )
+
+    target_farm_id = data.get(
+        "farm_id",
+        shed.farm_id,
+    )
+
+    if "shed_name" in data and data["shed_name"]:
+        shed_name = data["shed_name"].strip()
+
+        duplicate = (
+            db.query(BroilerShed)
+            .filter(
+                BroilerShed.company_id
+                == shed.company_id,
+                BroilerShed.farm_id
+                == target_farm_id,
+                BroilerShed.shed_name
+                == shed_name,
+                BroilerShed.id != shed.id,
+            )
+            .first()
+        )
+
+        if duplicate:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Another shed with this name already "
+                    "exists on the selected farm."
+                ),
+            )
+
+        data["shed_name"] = shed_name
+
+    if "shed_code" in data and data["shed_code"]:
+        data["shed_code"] = data["shed_code"].strip()
 
     for field, value in data.items():
         setattr(shed, field, value)
@@ -556,46 +1131,87 @@ def update_broiler_shed(
     db.commit()
     db.refresh(shed)
 
-    farm = db.query(BroilerFarm).filter(BroilerFarm.id == shed.farm_id).first()
+    farm = require_farm_access(
+        db,
+        current_user,
+        shed.farm_id,
+    )
 
     return BroilerShedOut(
         id=shed.id,
         company_id=shed.company_id,
         farm_id=shed.farm_id,
-        farm_name=farm.farm_name if farm else None,
+        farm_name=farm.farm_name,
         shed_name=shed.shed_name,
         shed_code=shed.shed_code,
         floor_area_m2=float(shed.floor_area_m2),
-        default_density_kg_m2=float(shed.default_density_kg_m2),
-        default_target_lw_kg=float(shed.default_target_lw_kg),
+        default_density_kg_m2=float(
+            shed.default_density_kg_m2
+        ),
+        default_target_lw_kg=float(
+            shed.default_target_lw_kg
+        ),
         default_growout_days=shed.default_growout_days,
         active=shed.active,
     )
 
 
 @app.delete("/api/broilers/sheds/{shed_id}")
-def delete_broiler_shed(shed_id: int, db: Session = Depends(get_db)):
-    shed = db.query(BroilerShed).filter(BroilerShed.id == shed_id).first()
+def delete_broiler_shed(
+    shed_id: int,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not current_user.is_global_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Global Admin access required",
+        )
+
+    shed = (
+        db.query(BroilerShed)
+        .filter(BroilerShed.id == shed_id)
+        .first()
+    )
 
     if not shed:
-        raise HTTPException(status_code=404, detail="Broiler shed not found")
+        raise HTTPException(
+            status_code=404,
+            detail="Broiler shed not found",
+        )
+
+    require_farm_access(
+        db,
+        current_user,
+        shed.farm_id,
+    )
 
     linked_plans = (
         db.query(BroilerPlacementPlan)
-        .filter(BroilerPlacementPlan.shed_id == shed_id)
+        .filter(
+            BroilerPlacementPlan.shed_id == shed.id,
+            BroilerPlacementPlan.company_id
+            == shed.company_id,
+        )
         .count()
     )
 
     if linked_plans > 0:
         raise HTTPException(
             status_code=400,
-            detail="Cannot delete shed because it has linked placement plans. Set the shed inactive instead.",
+            detail=(
+                "Cannot delete shed because it has linked "
+                "placement plans. Set the shed inactive instead."
+            ),
         )
 
     db.delete(shed)
     db.commit()
 
-    return {"deleted": True, "id": shed_id}
+    return {
+        "deleted": True,
+        "id": shed_id,
+    }
 
 def recalculate_daily_performance_entry(entry: BroilerDailyPerformance):
     mortality_total = (
@@ -626,23 +1242,90 @@ def recalculate_daily_performance_entry(entry: BroilerDailyPerformance):
 
     return entry
     
-@app.get("/api/broilers/performance", response_model=list[BroilerDailyPerformanceOut])
+@app.get(
+    "/api/broilers/performance",
+    response_model=list[BroilerDailyPerformanceOut],
+)
 def list_broiler_performance(
-    company_id: int = 1,
+    company_id: int | None = None,
     placement_plan_id: int | None = None,
+    current_user: models.AppUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    resolved_company_id = resolve_company_id(
+        current_user,
+        company_id,
+    )
+
     query = (
         db.query(BroilerDailyPerformance)
         .options(
-            joinedload(BroilerDailyPerformance.placement_plan).joinedload(BroilerPlacementPlan.farm),
-            joinedload(BroilerDailyPerformance.placement_plan).joinedload(BroilerPlacementPlan.shed),
+            joinedload(
+                BroilerDailyPerformance.placement_plan
+            ).joinedload(BroilerPlacementPlan.farm),
+            joinedload(
+                BroilerDailyPerformance.placement_plan
+            ).joinedload(BroilerPlacementPlan.shed),
         )
-        .filter(BroilerDailyPerformance.company_id == company_id)
+        .join(
+            BroilerPlacementPlan,
+            BroilerPlacementPlan.id
+            == BroilerDailyPerformance.placement_plan_id,
+        )
+        .filter(
+            BroilerDailyPerformance.company_id
+            == resolved_company_id,
+            BroilerPlacementPlan.company_id
+            == resolved_company_id,
+        )
     )
 
     if placement_plan_id is not None:
-        query = query.filter(BroilerDailyPerformance.placement_plan_id == placement_plan_id)
+        plan = (
+            db.query(BroilerPlacementPlan)
+            .filter(
+                BroilerPlacementPlan.id
+                == placement_plan_id,
+                BroilerPlacementPlan.company_id
+                == resolved_company_id,
+            )
+            .first()
+        )
+
+        if not plan:
+            raise HTTPException(
+                status_code=404,
+                detail="Broiler placement plan not found",
+            )
+
+        require_farm_access(
+            db,
+            current_user,
+            plan.farm_id,
+        )
+
+        query = query.filter(
+            BroilerDailyPerformance.placement_plan_id
+            == placement_plan_id
+        )
+
+    elif not (
+        current_user.is_global_admin
+        or current_user.is_company_admin
+    ):
+        permitted_farm_ids = (
+            db.query(models.UserFarmAccess.farm_id)
+            .filter(
+                models.UserFarmAccess.user_id
+                == current_user.id
+            )
+        )
+
+        query = query.filter(
+            BroilerPlacementPlan.farm_id.in_(
+                permitted_farm_ids
+            )
+        )
 
     entries = (
         query
@@ -659,39 +1342,80 @@ def list_broiler_performance(
 
     for entry in entries:
         plan_id = entry.placement_plan_id
-        cumulative_by_plan.setdefault(plan_id, 0)
-        cumulative_by_plan[plan_id] += int(entry.mortality_birds or 0)
+
+        cumulative_by_plan.setdefault(
+            plan_id,
+            0,
+        )
+
+        cumulative_by_plan[plan_id] += int(
+            entry.mortality_birds or 0
+        )
 
         output.append(
             build_daily_performance_response(
                 entry,
-                cumulative_mortality_birds=cumulative_by_plan[plan_id],
+                cumulative_mortality_birds=(
+                    cumulative_by_plan[plan_id]
+                ),
             )
         )
 
     return output
 
 
-@app.post("/api/broilers/performance", response_model=BroilerDailyPerformanceOut)
+@app.post(
+    "/api/broilers/performance",
+    response_model=BroilerDailyPerformanceOut,
+)
 def create_broiler_performance(
     payload: BroilerDailyPerformanceCreate,
+    current_user: models.AppUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     plan = (
         db.query(BroilerPlacementPlan)
-        .options(joinedload(BroilerPlacementPlan.farm), joinedload(BroilerPlacementPlan.shed))
-        .filter(BroilerPlacementPlan.id == payload.placement_plan_id)
+        .options(
+            joinedload(BroilerPlacementPlan.farm),
+            joinedload(BroilerPlacementPlan.shed),
+        )
+        .filter(
+            BroilerPlacementPlan.id
+            == payload.placement_plan_id
+        )
         .first()
     )
 
     if not plan:
-        raise HTTPException(status_code=404, detail="Broiler placement plan not found")
+        raise HTTPException(
+            status_code=404,
+            detail="Broiler placement plan not found",
+        )
+
+    require_farm_access(
+        db,
+        current_user,
+        plan.farm_id,
+    )
+
+    if (
+        not current_user.is_global_admin
+        and plan.company_id != current_user.company_id
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have access to this company",
+        )
 
     existing = (
         db.query(BroilerDailyPerformance)
         .filter(
-            BroilerDailyPerformance.placement_plan_id == payload.placement_plan_id,
-            BroilerDailyPerformance.entry_date == payload.entry_date,
+            BroilerDailyPerformance.company_id
+            == plan.company_id,
+            BroilerDailyPerformance.placement_plan_id
+            == plan.id,
+            BroilerDailyPerformance.entry_date
+            == payload.entry_date,
         )
         .first()
     )
@@ -699,18 +1423,26 @@ def create_broiler_performance(
     if existing:
         raise HTTPException(
             status_code=400,
-            detail="A performance entry already exists for this cycle and date.",
+            detail=(
+                "A performance entry already exists "
+                "for this cycle and date."
+            ),
         )
 
     data = payload.model_dump()
 
+    data["company_id"] = plan.company_id
+
     if "body_weight_kg" in data:
-        data["avg_weight_kg"] = data.pop("body_weight_kg")
+        data["avg_weight_kg"] = data.pop(
+            "body_weight_kg"
+        )
 
     entry = BroilerDailyPerformance(**data)
 
     recalculate_daily_performance_entry(entry)
 
+    entry.last_saved_by = current_user.full_name
     entry.last_saved_at = datetime.utcnow()
 
     db.add(entry)
@@ -720,45 +1452,123 @@ def create_broiler_performance(
     entry = (
         db.query(BroilerDailyPerformance)
         .options(
-            joinedload(BroilerDailyPerformance.placement_plan).joinedload(BroilerPlacementPlan.farm),
-            joinedload(BroilerDailyPerformance.placement_plan).joinedload(BroilerPlacementPlan.shed),
+            joinedload(
+                BroilerDailyPerformance.placement_plan
+            ).joinedload(BroilerPlacementPlan.farm),
+            joinedload(
+                BroilerDailyPerformance.placement_plan
+            ).joinedload(BroilerPlacementPlan.shed),
         )
-        .filter(BroilerDailyPerformance.id == entry.id)
+        .filter(
+            BroilerDailyPerformance.id == entry.id,
+            BroilerDailyPerformance.company_id
+            == plan.company_id,
+        )
         .first()
     )
 
-    return build_daily_performance_response(entry, cumulative_mortality_birds=entry.mortality_birds or 0)
+    return build_daily_performance_response(
+        entry,
+        cumulative_mortality_birds=(
+            entry.mortality_birds or 0
+        ),
+    )
 
 
-@app.patch("/api/broilers/performance/{entry_id}", response_model=BroilerDailyPerformanceOut)
+@app.patch(
+    "/api/broilers/performance/{entry_id}",
+    response_model=BroilerDailyPerformanceOut,
+)
 def update_broiler_performance(
     entry_id: int,
     payload: BroilerDailyPerformancePatch,
+    current_user: models.AppUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     entry = (
         db.query(BroilerDailyPerformance)
         .options(
-            joinedload(BroilerDailyPerformance.placement_plan).joinedload(BroilerPlacementPlan.farm),
-            joinedload(BroilerDailyPerformance.placement_plan).joinedload(BroilerPlacementPlan.shed),
+            joinedload(
+                BroilerDailyPerformance.placement_plan
+            ).joinedload(BroilerPlacementPlan.farm),
+            joinedload(
+                BroilerDailyPerformance.placement_plan
+            ).joinedload(BroilerPlacementPlan.shed),
         )
-        .filter(BroilerDailyPerformance.id == entry_id)
+        .filter(
+            BroilerDailyPerformance.id == entry_id
+        )
         .first()
     )
 
     if not entry:
-        raise HTTPException(status_code=404, detail="Broiler performance entry not found")
+        raise HTTPException(
+            status_code=404,
+            detail="Broiler performance entry not found",
+        )
 
-    data = payload.model_dump(exclude_unset=True)
+    plan = entry.placement_plan
+
+    if not plan:
+        raise HTTPException(
+            status_code=400,
+            detail="Performance entry has no valid placement plan",
+        )
+
+    require_farm_access(
+        db,
+        current_user,
+        plan.farm_id,
+    )
+
+    if (
+        not current_user.is_global_admin
+        and entry.company_id != current_user.company_id
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have access to this company",
+        )
+
+    data = payload.model_dump(
+        exclude_unset=True
+    )
 
     if "body_weight_kg" in data:
-        data["avg_weight_kg"] = data.pop("body_weight_kg")
+        data["avg_weight_kg"] = data.pop(
+            "body_weight_kg"
+        )
+
+    if "entry_date" in data:
+        duplicate = (
+            db.query(BroilerDailyPerformance)
+            .filter(
+                BroilerDailyPerformance.company_id
+                == entry.company_id,
+                BroilerDailyPerformance.placement_plan_id
+                == entry.placement_plan_id,
+                BroilerDailyPerformance.entry_date
+                == data["entry_date"],
+                BroilerDailyPerformance.id != entry.id,
+            )
+            .first()
+        )
+
+        if duplicate:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "A performance entry already exists "
+                    "for this cycle and date."
+                ),
+            )
 
     for field, value in data.items():
         setattr(entry, field, value)
 
     recalculate_daily_performance_entry(entry)
 
+    entry.last_saved_by = current_user.full_name
     entry.last_saved_at = datetime.utcnow()
 
     db.commit()
@@ -767,59 +1577,159 @@ def update_broiler_performance(
     cumulative_mortality = (
         db.query(BroilerDailyPerformance)
         .filter(
-            BroilerDailyPerformance.placement_plan_id == entry.placement_plan_id,
-            BroilerDailyPerformance.entry_date <= entry.entry_date,
+            BroilerDailyPerformance.company_id
+            == entry.company_id,
+            BroilerDailyPerformance.placement_plan_id
+            == entry.placement_plan_id,
+            BroilerDailyPerformance.entry_date
+            <= entry.entry_date,
         )
-        .with_entities(BroilerDailyPerformance.mortality_birds)
+        .with_entities(
+            BroilerDailyPerformance.mortality_birds
+        )
         .all()
     )
 
-    cumulative_mortality_birds = sum(int(row[0] or 0) for row in cumulative_mortality)
+    cumulative_mortality_birds = sum(
+        int(row[0] or 0)
+        for row in cumulative_mortality
+    )
 
     return build_daily_performance_response(
         entry,
-        cumulative_mortality_birds=cumulative_mortality_birds,
+        cumulative_mortality_birds=(
+            cumulative_mortality_birds
+        ),
     )
 
 
 @app.delete("/api/broilers/performance/{entry_id}")
-def delete_broiler_performance(entry_id: int, db: Session = Depends(get_db)):
-    entry = db.query(BroilerDailyPerformance).filter(BroilerDailyPerformance.id == entry_id).first()
+def delete_broiler_performance(
+    entry_id: int,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    entry = (
+        db.query(BroilerDailyPerformance)
+        .options(
+            joinedload(
+                BroilerDailyPerformance.placement_plan
+            )
+        )
+        .filter(
+            BroilerDailyPerformance.id == entry_id
+        )
+        .first()
+    )
 
     if not entry:
-        raise HTTPException(status_code=404, detail="Broiler performance entry not found")
+        raise HTTPException(
+            status_code=404,
+            detail="Broiler performance entry not found",
+        )
+
+    if not (
+        current_user.is_global_admin
+        or current_user.is_company_admin
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Admin access required",
+        )
+
+    plan = entry.placement_plan
+
+    if not plan:
+        raise HTTPException(
+            status_code=400,
+            detail="Performance entry has no valid placement plan",
+        )
+
+    require_farm_access(
+        db,
+        current_user,
+        plan.farm_id,
+    )
 
     db.delete(entry)
     db.commit()
 
-    return {"deleted": True, "id": entry_id}
-    
-@app.post("/api/broilers/performance/recalculate-cycle/{placement_plan_id}")
+    return {
+        "deleted": True,
+        "id": entry_id,
+    }
+
+
+@app.post(
+    "/api/broilers/performance/recalculate-cycle/{placement_plan_id}"
+)
 def recalculate_broiler_performance_cycle(
     placement_plan_id: int,
+    current_user: models.AppUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    plan = (
+        db.query(BroilerPlacementPlan)
+        .filter(
+            BroilerPlacementPlan.id
+            == placement_plan_id
+        )
+        .first()
+    )
+
+    if not plan:
+        raise HTTPException(
+            status_code=404,
+            detail="Broiler placement plan not found",
+        )
+
+    require_farm_access(
+        db,
+        current_user,
+        plan.farm_id,
+    )
+
     entries = (
         db.query(BroilerDailyPerformance)
-        .filter(BroilerDailyPerformance.placement_plan_id == placement_plan_id)
-        .order_by(BroilerDailyPerformance.entry_date.asc(), BroilerDailyPerformance.age_days.asc(), BroilerDailyPerformance.id.asc())
+        .filter(
+            BroilerDailyPerformance.company_id
+            == plan.company_id,
+            BroilerDailyPerformance.placement_plan_id
+            == placement_plan_id,
+        )
+        .order_by(
+            BroilerDailyPerformance.entry_date.asc(),
+            BroilerDailyPerformance.age_days.asc(),
+            BroilerDailyPerformance.id.asc(),
+        )
         .all()
     )
 
     if not entries:
-        raise HTTPException(status_code=404, detail="No performance entries found for this cycle.")
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "No performance entries found "
+                "for this cycle."
+            ),
+        )
 
     previous_closing_birds = None
 
     for index, entry in enumerate(entries):
-        if index > 0 and previous_closing_birds is not None:
-            entry.opening_birds = previous_closing_birds
+        if (
+            index > 0
+            and previous_closing_birds is not None
+        ):
+            entry.opening_birds = (
+                previous_closing_birds
+            )
 
         recalculate_daily_performance_entry(entry)
 
         previous_closing_birds = entry.closing_birds
         entry.last_saved_at = datetime.utcnow()
-        entry.last_saved_by = "System Recalc"
+        entry.last_saved_by = current_user.full_name
 
     db.commit()
 

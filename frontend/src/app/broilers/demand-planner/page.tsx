@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { AgGridReact } from "ag-grid-react";
 import {
   AllCommunityModule,
@@ -22,6 +23,7 @@ import OviCoreKpiStrip from "@/components/ovicore/OviCoreKpiStrip";
 import OviCorePageHeader from "@/components/ovicore/OviCorePageHeader";
 import OviCoreShell from "@/components/ovicore/OviCoreShell";
 import OviCoreTableCard from "@/components/ovicore/OviCoreTableCard";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 type BroilerPlanRow = {
   id: number;
@@ -57,7 +59,30 @@ type BroilerPlanRow = {
   lastSavedBy: string | null;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8001";
+
+async function authenticatedFetch(
+  input: RequestInfo | URL,
+  init: RequestInit = {}
+) {
+  const response = await fetch(input, {
+    ...init,
+    credentials: "include",
+  });
+
+  if (response.status === 401) {
+    const nextPath =
+      `${window.location.pathname}${window.location.search}`;
+
+    window.location.href =
+      `/login?next=${encodeURIComponent(nextPath)}`;
+
+    throw new Error("Your login session has expired.");
+  }
+
+  return response;
+}
 
 function isoToDisplayDate(value: string | null | undefined) {
   if (!value) return "";
@@ -241,6 +266,36 @@ function recalculateRow(row: BroilerPlanRow): BroilerPlanRow {
 export default function BroilerDemandPlannerPage() {
   const gridRef = useRef<AgGridReact<BroilerPlanRow>>(null);
 
+  const searchParams = useSearchParams();
+
+  const {
+    currentUser,
+    loadingUser,
+    userError,
+  } = useCurrentUser();
+
+	const activeCompanyId = useMemo(() => {
+		const companyParam = searchParams.get("company_id");
+		const parsedCompanyId = Number(companyParam);
+
+		if (currentUser?.is_global_admin) {
+			if (
+				Number.isInteger(parsedCompanyId) &&
+				parsedCompanyId > 0
+			) {
+				return parsedCompanyId;
+			}
+
+			return null;
+		}
+
+		return currentUser?.company_id ?? null;
+	}, [
+		currentUser?.company_id,
+		currentUser?.is_global_admin,
+		searchParams,
+	]);
+
   const [rows, setRows] = useState<BroilerPlanRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -251,69 +306,103 @@ export default function BroilerDemandPlannerPage() {
 
   const dirtyRowIds = useRef<Set<number>>(new Set());
 
-  const fetchRows = useCallback(async () => {
-    setLoading(true);
-    setLastError(null);
+	const fetchRows = useCallback(async () => {
+		if (loadingUser) {
+			return;
+		}
 
-    try {
-      const response = await fetch(`${API_BASE}/api/broilers/demand-plans`, {
-        cache: "no-store",
-      });
+		if (!activeCompanyId) {
+			setRows([]);
+			setLoading(false);
 
-      if (!response.ok) {
-        throw new Error(`Failed to load broiler demand plans. Backend returned ${response.status}.`);
-      }
+			setLastError(
+				currentUser?.is_global_admin
+					? "Select a company before loading demand plans."
+					: "Your user account is not assigned to a company."
+			);
 
-      const data = await response.json();
+			return;
+		}
 
-      const mappedRows = data.map((row: any) =>
-        recalculateRow({
-          id: row.id,
-          companyId: row.company_id,
-          farmId: row.farm_id,
-          shedId: row.shed_id,
+		setLoading(true);
+		setLastError(null);
 
-          farmName: row.farm_name,
-          shedName: row.shed_name,
-          cycleCode: row.cycle_code,
+		try {
+			const response = await authenticatedFetch(
+				`${API_BASE}/api/broilers/demand-plans?company_id=${activeCompanyId}`,
+				{
+					cache: "no-store",
+				}
+			);
 
-          placementDate: isoToDisplayDate(row.placement_date),
-          processingDate: isoToDisplayDate(row.processing_date),
+			if (!response.ok) {
+				throw new Error(
+					`Failed to load broiler demand plans. Backend returned ${response.status}.`
+				);
+			}
 
-          floorAreaM2: row.floor_area_m2,
-          targetDensityKgM2: row.target_density_kg_m2,
-          targetLwKg: row.target_lw_kg,
-          calculatedCapacityBirds: row.calculated_capacity_birds,
+			const data = await response.json();
 
-          plannedBirds: row.planned_birds,
-          growoutDays: row.growout_days,
-          chickAllowancePct: row.chick_allowance_pct,
-          notes: row.notes,
+			const mappedRows = data.map((row: any) =>
+				recalculateRow({
+					id: row.id,
+					companyId: row.company_id,
+					farmId: row.farm_id,
+					shedId: row.shed_id,
 
-          plannedKgM2: row.planned_kg_m2,
-          capacityVarianceBirds: row.capacity_variance_birds,
-          capacityVariancePct: row.capacity_variance_pct,
-          requiredChicks: row.required_chicks,
-          reviewFlag: row.review_flag,
+					farmName: row.farm_name,
+					shedName: row.shed_name,
+					cycleCode: row.cycle_code,
 
-          status: row.status,
-          lastSavedBy: row.last_saved_by,
-          lastSavedAt: isoToDisplayDateTime(row.last_saved_at),
-        })
-      );
+					placementDate: isoToDisplayDate(row.placement_date),
+					processingDate: isoToDisplayDate(row.processing_date),
 
-      const sortedRows = mappedRows.sort((a: BroilerPlanRow, b: BroilerPlanRow) => a.id - b.id);
+					floorAreaM2: row.floor_area_m2,
+					targetDensityKgM2: row.target_density_kg_m2,
+					targetLwKg: row.target_lw_kg,
+					calculatedCapacityBirds: row.calculated_capacity_birds,
 
-      dirtyRowIds.current.clear();
-      setDirtyCount(0);
-      setRows(sortedRows);
-    } catch (error) {
-      console.error(error);
-      setLastError(error instanceof Error ? error.message : "Failed to load broiler demand plans.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+					plannedBirds: row.planned_birds,
+					growoutDays: row.growout_days,
+					chickAllowancePct: row.chick_allowance_pct,
+					notes: row.notes,
+
+					plannedKgM2: row.planned_kg_m2,
+					capacityVarianceBirds: row.capacity_variance_birds,
+					capacityVariancePct: row.capacity_variance_pct,
+					requiredChicks: row.required_chicks,
+					reviewFlag: row.review_flag,
+
+					status: row.status,
+					lastSavedBy: row.last_saved_by,
+					lastSavedAt: isoToDisplayDateTime(row.last_saved_at),
+				})
+			);
+
+			const sortedRows = mappedRows.sort(
+				(a: BroilerPlanRow, b: BroilerPlanRow) =>
+					a.id - b.id
+			);
+
+			dirtyRowIds.current.clear();
+			setDirtyCount(0);
+			setRows(sortedRows);
+		} catch (error) {
+			console.error(error);
+
+			setLastError(
+				error instanceof Error
+					? error.message
+					: "Failed to load broiler demand plans."
+			);
+		} finally {
+			setLoading(false);
+		}
+	}, [
+		activeCompanyId,
+		currentUser?.is_global_admin,
+		loadingUser,
+	]);
 
   useEffect(() => {
     fetchRows().catch(console.error);
@@ -572,13 +661,20 @@ export default function BroilerDemandPlannerPage() {
   }, []);
 
 	const addNewPlacementRow = useCallback(async () => {
+		if (!activeCompanyId) {
+			alert("Select a company before creating a placement row.");
+			return;
+		}
 		setSaving(true);
 		setLastError(null);
 
 		try {
-			const response = await fetch(`${API_BASE}/api/broilers/demand-plans/new-row`, {
-				method: "POST",
-			});
+			const response = await authenticatedFetch(
+				`${API_BASE}/api/broilers/demand-plans/new-row?company_id=${activeCompanyId}`,
+				{
+					method: "POST",
+				}
+			);
 
 			if (!response.ok) {
 				const errorText = await response.text();
@@ -610,9 +706,13 @@ export default function BroilerDemandPlannerPage() {
 		} finally {
 			setSaving(false);
 		}
-	}, [fetchRows]);
+	}, [activeCompanyId, fetchRows]);
 
   const duplicateSelectedRow = useCallback(async () => {
+		if (!activeCompanyId) {
+			alert("Select a company before duplicating a placement row.");
+			return;
+		}
     const api = gridRef.current?.api;
     if (!api) return;
 
@@ -632,15 +732,15 @@ export default function BroilerDemandPlannerPage() {
       const maxId = rows.reduce((max, row) => Math.max(max, row.id), 0);
       const nextNumber = maxId + 1;
 
-      const response = await fetch(`${API_BASE}/api/broilers/demand-plans`, {
+      const response = await authenticatedFetch(`${API_BASE}/api/broilers/demand-plans`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          company_id: selected.companyId ?? 1,
-          farm_id: selected.farmId ?? 1,
-          shed_id: selected.shedId ?? 1,
+					company_id: selected.companyId ?? activeCompanyId,
+					farm_id: selected.farmId,
+					shed_id: selected.shedId,
           cycle_code: `${selected.cycleCode}-COPY-${String(nextNumber).padStart(3, "0")}`,
           placement_date: displayDateToIso(selected.placementDate),
           planned_birds: selected.plannedBirds,
@@ -668,7 +768,7 @@ export default function BroilerDemandPlannerPage() {
     } finally {
       setSaving(false);
     }
-  }, [fetchRows, rows]);
+  }, [activeCompanyId, fetchRows, rows]);
 
   const deleteSelectedRow = useCallback(async () => {
     const api = gridRef.current?.api;
@@ -690,7 +790,7 @@ export default function BroilerDemandPlannerPage() {
     setLastError(null);
 
     try {
-      const response = await fetch(`${API_BASE}/api/broilers/demand-plans/${row.id}`, {
+      const response = await authenticatedFetch(`${API_BASE}/api/broilers/demand-plans/${row.id}`, {
         method: "DELETE",
       });
 
@@ -766,7 +866,7 @@ export default function BroilerDemandPlannerPage() {
 
 				console.log("Saving broiler row", id, payload);
 
-				const response = await fetch(`${API_BASE}/api/broilers/demand-plans/${id}`, {
+				const response = await authenticatedFetch(`${API_BASE}/api/broilers/demand-plans/${id}`, {
 					method: "PATCH",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify(payload),
@@ -870,9 +970,11 @@ return (
               : "All rows saved"}
           </span>
 
-          {lastError ? (
-            <span className="ovicore-pill ovicore-pill-red">{lastError}</span>
-          ) : null}
+					{userError || lastError ? (
+						<span className="ovicore-pill ovicore-pill-red">
+							{userError || lastError}
+						</span>
+					) : null}
         </>
       }
       right={
@@ -960,7 +1062,7 @@ return (
           rowHeight={38}
           headerHeight={38}
           groupHeaderHeight={34}
-          loading={loading}
+          loading={loading || loadingUser}
           onGridReady={onGridReady}
           onFirstDataRendered={autosizeColumns}
           onCellValueChanged={(event) => {

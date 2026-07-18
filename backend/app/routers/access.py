@@ -430,11 +430,6 @@ def update_user(
 
 
 @router.post(
-    "/user-farms",
-    response_model=schemas.UserFarmAccessOut,
-)
-
-@router.post(
     "/users/{target_user_id}/reset-password",
     response_model=schemas.AppUserOut,
 )
@@ -563,6 +558,10 @@ def delete_user(
         "message": "User deleted successfully",
     }
 
+@router.post(
+    "/user-farms",
+    response_model=schemas.UserFarmAccessOut,
+)
 def assign_user_to_farm(
     payload: schemas.UserFarmAccessCreate,
     current_user: models.AppUser = Depends(get_current_user),

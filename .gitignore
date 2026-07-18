@@ -48,3 +48,5 @@ node_modules/
 .DS_Store
 Thumbs.db
 .vscode/
+
+backend_backup_before_multicompany/

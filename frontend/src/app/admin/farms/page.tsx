@@ -37,9 +37,31 @@ type FarmRow = {
   active: boolean;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL ??
+  "http://localhost:8001";
 const COMPANIES_ENDPOINT = `${API_BASE}/api/admin/companies`;
 const FARMS_ENDPOINT = `${API_BASE}/api/broilers/farms`;
+
+async function authenticatedFetch(
+  input: RequestInfo | URL,
+  init: RequestInit = {}
+) {
+  const response = await fetch(input, {
+    ...init,
+    credentials: "include",
+  });
+
+  if (response.status === 401) {
+    const nextPath = `${window.location.pathname}${window.location.search}`;
+
+    window.location.href = `/login?next=${encodeURIComponent(nextPath)}`;
+
+    throw new Error("Your login session has expired.");
+  }
+
+  return response;
+}
 
 function activeFormatter(params: ValueFormatterParams) {
   return params.value ? "Active" : "Inactive";
@@ -62,7 +84,7 @@ export default function AdminFarmRegisterPage() {
   }, [companies, selectedCompanyId]);
 
   const fetchCompanies = useCallback(async () => {
-    const response = await fetch(COMPANIES_ENDPOINT, {
+    const response = await authenticatedFetch(COMPANIES_ENDPOINT, {
       cache: "no-store",
     });
 
@@ -101,7 +123,7 @@ export default function AdminFarmRegisterPage() {
     setLoading(true);
 
     try {
-      const response = await fetch(`${FARMS_ENDPOINT}?company_id=${resolvedCompanyId}`, {
+      const response = await authenticatedFetch(`${FARMS_ENDPOINT}?company_id=${resolvedCompanyId}`, {
         cache: "no-store",
       });
 
@@ -228,7 +250,7 @@ export default function AdminFarmRegisterPage() {
     setSaving(true);
 
     try {
-      const response = await fetch(FARMS_ENDPOINT, {
+      const response = await authenticatedFetch(FARMS_ENDPOINT, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -288,7 +310,7 @@ export default function AdminFarmRegisterPage() {
           return;
         }
 
-        const response = await fetch(`${FARMS_ENDPOINT}/${id}`, {
+        const response = await authenticatedFetch(`${FARMS_ENDPOINT}/${id}`, {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
@@ -341,7 +363,7 @@ export default function AdminFarmRegisterPage() {
     setSaving(true);
 
     try {
-      const response = await fetch(`${FARMS_ENDPOINT}/${row.id}`, {
+      const response = await authenticatedFetch(`${FARMS_ENDPOINT}/${row.id}`, {
         method: "DELETE",
       });
 
