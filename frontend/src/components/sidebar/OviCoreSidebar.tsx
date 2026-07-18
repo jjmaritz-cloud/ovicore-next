@@ -52,6 +52,8 @@ const API_BASE =
 const SELECTED_COMPANY_STORAGE_KEY =
   "ovicore_selected_company_id";
 
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+
 function getUserRole(
   user: CurrentUser | null
 ): OviCoreUserRole {
@@ -218,7 +220,7 @@ export default function OviCoreSidebar({
     useCallback(async () => {
       try {
         const response = await fetch(
-          "/api/auth/me",
+          `${API_BASE}/api/auth/me`,
           {
             credentials: "include",
             cache: "no-store",
@@ -525,7 +527,7 @@ export default function OviCoreSidebar({
 
       try {
         await fetch(
-          "/api/auth/logout",
+          `${API_BASE}/api/auth/logout`,
           {
             method: "POST",
             credentials: "include",
@@ -541,12 +543,48 @@ export default function OviCoreSidebar({
           SELECTED_COMPANY_STORAGE_KEY
         );
 
-        router.replace("/login");
-        router.refresh();
-
-        setLoggingOut(false);
+        window.location.replace("/login");
       }
     }, [router]);
+
+  useEffect(() => {
+    if (!currentUser) {
+      return;
+    }
+
+    let idleTimer: number;
+
+    const resetIdleTimer = () => {
+      window.clearTimeout(idleTimer);
+
+      idleTimer = window.setTimeout(() => {
+        void logout();
+      }, IDLE_TIMEOUT_MS);
+    };
+
+    const activityEvents: Array<keyof WindowEventMap> = [
+      "mousedown",
+      "keydown",
+      "touchstart",
+      "scroll",
+    ];
+
+    activityEvents.forEach((eventName) => {
+      window.addEventListener(eventName, resetIdleTimer, {
+        passive: true,
+      });
+    });
+
+    resetIdleTimer();
+
+    return () => {
+      window.clearTimeout(idleTimer);
+
+      activityEvents.forEach((eventName) => {
+        window.removeEventListener(eventName, resetIdleTimer);
+      });
+    };
+  }, [currentUser, logout]);
 
   const roleLabel =
     role === "global_admin"
