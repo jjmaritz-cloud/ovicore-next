@@ -54,7 +54,7 @@ type ShedRow = {
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8001";
 
-const COMPANIES_ENDPOINT = `${API_BASE}/api/admin/companies`;
+const COMPANIES_ENDPOINT = `${API_BASE}/api/access/companies`;
 const FARMS_ENDPOINT = `${API_BASE}/api/broilers/farms`;
 const SHEDS_ENDPOINT = `${API_BASE}/api/broilers/sheds`;
 

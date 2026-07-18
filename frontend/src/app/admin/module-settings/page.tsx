@@ -38,7 +38,33 @@ type ModuleSetting = {
   setupStatus: "Ready" | "Planned" | "Build Next";
 };
 
-const COMPANIES_ENDPOINT = "http://127.0.0.1:8000/api/admin/companies";
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8001";
+
+const COMPANIES_ENDPOINT =
+  `${API_BASE}/api/access/companies`;
+
+async function authenticatedFetch(
+  input: RequestInfo | URL,
+  init: RequestInit = {}
+) {
+  const response = await fetch(input, {
+    ...init,
+    credentials: "include",
+  });
+
+  if (response.status === 401) {
+    const nextPath =
+      `${window.location.pathname}${window.location.search}`;
+
+    window.location.href =
+      `/login?next=${encodeURIComponent(nextPath)}`;
+
+    throw new Error("Your login session has expired.");
+  }
+
+  return response;
+}
 
 const baseModules: Omit<ModuleSetting, "enabled">[] = [
   {
@@ -137,7 +163,7 @@ export default function AdminModuleSettingsPage() {
     setLastError(null);
 
     try {
-      const response = await fetch(COMPANIES_ENDPOINT, {
+      const response = await authenticatedFetch(COMPANIES_ENDPOINT, {
         cache: "no-store",
       });
 
@@ -218,8 +244,8 @@ export default function AdminModuleSettingsPage() {
     try {
       const payload = buildPayloadFromModules(modules);
 
-      const response = await fetch(
-        `${COMPANIES_ENDPOINT}/${selectedCompanyId}`,
+      const response = await authenticatedFetch(
+			`${COMPANIES_ENDPOINT}/${selectedCompanyId}`,
         {
           method: "PATCH",
           headers: {

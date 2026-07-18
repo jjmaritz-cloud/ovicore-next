@@ -30,7 +30,29 @@ type CompanyRow = {
 };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-const COMPANIES_ENDPOINT = `${API_BASE}/api/admin/companies`;
+const COMPANIES_ENDPOINT = `${API_BASE}/api/access/companies`;
+
+async function authenticatedFetch(
+  input: RequestInfo | URL,
+  init: RequestInit = {}
+) {
+  const response = await fetch(input, {
+    ...init,
+    credentials: "include",
+  });
+
+  if (response.status === 401) {
+    const nextPath =
+      `${window.location.pathname}${window.location.search}`;
+
+    window.location.href =
+      `/login?next=${encodeURIComponent(nextPath)}`;
+
+    throw new Error("Your login session has expired.");
+  }
+
+  return response;
+}
 
 function activeFormatter(params: ValueFormatterParams) {
   return params.value ? "Active" : "Inactive";
@@ -58,7 +80,7 @@ export default function AdminCompaniesPage() {
     setLoading(true);
 
     try {
-      const response = await fetch(COMPANIES_ENDPOINT, {
+      const response = await authenticatedFetch(COMPANIES_ENDPOINT, {
         cache: "no-store",
       });
 
@@ -155,7 +177,7 @@ export default function AdminCompaniesPage() {
     setSaving(true);
 
     try {
-      const response = await fetch(COMPANIES_ENDPOINT, {
+      const response = await authenticatedFetch(COMPANIES_ENDPOINT, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -216,7 +238,7 @@ export default function AdminCompaniesPage() {
           return;
         }
 
-        const response = await fetch(`${COMPANIES_ENDPOINT}/${id}`, {
+        const response = await authenticatedFetch(`${COMPANIES_ENDPOINT}/${id}`, {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
@@ -269,7 +291,7 @@ export default function AdminCompaniesPage() {
     setSaving(true);
 
     try {
-      const response = await fetch(`${COMPANIES_ENDPOINT}/${row.id}`, {
+      const response = await authenticatedFetch(`${COMPANIES_ENDPOINT}/${row.id}`, {
         method: "DELETE",
       });
 
