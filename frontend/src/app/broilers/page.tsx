@@ -283,30 +283,64 @@ export default function BroilerHomePage() {
 	const [weatherOpen, setWeatherOpen] = useState(false);
 
   useEffect(() => {
-    const searchParams = new URLSearchParams(
-      window.location.search
-    );
+    async function resolveActiveCompany() {
+      try {
+        const meResponse = await authenticatedFetch(
+          `${API_BASE}/api/auth/me`,
+          {
+            cache: "no-store",
+          },
+        );
 
-    const companyFromUrl = Number(
-      searchParams.get("company_id")
-    );
+        if (!meResponse.ok) {
+          throw new Error(
+            `Could not load current user: ${meResponse.status}`,
+          );
+        }
 
-    const rememberedCompany = Number(
-      window.localStorage.getItem(
-        "ovicore_selected_company_id"
-      )
-    );
+        const currentUser: {
+          company_id: number | null;
+          is_global_admin: boolean;
+        } = await meResponse.json();
 
-    const resolvedCompanyId =
-      Number.isInteger(companyFromUrl) &&
-      companyFromUrl > 0
-        ? companyFromUrl
-        : Number.isInteger(rememberedCompany) &&
-            rememberedCompany > 0
-          ? rememberedCompany
-          : null;
+        const searchParams = new URLSearchParams(
+          window.location.search,
+        );
 
-    setActiveCompanyId(resolvedCompanyId);
+        const companyFromUrl = Number(
+          searchParams.get("company_id"),
+        );
+
+        const rememberedCompany = Number(
+          window.localStorage.getItem(
+            "ovicore_selected_company_id",
+          ),
+        );
+
+        const resolvedCompanyId =
+          currentUser.is_global_admin
+            ? Number.isInteger(companyFromUrl) &&
+                companyFromUrl > 0
+              ? companyFromUrl
+              : Number.isInteger(rememberedCompany) &&
+                  rememberedCompany > 0
+                ? rememberedCompany
+                : null
+            : currentUser.company_id;
+
+        setActiveCompanyId(resolvedCompanyId);
+      } catch (error) {
+        console.error(error);
+        setLoading(false);
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : "Could not resolve the active company.",
+        );
+      }
+    }
+
+    void resolveActiveCompany();
   }, []);
 
 	async function loadData() {
