@@ -3,6 +3,28 @@
 import { useEffect, useMemo, useState } from "react";
 import BroilerSidebar from "@/components/BroilerSidebar";
 
+async function authenticatedFetch(
+  input: RequestInfo | URL,
+  init: RequestInit = {}
+) {
+  const response = await fetch(input, {
+    ...init,
+    credentials: "include",
+  });
+
+  if (response.status === 401) {
+    const nextPath =
+      `${window.location.pathname}${window.location.search}`;
+
+    window.location.href =
+      `/login?next=${encodeURIComponent(nextPath)}`;
+
+    throw new Error("Your login session has expired.");
+  }
+
+  return response;
+}
+
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
 
@@ -130,6 +152,8 @@ function getReviewStatus(record: PerformanceRecord, plan?: DemandPlan) {
 }
 
 export default function BroilerInsightsPage() {
+	const [activeCompanyId, setActiveCompanyId] =
+		useState<number | null>(null);
   const [plans, setPlans] = useState<DemandPlan[]>([]);
   const [records, setRecords] = useState<PerformanceRecord[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<number | "">("");
@@ -137,14 +161,60 @@ export default function BroilerInsightsPage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
 
+  useEffect(() => {
+    const searchParams = new URLSearchParams(
+      window.location.search
+    );
+
+    const companyFromUrl = Number(
+      searchParams.get("company_id")
+    );
+
+    const rememberedCompany = Number(
+      window.localStorage.getItem(
+        "ovicore_selected_company_id"
+      )
+    );
+
+    const resolvedCompanyId =
+      Number.isInteger(companyFromUrl) &&
+      companyFromUrl > 0
+        ? companyFromUrl
+        : Number.isInteger(rememberedCompany) &&
+            rememberedCompany > 0
+          ? rememberedCompany
+          : null;
+
+    setActiveCompanyId(resolvedCompanyId);
+  }, []);
+
   async function loadData() {
+    if (!activeCompanyId) {
+      setPlans([]);
+      setRecords([]);
+      setSelectedPlanId("");
+      setLoading(false);
+      setMessage("Select a working company.");
+      return;
+    }
+
     setLoading(true);
     setMessage("");
 
     try {
       const [plansResponse, performanceResponse] = await Promise.all([
-        fetch(`${API_BASE}/api/broilers/demand-plans`),
-        fetch(`${API_BASE}/api/broilers/performance`),
+        authenticatedFetch(
+          `${API_BASE}/api/broilers/demand-plans?company_id=${activeCompanyId}`,
+          {
+            cache: "no-store",
+          }
+        ),
+        authenticatedFetch(
+          `${API_BASE}/api/broilers/performance?company_id=${activeCompanyId}`,
+          {
+            cache: "no-store",
+          }
+        ),
       ]);
 
       if (!plansResponse.ok) {
@@ -178,8 +248,10 @@ export default function BroilerInsightsPage() {
   }
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (activeCompanyId) {
+      void loadData();
+    }
+  }, [activeCompanyId]);
 
   const selectedPlan = useMemo(() => {
     return plans.find((plan) => plan.id === selectedPlanId);
