@@ -4,9 +4,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import OviCoreBrandIcon from "@/components/OviCoreBrandIcon";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL ??
-  "http://localhost:8001";
+const API_BASE = "";
 
 type LoginResponse = {
   message: string;

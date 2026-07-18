@@ -45,9 +45,7 @@ type OviCoreSidebarProps = {
   defaultCollapsed?: boolean;
 };
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL ??
-  "http://localhost:8001";
+const API_BASE = "";
 
 const SELECTED_COMPANY_STORAGE_KEY =
   "ovicore_selected_company_id";
