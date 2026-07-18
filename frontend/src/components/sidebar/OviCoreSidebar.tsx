@@ -45,6 +45,10 @@ type OviCoreSidebarProps = {
   defaultCollapsed?: boolean;
 };
 
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL ??
+  "http://localhost:8001";
+
 const SELECTED_COMPANY_STORAGE_KEY =
   "ovicore_selected_company_id";
 
@@ -267,7 +271,7 @@ export default function OviCoreSidebar({
 
       try {
         const response = await fetch(
-          "/api/access/companies",
+					`${API_BASE}/api/access/companies`,
           {
             credentials: "include",
             cache: "no-store",
@@ -506,11 +510,8 @@ export default function OviCoreSidebar({
           String(companyId)
         );
 
-        router.replace(
-          `${pathname}?${searchParams.toString()}`
-        );
-
-        router.refresh();
+				window.location.href =
+					`${pathname}?${searchParams.toString()}`;
       },
       [
         pathname,

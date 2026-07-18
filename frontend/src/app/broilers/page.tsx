@@ -7,6 +7,28 @@ import OviCoreModuleHeader from "@/components/OviCoreModuleHeader";
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
 
+async function authenticatedFetch(
+  input: RequestInfo | URL,
+  init: RequestInit = {}
+) {
+  const response = await fetch(input, {
+    ...init,
+    credentials: "include",
+  });
+
+  if (response.status === 401) {
+    const nextPath =
+      `${window.location.pathname}${window.location.search}`;
+
+    window.location.href =
+      `/login?next=${encodeURIComponent(nextPath)}`;
+
+    throw new Error("Your login session has expired.");
+  }
+
+  return response;
+}
+
 type DemandPlan = {
   id: number;
   farm_name?: string;
@@ -252,6 +274,8 @@ function getLatestRecordForPlan(
 }
 
 export default function BroilerHomePage() {
+	const [activeCompanyId, setActiveCompanyId] =
+		useState<number | null>(null);
 	const [plans, setPlans] = useState<DemandPlan[]>([]);
 	const [performanceRecords, setPerformanceRecords] = useState<PerformanceRecord[]>([]);
 	const [chickSupply, setChickSupply] = useState<ChickSupplySummary | null>(null);
@@ -259,18 +283,59 @@ export default function BroilerHomePage() {
 	const [message, setMessage] = useState("");
 	const [weatherOpen, setWeatherOpen] = useState(false);
 
+  useEffect(() => {
+    const searchParams = new URLSearchParams(
+      window.location.search
+    );
+
+    const companyFromUrl = Number(
+      searchParams.get("company_id")
+    );
+
+    const rememberedCompany = Number(
+      window.localStorage.getItem(
+        "ovicore_selected_company_id"
+      )
+    );
+
+    const resolvedCompanyId =
+      Number.isInteger(companyFromUrl) &&
+      companyFromUrl > 0
+        ? companyFromUrl
+        : Number.isInteger(rememberedCompany) &&
+            rememberedCompany > 0
+          ? rememberedCompany
+          : null;
+
+    setActiveCompanyId(resolvedCompanyId);
+  }, []);
+
 	async function loadData() {
+		if (!activeCompanyId) {
+      setPlans([]);
+      setPerformanceRecords([]);
+      setChickSupply(null);
+      setLoading(false);
+      setMessage("Select a working company.");
+      return;
+    }
 		setLoading(true);
 		setMessage("");
 
 		try {
 			const [plansResponse, performanceResponse] = await Promise.all([
-				fetch(`${API_BASE}/api/broilers/demand-plans`, {
-					cache: "no-store",
-				}),
-				fetch(`${API_BASE}/api/broilers/performance`, {
-					cache: "no-store",
-				}),
+				authenticatedFetch(
+					`${API_BASE}/api/broilers/demand-plans?company_id=${activeCompanyId}`,
+					{
+						cache: "no-store",
+					}
+				),
+				authenticatedFetch(
+					`${API_BASE}/api/broilers/performance?company_id=${activeCompanyId}`,
+					{
+						cache: "no-store",
+					}
+				),
 			]);
 
 			if (!plansResponse.ok) {
@@ -290,8 +355,8 @@ export default function BroilerHomePage() {
 			}
 
 			try {
-				const chickSupplyResponse = await fetch(
-					`${API_BASE}/api/broilers/chick-supply-summary`,
+				const chickSupplyResponse = await authenticatedFetch(
+					`${API_BASE}/api/broilers/chick-supply-summary?company_id=${activeCompanyId}`,
 					{
 						cache: "no-store",
 					},
@@ -320,9 +385,11 @@ export default function BroilerHomePage() {
 		}
 	}
 
-  useEffect(() => {
-    loadData();
-  }, []);
+	useEffect(() => {
+		if (activeCompanyId) {
+			void loadData();
+		}
+	}, [activeCompanyId]);
 
   const insights = useMemo(() => {
 
