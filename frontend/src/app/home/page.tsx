@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import type { ComponentType } from "react";
 
 import {
   Bird,
@@ -13,13 +12,10 @@ import {
   PackageCheck,
   ShieldCheck,
   Sprout,
+  type LucideIcon,
 } from "lucide-react";
 
-type ModuleIcon = ComponentType<{
-  size?: number;
-  strokeWidth?: number;
-  "aria-hidden"?: boolean;
-}>;
+type ModuleIcon = LucideIcon;
 
 type ModuleCard = {
   name: string;

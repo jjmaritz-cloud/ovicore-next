@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -318,7 +319,7 @@ function recalculateStockFlow(rows: DailyRow[], plan: DemandPlan): DailyRow[] {
   });
 }
 
-export default function DailyPerformancePage() {
+function DailyPerformancePageContent() {
   const searchParams = useSearchParams();
 
   const {
@@ -1077,6 +1078,14 @@ export default function DailyPerformancePage() {
         </OviCoreHouseSheetTemplate>
       </div>
     </div>
+  );
+}
+
+export default function DailyPerformancePage() {
+  return (
+    <Suspense fallback={null}>
+      <DailyPerformancePageContent />
+    </Suspense>
   );
 }
 

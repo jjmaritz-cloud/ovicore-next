@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useSearchParams } from "next/navigation";
 import { AgGridReact } from "ag-grid-react";
 import {
@@ -263,7 +270,7 @@ function recalculateRow(row: BroilerPlanRow): BroilerPlanRow {
   };
 }
 
-export default function BroilerDemandPlannerPage() {
+function BroilerDemandPlannerPageContent() {
   const gridRef = useRef<AgGridReact<BroilerPlanRow>>(null);
 
   const searchParams = useSearchParams();
@@ -1078,5 +1085,13 @@ return (
       </div>
     </OviCoreTableCard>
   </OviCoreShell>
+  );
+}
+
+export default function BroilerDemandPlannerPage() {
+  return (
+    <Suspense fallback={null}>
+      <BroilerDemandPlannerPageContent />
+    </Suspense>
   );
 }
