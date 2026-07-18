@@ -66,8 +66,7 @@ type BroilerPlanRow = {
   lastSavedBy: string | null;
 };
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8001";
+const API_BASE = '';
 
 async function authenticatedFetch(
   input: RequestInfo | URL,
