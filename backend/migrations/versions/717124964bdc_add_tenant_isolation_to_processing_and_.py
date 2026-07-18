@@ -17,6 +17,27 @@ down_revision: Union[str, Sequence[str], None] = "527805ea7a07"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
+def upgrade() -> None:
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS broiler_chick_supply (
+            id SERIAL PRIMARY KEY,
+            company_id INTEGER,
+            week_ending TEXT NOT NULL,
+            available_chicks INTEGER NOT NULL DEFAULT 0,
+            notes TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+    op.execute(
+        """
+        ALTER TABLE broiler_processing
+        ADD COLUMN IF NOT EXISTS company_id INTEGER
+        """
+    )
 
 def upgrade() -> None:
     op.execute(
