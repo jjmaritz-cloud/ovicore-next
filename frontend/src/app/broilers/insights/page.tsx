@@ -27,6 +27,17 @@ async function authenticatedFetch(
 
 const API_BASE = '';
 
+
+type CurrentUser = {
+  id: number;
+  full_name: string;
+  email: string;
+  company_id: number | null;
+  company_name?: string | null;
+  is_global_admin: boolean;
+  is_company_admin: boolean;
+};
+
 type DemandPlan = {
   id: number;
   farm_name?: string;
@@ -161,30 +172,64 @@ export default function BroilerInsightsPage() {
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    const searchParams = new URLSearchParams(
-      window.location.search
-    );
+    async function resolveActiveCompany() {
+      try {
+        const response = await authenticatedFetch(
+          `${API_BASE}/api/auth/me`,
+          {
+            cache: "no-store",
+          }
+        );
 
-    const companyFromUrl = Number(
-      searchParams.get("company_id")
-    );
+        if (!response.ok) {
+          throw new Error(
+            `Could not load the current user: ${response.status}`
+          );
+        }
 
-    const rememberedCompany = Number(
-      window.localStorage.getItem(
-        "ovicore_selected_company_id"
-      )
-    );
+        const user: CurrentUser = await response.json();
 
-    const resolvedCompanyId =
-      Number.isInteger(companyFromUrl) &&
-      companyFromUrl > 0
-        ? companyFromUrl
-        : Number.isInteger(rememberedCompany) &&
-            rememberedCompany > 0
-          ? rememberedCompany
-          : null;
+        if (!user.is_global_admin) {
+          setActiveCompanyId(user.company_id);
+          return;
+        }
 
-    setActiveCompanyId(resolvedCompanyId);
+        const searchParams = new URLSearchParams(
+          window.location.search
+        );
+
+        const companyFromUrl = Number(
+          searchParams.get("company_id")
+        );
+
+        const rememberedCompany = Number(
+          window.localStorage.getItem(
+            "ovicore_selected_company_id"
+          )
+        );
+
+        const resolvedCompanyId =
+          Number.isInteger(companyFromUrl) &&
+          companyFromUrl > 0
+            ? companyFromUrl
+            : Number.isInteger(rememberedCompany) &&
+                rememberedCompany > 0
+              ? rememberedCompany
+              : null;
+
+        setActiveCompanyId(resolvedCompanyId);
+      } catch (error) {
+        console.error(error);
+        setLoading(false);
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : "Could not determine the active company."
+        );
+      }
+    }
+
+    void resolveActiveCompany();
   }, []);
 
   async function loadData() {
