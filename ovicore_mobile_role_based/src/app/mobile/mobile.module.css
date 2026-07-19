@@ -1,0 +1,233 @@
+.app {
+  min-height: 100dvh;
+  background: #f3f5ef;
+  color: #12342d;
+  padding-bottom: 86px;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 11px;
+  padding: 12px 16px;
+  color: #fff;
+  background: linear-gradient(135deg, #061c17, #0b3c31);
+  box-shadow: 0 8px 22px rgba(3, 31, 24, 0.18);
+}
+
+.header strong, .header small { display: block; }
+.header strong { font-size: 15px; }
+.header small { opacity: 0.74; font-size: 11px; margin-top: 2px; }
+
+.brandLogo {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: #ffffff;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.25);
+}
+.brandLogo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.brandMark {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  border: 2px solid #fff;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+}
+.brandMark::before, .brandMark span {
+  content: "";
+  border: 2px solid #ff9f2d;
+  border-radius: 50%;
+}
+.brandMark::before { width: 19px; height: 19px; }
+.brandMark span { position: absolute; width: 7px; height: 7px; border-color: #fff; }
+
+.status {
+  padding: 6px 9px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+}
+.online { background: #daf5e6; color: #14643e; }
+.offline { background: #fff0d7; color: #9b5700; }
+
+.content { max-width: 620px; margin: 0 auto; padding: 14px; }
+.message {
+  margin-bottom: 12px;
+  padding: 11px 12px;
+  background: #fff3dc;
+  border: 1px solid #f2c174;
+  border-radius: 12px;
+  font-size: 13px;
+}
+
+.hero {
+  padding: 22px 20px;
+  border-radius: 22px;
+  color: #fff;
+  background:
+    radial-gradient(circle at 92% 10%, rgba(255,159,45,.27), transparent 30%),
+    linear-gradient(145deg, #0b3b30, #08261f);
+}
+.hero p { margin: 0 0 4px; color: #ffb65f; font-weight: 800; font-size: 12px; text-transform: uppercase; }
+.hero h1 { margin: 0; font-size: clamp(24px, 7vw, 34px); }
+.hero span { display: block; margin-top: 15px; font-size: 13px; opacity: .8; }
+
+.kpiGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 12px 0;
+}
+.kpiGrid article {
+  padding: 14px;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 8px 18px rgba(21, 57, 47, .07);
+}
+.kpiGrid span { display: block; font-size: 11px; color: #657a74; }
+.kpiGrid strong { display: block; margin-top: 5px; font-size: 25px; }
+.warnCard { border: 1px solid #f3b760; }
+.badCard { border: 1px solid #e7877d; }
+
+.card {
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #e2e8e2;
+  border-radius: 18px;
+  box-shadow: 0 8px 20px rgba(21, 57, 47, .06);
+}
+.cardTitle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid #edf0ec;
+}
+.cardTitle small, .pageHeading small { color: #da7512; font-size: 10px; font-weight: 900; letter-spacing: .1em; }
+.cardTitle h2 { margin: 3px 0 0; font-size: 18px; }
+.cardTitle button { border: 0; background: #eef5f1; color: #174b3c; border-radius: 9px; padding: 8px 10px; font-weight: 700; }
+
+.focusList button, .focusRow {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  text-align: left;
+  border: 0;
+  border-bottom: 1px solid #edf0ec;
+  background: #fff;
+  color: inherit;
+}
+.focusList strong, .focusList small { display: block; }
+.focusList strong { font-size: 13px; }
+.focusList small { margin-top: 3px; color: #71827d; font-size: 11px; }
+.orangeDot, .redDot { width: 9px; height: 9px; border-radius: 50%; }
+.orangeDot { background: #f49a28; }
+.redDot { background: #d44d42; }
+.goodState { padding: 22px 16px; color: #28704f; font-weight: 700; }
+
+.pageHeading { margin: 4px 2px 14px; }
+.pageHeading h1 { margin: 4px 0; font-size: 27px; }
+.pageHeading p { margin: 0; color: #6d7d78; font-size: 13px; }
+
+.entryForm { display: grid; gap: 12px; }
+.entryForm > label, .fieldGroup label { display: grid; gap: 6px; color: #4d625c; font-size: 12px; font-weight: 800; }
+.entryForm input, .entryForm select, .entryForm textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #cdd9d3;
+  background: #fff;
+  border-radius: 12px;
+  padding: 12px;
+  color: #173d33;
+  font: inherit;
+  font-size: 16px;
+}
+.twoCol { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.fieldGroup {
+  margin: 0;
+  border: 1px solid #dce5df;
+  border-radius: 16px;
+  background: #fff;
+  padding: 12px;
+}
+.fieldGroup legend { padding: 0 7px; color: #194d3f; font-weight: 900; }
+.saveButton {
+  border: 0;
+  border-radius: 14px;
+  padding: 15px;
+  background: #f28b20;
+  color: #fff;
+  font-weight: 900;
+  font-size: 15px;
+  box-shadow: 0 8px 18px rgba(242,139,32,.28);
+}
+
+.insight, .menuButton {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 16px;
+  border: 0;
+  border-bottom: 1px solid #edf0ec;
+  background: #fff;
+  color: inherit;
+  text-align: left;
+  text-decoration: none;
+}
+.insight strong, .insight small { display: block; }
+.insight small { max-width: 330px; margin-top: 4px; color: #71827d; }
+.insight b { min-width: 36px; text-align: center; font-size: 22px; color: #d66f0b; }
+.menuButton span { font-weight: 800; }
+.menuButton b { color: #667a73; }
+
+.bottomNav {
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  z-index: 30;
+  transform: translateX(-50%);
+  width: min(100%, 620px);
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  padding: 8px 5px max(8px, env(safe-area-inset-bottom));
+  background: rgba(255,255,255,.97);
+  border-top: 1px solid #dfe7e2;
+  box-shadow: 0 -8px 24px rgba(19, 56, 46, .09);
+}
+.bottomNav button {
+  border: 0;
+  background: transparent;
+  color: #6d7e79;
+  padding: 5px 2px;
+}
+.bottomNav span, .bottomNav small { display: block; }
+.bottomNav span { font-size: 22px; line-height: 22px; }
+.bottomNav small { margin-top: 4px; font-size: 10px; font-weight: 800; }
+.bottomNav .navActive { color: #0d4a39; }
+.bottomNav .navActive span { color: #ed851c; }
+
+@media (max-width: 360px) {
+  .twoCol { grid-template-columns: 1fr; }
+}

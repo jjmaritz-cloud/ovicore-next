@@ -1,0 +1,18 @@
+{
+  "name": "OviCore Mobile",
+  "short_name": "OviCore",
+  "description": "Offline broiler house-sheet entry",
+  "start_url": "/mobile",
+  "display": "standalone",
+  "background_color": "#f3f5ef",
+  "theme_color": "#08261f",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/assets/ovicore-icon.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
