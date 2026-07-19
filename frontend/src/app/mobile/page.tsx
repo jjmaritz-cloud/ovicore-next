@@ -1298,30 +1298,6 @@ function HomeScreen({
         </button>
       </section>
 
-      <section className={styles.quickAction}>
-        <div>
-          <small>DAILY HOUSE SHEET</small>
-          <strong>
-            {managerInsights.missing.length > 0
-              ? `${managerInsights.missing.length} shed${
-                  managerInsights.missing.length === 1
-                    ? ""
-                    : "s"
-                } still waiting`
-              : "All active sheds reported"}
-          </strong>
-          <span>
-            Save entries with or without reception.
-          </span>
-        </div>
-        <button
-          type="button"
-          onClick={() => openEntryForPlan()}
-        >
-          Add Entry
-        </button>
-      </section>
-
       <div className={styles.sectionHeading}>
         <div>
           <small>TODAY</small>
