@@ -334,6 +334,19 @@ export default function MobileBroilerApp() {
         `${API_BASE}/api/auth/me`,
       );
 
+      if (response.status === 401) {
+        window.localStorage.removeItem(
+          MOBILE_USER_CACHE_KEY,
+        );
+        window.localStorage.removeItem(
+          MOBILE_DATA_CACHE_KEY,
+        );
+        window.location.replace(
+          "/login?next=%2Fmobile",
+        );
+        return null;
+      }
+
       if (!response.ok) {
         throw new Error(
           `Could not load your OviCore login (${response.status}).`,
@@ -1007,7 +1020,19 @@ export default function MobileBroilerApp() {
       window.localStorage.removeItem(
         "ovicore_selected_company_id",
       );
-      window.location.href = "/login?next=%2Fmobile";
+      window.localStorage.removeItem(
+        MOBILE_USER_CACHE_KEY,
+      );
+      window.localStorage.removeItem(
+        MOBILE_DATA_CACHE_KEY,
+      );
+      window.localStorage.removeItem(
+        "ovicore_remembered_email",
+      );
+
+      window.location.replace(
+        "/login?next=%2Fmobile",
+      );
     }
   }
 
