@@ -1007,7 +1007,7 @@ export default function MobileBroilerApp() {
       window.localStorage.removeItem(
         "ovicore_selected_company_id",
       );
-      window.location.href = "/login";
+      window.location.href = "/login?next=%2Fmobile";
     }
   }
 
