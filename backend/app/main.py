@@ -1,6 +1,6 @@
 import os
 from datetime import datetime
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session, joinedload
 from app.routers import broiler_processing
@@ -1482,6 +1482,14 @@ def create_broiler_performance(
 def update_broiler_performance(
     entry_id: int,
     payload: BroilerDailyPerformancePatch,
+    expected_last_saved_at: str | None = Header(
+        default=None,
+        alias="X-OviCore-Expected-Last-Saved-At",
+    ),
+    mobile_sync: str | None = Header(
+        default=None,
+        alias="X-OviCore-Mobile-Sync",
+    ),
     current_user: models.AppUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -1530,9 +1538,66 @@ def update_broiler_performance(
             detail="You do not have access to this company",
         )
 
+    if expected_last_saved_at is not None:
+        actual_last_saved_at = (
+            entry.last_saved_at.isoformat()
+            if entry.last_saved_at is not None
+            else ""
+        )
+
+        expected_normalised = (
+            expected_last_saved_at
+            .strip()
+            .replace("Z", "+00:00")
+        )
+
+        actual_normalised = (
+            actual_last_saved_at
+            .strip()
+            .replace("Z", "+00:00")
+        )
+
+        try:
+            expected_dt = datetime.fromisoformat(
+                expected_normalised
+            )
+            actual_dt = datetime.fromisoformat(
+                actual_normalised
+            )
+            same_version = (
+                expected_dt.replace(tzinfo=None)
+                == actual_dt.replace(tzinfo=None)
+            )
+        except ValueError:
+            same_version = (
+                expected_normalised
+                == actual_normalised
+            )
+
+        if not same_version:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "This performance entry changed in "
+                    "OviCore after it was loaded on mobile. "
+                    "Review the sync conflict before updating."
+                ),
+            )
+
     data = payload.model_dump(
         exclude_unset=True
     )
+
+    if (
+        mobile_sync is not None
+        and mobile_sync.strip().lower()
+        in {"1", "true", "yes", "on"}
+    ):
+        data = {
+            field: value
+            for field, value in data.items()
+            if value is not None
+        }
 
     if "body_weight_kg" in data:
         data["avg_weight_kg"] = data.pop(

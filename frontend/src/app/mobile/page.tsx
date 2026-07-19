@@ -541,10 +541,12 @@ export default function MobileBroilerApp() {
 
           const serverChanged =
             Boolean(match) &&
-            Boolean(draft.server_updated_at) &&
-            Boolean(match?.last_saved_at) &&
-            draft.server_updated_at !==
-              match?.last_saved_at;
+            (
+              !draft.server_updated_at ||
+              !match?.last_saved_at ||
+              draft.server_updated_at !==
+                match.last_saved_at
+            );
 
           if (serverChanged && match) {
             await updateDraft(draft.local_id, {
@@ -563,12 +565,46 @@ export default function MobileBroilerApp() {
             ? `${API_BASE}/api/broilers/performance/${match.id}`
             : `${API_BASE}/api/broilers/performance`;
 
+          const requestBody = match
+            ? Object.fromEntries(
+                draft.changed_fields
+                  .filter(
+                    (field) =>
+                      field in draft.payload,
+                  )
+                  .map((field) => [
+                    field,
+                    draft.payload[
+                      field as keyof typeof draft.payload
+                    ],
+                  ]),
+              )
+            : draft.payload;
+
+          if (
+            match &&
+            Object.keys(requestBody).length === 0
+          ) {
+            await deleteDraft(draft.local_id);
+            synced += 1;
+            continue;
+          }
+
+          const headers: Record<string, string> = {
+            "Content-Type": "application/json",
+            "X-OviCore-Mobile-Sync": "true",
+          };
+
+          if (match?.last_saved_at) {
+            headers[
+              "X-OviCore-Expected-Last-Saved-At"
+            ] = draft.server_updated_at ?? "";
+          }
+
           const response = await authenticatedFetch(url, {
             method: match ? "PATCH" : "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(draft.payload),
+            headers,
+            body: JSON.stringify(requestBody),
           });
 
           if (!response.ok) {
@@ -878,6 +914,24 @@ export default function MobileBroilerApp() {
         record.entry_date === form.entry_date,
     );
 
+    const changedFields = [
+      ["opening_birds", form.opening_birds],
+      ["mortality_front", form.mortality_front],
+      ["mortality_middle", form.mortality_middle],
+      ["mortality_back", form.mortality_back],
+      ["mortality_other", form.mortality_other],
+      ["cull_legs", form.cull_legs],
+      ["cull_runts", form.cull_runts],
+      ["cull_beak", form.cull_beak],
+      ["cull_other", form.cull_other],
+      ["feed_kg", form.feed_kg],
+      ["water_litres", form.water_litres],
+      ["body_weight_kg", form.body_weight_kg],
+      ["notes", form.notes],
+    ]
+      .filter(([, value]) => value.trim() !== "")
+      .map(([field]) => field);
+
     const draft: MobileDraft = {
       local_id: localId,
       company_id: companyId,
@@ -889,6 +943,7 @@ export default function MobileBroilerApp() {
         existingServerRecord?.last_saved_at ?? null,
       last_error: null,
       attempt_count: 0,
+      changed_fields: changedFields,
       payload: {
         placement_plan_id: selectedPlan.id,
         entry_date: form.entry_date,

@@ -37,6 +37,7 @@ export type MobileDraft = {
   server_updated_at: string | null;
   last_error: string | null;
   attempt_count: number;
+  changed_fields: string[];
   payload: MobilePerformancePayload;
 };
 
@@ -273,6 +274,9 @@ function normaliseDraft(
       draft.server_updated_at ?? null,
     last_error: draft.last_error ?? null,
     attempt_count: draft.attempt_count ?? 0,
+    changed_fields: Array.isArray(draft.changed_fields)
+      ? draft.changed_fields.map(String)
+      : [],
     payload:
       draft.payload as MobilePerformancePayload,
   };
