@@ -203,6 +203,36 @@ function valuesMatch(
   return mobileValue.trim() === String(serverValue ?? "").trim();
 }
 
+function hasMeaningfulServerValue(
+  value: number | string | null | undefined,
+): boolean {
+  if (
+    value === null ||
+    value === undefined ||
+    value === ""
+  ) {
+    return false;
+  }
+
+  if (
+    typeof value === "number" &&
+    value === 0
+  ) {
+    return false;
+  }
+
+  if (
+    typeof value === "string" &&
+    value.trim() !== "" &&
+    Number(value) === 0
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+
 function toNumber(value: string) {
   if (value.trim() === "") return null;
   const parsed = Number(value);
@@ -1099,9 +1129,9 @@ export default function MobileBroilerApp() {
           .filter(
             ([, mobileValue, serverValue]) =>
               mobileValue.trim() !== "" &&
-              serverValue !== null &&
-              serverValue !== undefined &&
-              serverValue !== "" &&
+              hasMeaningfulServerValue(
+                serverValue,
+              ) &&
               !valuesMatch(
                 mobileValue,
                 serverValue,
@@ -1858,32 +1888,7 @@ function DailyEntryScreen({
 
   const isLocked = (
     value: number | string | null | undefined,
-  ) => {
-    if (
-      value === null ||
-      value === undefined ||
-      value === ""
-    ) {
-      return false;
-    }
-
-    if (
-      typeof value === "number" &&
-      value === 0
-    ) {
-      return false;
-    }
-
-    if (
-      typeof value === "string" &&
-      value.trim() !== "" &&
-      Number(value) === 0
-    ) {
-      return false;
-    }
-
-    return true;
-  };
+  ) => hasMeaningfulServerValue(value);
 
   return (
     <form
