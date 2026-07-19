@@ -231,3 +231,196 @@
 @media (max-width: 360px) {
   .twoCol { grid-template-columns: 1fr; }
 }
+
+.syncIssueList {
+  display: grid;
+  gap: 12px;
+}
+
+.syncIssueCard {
+  overflow: hidden;
+  background: #ffffff;
+  border: 1px solid #dfe7e2;
+  border-radius: 16px;
+  box-shadow: 0 8px 18px rgba(21, 57, 47, 0.06);
+}
+
+.syncIssueHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 14px 10px;
+}
+
+.syncIssueHeader strong,
+.syncIssueHeader small {
+  display: block;
+}
+
+.syncIssueHeader strong {
+  font-size: 14px;
+  color: #123f34;
+}
+
+.syncIssueHeader small {
+  margin-top: 4px;
+  color: #6d7f79;
+  font-size: 11px;
+}
+
+.syncBadge {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.syncBadgePending {
+  background: #fff1d9;
+  color: #9a5a00;
+}
+
+.syncBadgeSyncing {
+  background: #e7f1ff;
+  color: #285e9c;
+}
+
+.syncBadgeConflict {
+  background: #ffe2df;
+  color: #a52e25;
+}
+
+.syncBadgeFailed {
+  background: #f5e7ff;
+  color: #75369b;
+}
+
+.syncIssueBody {
+  padding: 0 14px 14px;
+}
+
+.syncIssueBody p {
+  margin: 0;
+  color: #536762;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.syncIssueMeta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.syncIssueMeta div {
+  padding: 9px 10px;
+  border-radius: 10px;
+  background: #f4f7f4;
+}
+
+.syncIssueMeta span,
+.syncIssueMeta strong {
+  display: block;
+}
+
+.syncIssueMeta span {
+  color: #71827d;
+  font-size: 10px;
+}
+
+.syncIssueMeta strong {
+  margin-top: 3px;
+  color: #173d33;
+  font-size: 12px;
+}
+
+.syncIssueActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 12px 14px 14px;
+  border-top: 1px solid #edf0ec;
+}
+
+.syncPrimaryButton,
+.syncSecondaryButton,
+.syncDangerButton {
+  border: 0;
+  border-radius: 11px;
+  padding: 11px 10px;
+  font-weight: 900;
+  font-size: 12px;
+}
+
+.syncPrimaryButton {
+  background: #0c4b3b;
+  color: #ffffff;
+}
+
+.syncSecondaryButton {
+  background: #edf4f0;
+  color: #174b3c;
+}
+
+.syncDangerButton {
+  grid-column: 1 / -1;
+  background: #fff0ee;
+  color: #a93830;
+}
+
+.syncEmptyState {
+  padding: 24px 18px;
+  text-align: center;
+  color: #28704f;
+  font-weight: 800;
+}
+
+.syncSummary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.syncSummary article {
+  padding: 12px;
+  border-radius: 14px;
+  background: #ffffff;
+  border: 1px solid #e0e8e3;
+  text-align: center;
+}
+
+.syncSummary span,
+.syncSummary strong {
+  display: block;
+}
+
+.syncSummary span {
+  color: #6e7f79;
+  font-size: 10px;
+}
+
+.syncSummary strong {
+  margin-top: 4px;
+  color: #123f34;
+  font-size: 22px;
+}
+
+@media (max-width: 420px) {
+  .syncIssueActions {
+    grid-template-columns: 1fr;
+  }
+
+  .syncDangerButton {
+    grid-column: auto;
+  }
+
+  .syncIssueMeta {
+    grid-template-columns: 1fr;
+  }
+}

@@ -145,6 +145,8 @@ export default function MobileBroilerApp() {
   const [form, setForm] = useState<EntryForm>(blankForm);
   const [online, setOnline] = useState(true);
   const [pendingCount, setPendingCount] = useState(0);
+	const [mobileDrafts, setMobileDrafts] =
+		useState<MobileDraft[]>([]);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -182,10 +184,12 @@ export default function MobileBroilerApp() {
     [plans, form.placement_plan_id],
   );
 
-  const loadPendingCount = useCallback(async () => {
-    const drafts = await getDrafts();
-    setPendingCount(drafts.length);
-  }, []);
+	const loadPendingCount = useCallback(async () => {
+		const drafts = await getDrafts();
+
+		setMobileDrafts(drafts);
+		setPendingCount(drafts.length);
+	}, []);
 
 	const loadCurrentUser = useCallback(async () => {
 		try {
@@ -487,6 +491,20 @@ export default function MobileBroilerApp() {
 
     return { missing, mortalityWatch, waterWatch, todayRecords };
   }, [plans, records]);
+	
+	const syncIssueSummary = useMemo(() => {
+		return {
+			pending: mobileDrafts.filter(
+				(draft) => draft.status === "pending",
+			).length,
+			conflicts: mobileDrafts.filter(
+				(draft) => draft.status === "conflict",
+			).length,
+			failed: mobileDrafts.filter(
+				(draft) => draft.status === "failed",
+			).length,
+		};
+	}, [mobileDrafts]);
 
   async function saveEntry(event: FormEvent) {
     event.preventDefault();
@@ -574,6 +592,59 @@ export default function MobileBroilerApp() {
       await syncDrafts();
     }
   }
+
+	async function retryMobileDraft(draft: MobileDraft) {
+		await updateDraft(draft.local_id, {
+			status: "pending",
+			last_error: null,
+		});
+
+		await loadPendingCount();
+
+		setMessage(
+			navigator.onLine
+				? "Entry queued for another sync attempt."
+				: "Entry will retry when connection returns.",
+		);
+
+		if (navigator.onLine) {
+			await syncDrafts();
+		}
+	}
+
+	async function keepServerVersion(draft: MobileDraft) {
+		await deleteDraft(draft.local_id);
+		await loadPendingCount();
+		await loadData();
+
+		setMessage(
+			"The OviCore server version was kept and the mobile copy was removed.",
+		);
+	}
+
+	async function keepMobileVersion(draft: MobileDraft) {
+		await updateDraft(draft.local_id, {
+			status: "pending",
+			last_error: null,
+		});
+
+		await loadPendingCount();
+
+		if (navigator.onLine) {
+			await syncDrafts();
+		} else {
+			setMessage(
+				"The mobile version will replace the server version when connection returns.",
+			);
+		}
+	}
+
+	async function discardMobileDraft(draft: MobileDraft) {
+		await deleteDraft(draft.local_id);
+		await loadPendingCount();
+
+		setMessage("The mobile entry was discarded.");
+	}
 
   async function logout() {
     try {
@@ -753,22 +824,226 @@ export default function MobileBroilerApp() {
           </>
         )}
 
-        {tab === "more" && (
-          <>
-            <div className={styles.pageHeading}><small>MORE</small><h1>App settings</h1></div>
-            <section className={styles.card}>
-              <button className={styles.menuButton} onClick={() => void syncDrafts()} disabled={!online || syncing}>
-                <span>Sync now</span><b>{syncing ? "Syncing…" : `${pendingCount} pending`}</b>
-              </button>
-              <a className={styles.menuButton} href="/broilers/performance">
-                <span>Open full house sheet</span><b>Desktop ›</b>
-              </a>
-              <button className={styles.menuButton} onClick={logout}>
-                <span>Log out</span><b>›</b>
-              </button>
-            </section>
-          </>
-        )}
+				{tab === "more" && (
+					<>
+						<div className={styles.pageHeading}>
+							<small>MORE</small>
+							<h1>App settings</h1>
+						</div>
+
+						<section className={styles.card}>
+							<button
+								className={styles.menuButton}
+								onClick={() => void syncDrafts()}
+								disabled={!online || syncing}
+							>
+								<span>Sync now</span>
+								<b>
+									{syncing
+										? "Syncing…"
+										: `${pendingCount} pending`}
+								</b>
+							</button>
+
+							<a
+								className={styles.menuButton}
+								href="/broilers/performance"
+							>
+								<span>Open full house sheet</span>
+								<b>Desktop ›</b>
+							</a>
+
+							<button
+								className={styles.menuButton}
+								onClick={logout}
+							>
+								<span>Log out</span>
+								<b>›</b>
+							</button>
+						</section>
+
+						<div
+							className={styles.pageHeading}
+							style={{ marginTop: 22 }}
+						>
+							<small>SYNC CONTROL</small>
+							<h1>Sync Issues</h1>
+							<p>
+								Review entries that are waiting, failed or conflicted.
+							</p>
+						</div>
+
+						<div className={styles.syncSummary}>
+							<article>
+								<span>Pending</span>
+								<strong>{syncIssueSummary.pending}</strong>
+							</article>
+
+							<article>
+								<span>Conflicts</span>
+								<strong>{syncIssueSummary.conflicts}</strong>
+							</article>
+
+							<article>
+								<span>Failed</span>
+								<strong>{syncIssueSummary.failed}</strong>
+							</article>
+						</div>
+
+						<div className={styles.syncIssueList}>
+							{mobileDrafts.length === 0 ? (
+								<div className={styles.syncIssueCard}>
+									<div className={styles.syncEmptyState}>
+										No mobile sync issues.
+									</div>
+								</div>
+							) : (
+								mobileDrafts
+									.sort((a, b) =>
+										b.saved_at.localeCompare(a.saved_at),
+									)
+									.map((draft) => {
+										const plan = plans.find(
+											(item) =>
+												item.id ===
+												draft.payload.placement_plan_id,
+										);
+
+										const statusClass =
+											draft.status === "conflict"
+												? styles.syncBadgeConflict
+												: draft.status === "failed"
+													? styles.syncBadgeFailed
+													: draft.status === "syncing"
+														? styles.syncBadgeSyncing
+														: styles.syncBadgePending;
+
+										return (
+											<article
+												key={draft.local_id}
+												className={styles.syncIssueCard}
+											>
+												<div className={styles.syncIssueHeader}>
+													<div>
+														<strong>
+															{plan?.farm_name ?? "Unknown farm"} ·{" "}
+															{plan?.shed_name ?? "Unknown shed"}
+														</strong>
+
+														<small>
+															{plan?.cycle_code ?? "Unknown cycle"}
+														</small>
+													</div>
+
+													<span
+														className={`${styles.syncBadge} ${statusClass}`}
+													>
+														{draft.status}
+													</span>
+												</div>
+
+												<div className={styles.syncIssueBody}>
+													<p>
+														{draft.last_error ??
+															"This entry is waiting to be confirmed by OviCore."}
+													</p>
+
+													<div className={styles.syncIssueMeta}>
+														<div>
+															<span>Entry date</span>
+															<strong>
+																{draft.payload.entry_date}
+															</strong>
+														</div>
+
+														<div>
+															<span>Attempts</span>
+															<strong>
+																{draft.attempt_count}
+															</strong>
+														</div>
+
+														<div>
+															<span>Opening birds</span>
+															<strong>
+																{draft.payload.opening_birds ??
+																	"Not entered"}
+															</strong>
+														</div>
+
+														<div>
+															<span>Saved locally</span>
+															<strong>
+																{new Date(
+																	draft.saved_at,
+																).toLocaleString()}
+															</strong>
+														</div>
+													</div>
+												</div>
+
+												<div className={styles.syncIssueActions}>
+													{draft.status === "conflict" ? (
+														<>
+															<button
+																type="button"
+																className={
+																	styles.syncPrimaryButton
+																}
+																onClick={() =>
+																	void keepMobileVersion(draft)
+																}
+															>
+																Keep mobile
+															</button>
+
+															<button
+																type="button"
+																className={
+																	styles.syncSecondaryButton
+																}
+																onClick={() =>
+																	void keepServerVersion(draft)
+																}
+															>
+																Keep server
+															</button>
+														</>
+													) : (
+														<button
+															type="button"
+															className={
+																styles.syncPrimaryButton
+															}
+															onClick={() =>
+																void retryMobileDraft(draft)
+															}
+															disabled={
+																!online ||
+																draft.status === "syncing"
+															}
+														>
+															Retry sync
+														</button>
+													)}
+
+													<button
+														type="button"
+														className={styles.syncDangerButton}
+														onClick={() =>
+															void discardMobileDraft(draft)
+														}
+													>
+														Discard mobile entry
+													</button>
+												</div>
+											</article>
+										);
+									})
+							)}
+						</div>
+					</>
+				)}
       </section>
 
       <nav className={styles.bottomNav}>
