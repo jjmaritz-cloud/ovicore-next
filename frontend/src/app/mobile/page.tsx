@@ -393,6 +393,21 @@ export default function MobileBroilerApp() {
     [selectedPlan?.placement_date, form.entry_date],
   );
 
+  const existingServerRecord = useMemo(
+    () =>
+      records.find(
+        (record) =>
+          record.placement_plan_id ===
+            Number(form.placement_plan_id) &&
+          record.entry_date === form.entry_date,
+      ),
+    [
+      records,
+      form.placement_plan_id,
+      form.entry_date,
+    ],
+  );
+
   useEffect(() => {
     if (!form.placement_plan_id || !form.entry_date) {
       return;
@@ -1379,6 +1394,10 @@ export default function MobileBroilerApp() {
                 setForm={setForm}
                 selectedPlan={selectedPlan}
                 selectedAge={selectedAge}
+                existingServerRecord={
+                  existingServerRecord
+                }
+                onRefresh={() => void loadData()}
                 onBack={() =>
                   setEntryStage("select")
                 }
@@ -1801,6 +1820,8 @@ function DailyEntryScreen({
   setForm,
   selectedPlan,
   selectedAge,
+  existingServerRecord,
+  onRefresh,
   onBack,
   onSave,
 }: {
@@ -1812,6 +1833,8 @@ function DailyEntryScreen({
   ) => void;
   selectedPlan?: DemandPlan;
   selectedAge: number;
+  existingServerRecord?: PerformanceRecord;
+  onRefresh: () => void;
   onBack: () => void;
   onSave: (event: FormEvent) => Promise<void>;
 }) {
@@ -1832,6 +1855,13 @@ function DailyEntryScreen({
     opening === null
       ? null
       : Math.max(0, opening - mortalityTotal - cullTotal);
+
+  const isLocked = (
+    value: number | string | null | undefined,
+  ) =>
+    value !== null &&
+    value !== undefined &&
+    value !== "";
 
   return (
     <form
@@ -1863,6 +1893,21 @@ function DailyEntryScreen({
         </button>
       </section>
 
+      {existingServerRecord && (
+        <section className={styles.message}>
+          <span>
+            Grey fields are already synced from OviCore and
+            cannot be changed in the mobile app.
+          </span>
+          <button
+            type="button"
+            onClick={onRefresh}
+          >
+            Refresh
+          </button>
+        </section>
+      )}
+
       <div className={styles.formSectionHeading}>
         <small>BIRD NUMBERS</small>
       </div>
@@ -1871,6 +1916,9 @@ function DailyEntryScreen({
         <NumberRow
           label="Opening birds"
           value={form.opening_birds}
+          disabled={isLocked(
+            existingServerRecord?.opening_birds,
+          )}
           onChange={(value) =>
             setForm((current) => ({
               ...current,
@@ -1888,6 +1936,9 @@ function DailyEntryScreen({
           <NumberBox
             label="Front"
             value={form.mortality_front}
+            disabled={isLocked(
+              existingServerRecord?.mortality_front,
+            )}
             onChange={(value) =>
               setForm((current) => ({
                 ...current,
@@ -1898,6 +1949,9 @@ function DailyEntryScreen({
           <NumberBox
             label="Middle"
             value={form.mortality_middle}
+            disabled={isLocked(
+              existingServerRecord?.mortality_middle,
+            )}
             onChange={(value) =>
               setForm((current) => ({
                 ...current,
@@ -1908,6 +1962,9 @@ function DailyEntryScreen({
           <NumberBox
             label="Back"
             value={form.mortality_back}
+            disabled={isLocked(
+              existingServerRecord?.mortality_back,
+            )}
             onChange={(value) =>
               setForm((current) => ({
                 ...current,
@@ -1918,6 +1975,9 @@ function DailyEntryScreen({
           <NumberBox
             label="Other"
             value={form.mortality_other}
+            disabled={isLocked(
+              existingServerRecord?.mortality_other,
+            )}
             onChange={(value) =>
               setForm((current) => ({
                 ...current,
@@ -1936,6 +1996,9 @@ function DailyEntryScreen({
           <NumberBox
             label="Legs"
             value={form.cull_legs}
+            disabled={isLocked(
+              existingServerRecord?.cull_legs,
+            )}
             onChange={(value) =>
               setForm((current) => ({
                 ...current,
@@ -1946,6 +2009,9 @@ function DailyEntryScreen({
           <NumberBox
             label="Runts"
             value={form.cull_runts}
+            disabled={isLocked(
+              existingServerRecord?.cull_runts,
+            )}
             onChange={(value) =>
               setForm((current) => ({
                 ...current,
@@ -1956,6 +2022,9 @@ function DailyEntryScreen({
           <NumberBox
             label="Beak"
             value={form.cull_beak}
+            disabled={isLocked(
+              existingServerRecord?.cull_beak,
+            )}
             onChange={(value) =>
               setForm((current) => ({
                 ...current,
@@ -1966,6 +2035,9 @@ function DailyEntryScreen({
           <NumberBox
             label="Other"
             value={form.cull_other}
+            disabled={isLocked(
+              existingServerRecord?.cull_other,
+            )}
             onChange={(value) =>
               setForm((current) => ({
                 ...current,
@@ -1992,6 +2064,9 @@ function DailyEntryScreen({
           suffix="kg"
           decimal
           value={form.feed_kg}
+          disabled={isLocked(
+            existingServerRecord?.feed_kg,
+          )}
           onChange={(value) =>
             setForm((current) => ({
               ...current,
@@ -2004,6 +2079,9 @@ function DailyEntryScreen({
           suffix="L"
           decimal
           value={form.water_litres}
+          disabled={isLocked(
+            existingServerRecord?.water_litres,
+          )}
           onChange={(value) =>
             setForm((current) => ({
               ...current,
@@ -2016,6 +2094,10 @@ function DailyEntryScreen({
           suffix="kg"
           decimal
           value={form.body_weight_kg}
+          disabled={isLocked(
+            existingServerRecord?.body_weight_kg ??
+              existingServerRecord?.avg_weight_kg,
+          )}
           onChange={(value) =>
             setForm((current) => ({
               ...current,
@@ -2031,6 +2113,9 @@ function DailyEntryScreen({
           rows={4}
           placeholder="Add litter, bird or equipment notes…"
           value={form.notes}
+          disabled={isLocked(
+            existingServerRecord?.notes,
+          )}
           onChange={(event) =>
             setForm((current) => ({
               ...current,
@@ -2636,12 +2721,14 @@ function NumberRow({
   value,
   suffix,
   decimal = false,
+  disabled = false,
   onChange,
 }: {
   label: string;
   value: string;
   suffix?: string;
   decimal?: boolean;
+  disabled?: boolean;
   onChange: (value: string) => void;
 }) {
   return (
@@ -2654,6 +2741,7 @@ function NumberRow({
           min="0"
           step={decimal ? "0.01" : "1"}
           value={value}
+          disabled={disabled}
           onChange={(event) =>
             onChange(event.target.value)
           }
@@ -2667,10 +2755,12 @@ function NumberRow({
 function NumberBox({
   label,
   value,
+  disabled = false,
   onChange,
 }: {
   label: string;
   value: string;
+  disabled?: boolean;
   onChange: (value: string) => void;
 }) {
   return (
@@ -2682,6 +2772,7 @@ function NumberBox({
         min="0"
         step="1"
         value={value}
+        disabled={disabled}
         onChange={(event) =>
           onChange(event.target.value)
         }
