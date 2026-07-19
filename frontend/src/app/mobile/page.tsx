@@ -1858,10 +1858,32 @@ function DailyEntryScreen({
 
   const isLocked = (
     value: number | string | null | undefined,
-  ) =>
-    value !== null &&
-    value !== undefined &&
-    value !== "";
+  ) => {
+    if (
+      value === null ||
+      value === undefined ||
+      value === ""
+    ) {
+      return false;
+    }
+
+    if (
+      typeof value === "number" &&
+      value === 0
+    ) {
+      return false;
+    }
+
+    if (
+      typeof value === "string" &&
+      value.trim() !== "" &&
+      Number(value) === 0
+    ) {
+      return false;
+    }
+
+    return true;
+  };
 
   return (
     <form
