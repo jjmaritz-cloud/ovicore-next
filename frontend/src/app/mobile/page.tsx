@@ -1,8 +1,14 @@
 "use client";
 
 import Image from "next/image";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import styles from "./mobile.module.css";
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
 import {
   MobileDraft,
   deleteDraft,
@@ -10,6 +16,8 @@ import {
   putDraft,
   updateDraft,
 } from "../../lib/mobileHouseSheetDb";
+
+import styles from "./mobile.module.css";
 
 const API_BASE = "";
 
@@ -56,10 +64,11 @@ type PerformanceRecord = {
   body_weight_kg?: number | null;
   avg_weight_kg?: number | null;
   notes?: string | null;
-	last_saved_at?: string | null;
+  last_saved_at?: string | null;
 };
 
 type MobileTab = "home" | "entry" | "insights" | "more";
+type EntryStage = "select" | "form" | "saved";
 
 type EntryForm = {
   placement_plan_id: number | "";
@@ -77,6 +86,20 @@ type EntryForm = {
   water_litres: string;
   body_weight_kg: string;
   notes: string;
+};
+
+type SavedSummary = {
+  farm: string;
+  shed: string;
+  cycle: string;
+  entryDate: string;
+  opening: number | null;
+  mortality: number;
+  culls: number;
+  closing: number | null;
+  feed: number | null;
+  water: number | null;
+  weight: number | null;
 };
 
 const blankForm = (): EntryForm => ({
@@ -107,16 +130,53 @@ function numberOrZero(value?: number | null) {
   return Number(value || 0);
 }
 
-function calculateAgeDays(placementDate?: string, entryDate?: string) {
+function calculateAgeDays(
+  placementDate?: string,
+  entryDate?: string,
+) {
   if (!placementDate || !entryDate) return 0;
+
   const placement = new Date(`${placementDate}T00:00:00`);
   const entry = new Date(`${entryDate}T00:00:00`);
-  if (Number.isNaN(placement.getTime()) || Number.isNaN(entry.getTime())) return 0;
-  return Math.max(0, Math.round((entry.getTime() - placement.getTime()) / 86400000));
+
+  if (
+    Number.isNaN(placement.getTime()) ||
+    Number.isNaN(entry.getTime())
+  ) {
+    return 0;
+  }
+
+  return Math.max(
+    0,
+    Math.round(
+      (entry.getTime() - placement.getTime()) / 86400000,
+    ),
+  );
 }
 
-function formatNumber(value: number) {
+function formatNumber(value: number | null | undefined) {
+  if (value === null || value === undefined) return "—";
   return Math.round(value).toLocaleString();
+}
+
+function formatDecimal(
+  value: number | null | undefined,
+  digits = 2,
+) {
+  if (value === null || value === undefined) return "—";
+  return Number(value).toFixed(digits);
+}
+
+function formatDate(value: string) {
+  const date = new Date(`${value}T00:00:00`);
+
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleDateString("en-AU", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 async function authenticatedFetch(
@@ -140,123 +200,134 @@ async function authenticatedFetch(
 
 export default function MobileBroilerApp() {
   const [tab, setTab] = useState<MobileTab>("home");
+  const [entryStage, setEntryStage] =
+    useState<EntryStage>("select");
   const [plans, setPlans] = useState<DemandPlan[]>([]);
-  const [records, setRecords] = useState<PerformanceRecord[]>([]);
+  const [records, setRecords] =
+    useState<PerformanceRecord[]>([]);
   const [form, setForm] = useState<EntryForm>(blankForm);
   const [online, setOnline] = useState(true);
   const [pendingCount, setPendingCount] = useState(0);
-	const [mobileDrafts, setMobileDrafts] =
-		useState<MobileDraft[]>([]);
+  const [mobileDrafts, setMobileDrafts] =
+    useState<MobileDraft[]>([]);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [currentUser, setCurrentUser] =
+    useState<CurrentUser | null>(null);
+  const [savedSummary, setSavedSummary] =
+    useState<SavedSummary | null>(null);
 
-	const [currentUser, setCurrentUser] =
-		useState<CurrentUser | null>(null);
+  const companyId = useMemo(() => {
+    if (!currentUser) return null;
 
-	const companyId = useMemo(() => {
-		if (!currentUser) {
-			return null;
-		}
+    if (!currentUser.is_global_admin) {
+      return currentUser.company_id;
+    }
 
-		if (!currentUser.is_global_admin) {
-			return currentUser.company_id;
-		}
+    const raw = window.localStorage.getItem(
+      "ovicore_selected_company_id",
+    );
+    const selectedCompanyId = Number(raw);
 
-		const raw = window.localStorage.getItem(
-			"ovicore_selected_company_id",
-		);
+    if (
+      Number.isInteger(selectedCompanyId) &&
+      selectedCompanyId > 0
+    ) {
+      return selectedCompanyId;
+    }
 
-		const selectedCompanyId = Number(raw);
-
-		if (
-			Number.isInteger(selectedCompanyId) &&
-			selectedCompanyId > 0
-		) {
-			return selectedCompanyId;
-		}
-
-		return currentUser.company_id;
-	}, [currentUser]);
+    return currentUser.company_id;
+  }, [currentUser]);
 
   const selectedPlan = useMemo(
-    () => plans.find((plan) => plan.id === Number(form.placement_plan_id)),
+    () =>
+      plans.find(
+        (plan) =>
+          plan.id === Number(form.placement_plan_id),
+      ),
     [plans, form.placement_plan_id],
   );
 
-	const loadPendingCount = useCallback(async () => {
-		const drafts = await getDrafts();
+  const selectedAge = useMemo(
+    () =>
+      calculateAgeDays(
+        selectedPlan?.placement_date,
+        form.entry_date,
+      ),
+    [selectedPlan?.placement_date, form.entry_date],
+  );
 
-		setMobileDrafts(drafts);
-		setPendingCount(drafts.length);
-	}, []);
+  const loadPendingCount = useCallback(async () => {
+    const drafts = await getDrafts();
+    setMobileDrafts(drafts);
+    setPendingCount(drafts.length);
+  }, []);
 
-	const loadCurrentUser = useCallback(async () => {
-		try {
-			const response = await authenticatedFetch(
-				`${API_BASE}/api/auth/me`,
-			);
+  const loadCurrentUser = useCallback(async () => {
+    try {
+      const response = await authenticatedFetch(
+        `${API_BASE}/api/auth/me`,
+      );
 
-			if (!response.ok) {
-				throw new Error(
-					`Could not load your OviCore login (${response.status}).`,
-				);
-			}
+      if (!response.ok) {
+        throw new Error(
+          `Could not load your OviCore login (${response.status}).`,
+        );
+      }
 
-			const user: CurrentUser = await response.json();
+      const user: CurrentUser = await response.json();
+      setCurrentUser(user);
+      return user;
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not load your OviCore login.",
+      );
+      return null;
+    }
+  }, []);
 
-			setCurrentUser(user);
+  const loadData = useCallback(async () => {
+    if (!currentUser) return;
 
-			return user;
-		} catch (error) {
-			setMessage(
-				error instanceof Error
-					? error.message
-					: "Could not load your OviCore login.",
-			);
-
-			return null;
-		}
-	}, []);
-
-	const loadData = useCallback(async () => {
-		if (!currentUser) {
-			return;
-		}
-
-		if (!companyId) {
-			setLoading(false);
-
-			setMessage(
-				currentUser.is_global_admin
-					? "Select a working company in the main OviCore system first."
-					: "Your user account is not assigned to a company.",
-			);
-
-			return;
-		}
+    if (!companyId) {
+      setLoading(false);
+      setMessage(
+        currentUser.is_global_admin
+          ? "Select a working company in the main OviCore system first."
+          : "Your user account is not assigned to a company.",
+      );
+      return;
+    }
 
     setLoading(true);
     setMessage("");
 
     try {
-      const [plansResponse, recordsResponse] = await Promise.all([
-        authenticatedFetch(
-          `${API_BASE}/api/broilers/demand-plans?company_id=${companyId}`,
-        ),
-        authenticatedFetch(
-          `${API_BASE}/api/broilers/performance?company_id=${companyId}`,
-        ),
-      ]);
+      const [plansResponse, recordsResponse] =
+        await Promise.all([
+          authenticatedFetch(
+            `${API_BASE}/api/broilers/demand-plans?company_id=${companyId}`,
+          ),
+          authenticatedFetch(
+            `${API_BASE}/api/broilers/performance?company_id=${companyId}`,
+          ),
+        ]);
 
       if (!plansResponse.ok) {
-        throw new Error(`Could not load broiler cycles (${plansResponse.status}).`);
+        throw new Error(
+          `Could not load broiler cycles (${plansResponse.status}).`,
+        );
       }
 
-      const plansData: DemandPlan[] = await plansResponse.json();
-      const recordsData: PerformanceRecord[] = recordsResponse.ok
-        ? await recordsResponse.json()
-        : [];
+      const plansData: DemandPlan[] =
+        await plansResponse.json();
+      const recordsData: PerformanceRecord[] =
+        recordsResponse.ok
+          ? await recordsResponse.json()
+          : [];
 
       setPlans(plansData);
       setRecords(recordsData);
@@ -264,165 +335,161 @@ export default function MobileBroilerApp() {
       setForm((current) => ({
         ...current,
         placement_plan_id:
-          current.placement_plan_id || (plansData.length ? plansData[0].id : ""),
+          current.placement_plan_id ||
+          (plansData.length ? plansData[0].id : ""),
       }));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Could not load mobile data.");
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not load mobile data.",
+      );
     } finally {
       setLoading(false);
     }
-	}, [companyId, currentUser]);
+  }, [companyId, currentUser]);
 
-	const syncDrafts = useCallback(async () => {
-		if (!navigator.onLine || syncing) {
-			return;
-		}
+  const syncDrafts = useCallback(async () => {
+    if (!navigator.onLine || syncing) return;
 
-		setSyncing(true);
-		setMessage("");
+    setSyncing(true);
+    setMessage("");
 
-		let synced = 0;
-		let conflicts = 0;
-		let failed = 0;
+    let synced = 0;
+    let conflicts = 0;
+    let failed = 0;
 
-		try {
-			const drafts = await getDrafts();
+    try {
+      const drafts = await getDrafts();
 
-			for (const draft of drafts.sort((a, b) =>
-				a.saved_at.localeCompare(b.saved_at),
-			)) {
-				if (draft.status === "conflict") {
-					conflicts += 1;
-					continue;
-				}
+      for (const draft of drafts.sort((a, b) =>
+        a.saved_at.localeCompare(b.saved_at),
+      )) {
+        if (draft.status === "conflict") {
+          conflicts += 1;
+          continue;
+        }
 
-				await updateDraft(draft.local_id, {
-					status: "syncing",
-					last_error: null,
-					attempt_count: draft.attempt_count + 1,
-				});
+        await updateDraft(draft.local_id, {
+          status: "syncing",
+          last_error: null,
+          attempt_count: draft.attempt_count + 1,
+        });
 
-				try {
-					const existingResponse = await authenticatedFetch(
-						`${API_BASE}/api/broilers/performance` +
-							`?company_id=${draft.company_id}` +
-							`&placement_plan_id=${draft.payload.placement_plan_id}`,
-					);
+        try {
+          const existingResponse =
+            await authenticatedFetch(
+              `${API_BASE}/api/broilers/performance` +
+                `?company_id=${draft.company_id}` +
+                `&placement_plan_id=${draft.payload.placement_plan_id}`,
+            );
 
-					if (!existingResponse.ok) {
-						throw new Error(
-							`Could not check existing records (${existingResponse.status}).`,
-						);
-					}
+          if (!existingResponse.ok) {
+            throw new Error(
+              `Could not check existing records (${existingResponse.status}).`,
+            );
+          }
 
-					const existing: PerformanceRecord[] =
-						await existingResponse.json();
+          const existing: PerformanceRecord[] =
+            await existingResponse.json();
 
-					const match = existing.find(
-						(record) =>
-							record.placement_plan_id ===
-								draft.payload.placement_plan_id &&
-							record.entry_date === draft.payload.entry_date,
-					);
+          const match = existing.find(
+            (record) =>
+              record.placement_plan_id ===
+                draft.payload.placement_plan_id &&
+              record.entry_date ===
+                draft.payload.entry_date,
+          );
 
-					const serverChanged =
-						Boolean(match) &&
-						Boolean(draft.server_updated_at) &&
-						Boolean(match?.last_saved_at) &&
-						draft.server_updated_at !== match?.last_saved_at;
+          const serverChanged =
+            Boolean(match) &&
+            Boolean(draft.server_updated_at) &&
+            Boolean(match?.last_saved_at) &&
+            draft.server_updated_at !==
+              match?.last_saved_at;
 
-					if (serverChanged && match) {
-						await updateDraft(draft.local_id, {
-							status: "conflict",
-							server_record_id: match.id,
-							server_updated_at: match.last_saved_at ?? null,
-							last_error:
-								"This house sheet was changed in OviCore after the mobile entry was opened.",
-						});
+          if (serverChanged && match) {
+            await updateDraft(draft.local_id, {
+              status: "conflict",
+              server_record_id: match.id,
+              server_updated_at:
+                match.last_saved_at ?? null,
+              last_error:
+                "This house sheet was changed in OviCore after the mobile entry was opened.",
+            });
+            conflicts += 1;
+            continue;
+          }
 
-						conflicts += 1;
-						continue;
-					}
+          const url = match
+            ? `${API_BASE}/api/broilers/performance/${match.id}`
+            : `${API_BASE}/api/broilers/performance`;
 
-					const url = match
-						? `${API_BASE}/api/broilers/performance/${match.id}`
-						: `${API_BASE}/api/broilers/performance`;
+          const response = await authenticatedFetch(url, {
+            method: match ? "PATCH" : "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(draft.payload),
+          });
 
-					const response = await authenticatedFetch(url, {
-						method: match ? "PATCH" : "POST",
-						headers: {
-							"Content-Type": "application/json",
-						},
-						body: JSON.stringify(draft.payload),
-					});
+          if (!response.ok) {
+            const detail = await response.text();
+            throw new Error(
+              `Sync failed (${response.status}): ${detail}`,
+            );
+          }
 
-					if (!response.ok) {
-						const detail = await response.text();
+          await deleteDraft(draft.local_id);
+          synced += 1;
+        } catch (error) {
+          await updateDraft(draft.local_id, {
+            status: "failed",
+            last_error:
+              error instanceof Error
+                ? error.message
+                : "Could not sync this entry.",
+          });
+          failed += 1;
+        }
+      }
 
-						throw new Error(
-							`Sync failed (${response.status}): ${detail}`,
-						);
-					}
+      await loadPendingCount();
 
-					await deleteDraft(draft.local_id);
-					synced += 1;
-				} catch (error) {
-					const errorMessage =
-						error instanceof Error
-							? error.message
-							: "Could not sync this entry.";
+      if (synced > 0) {
+        await loadData();
+      }
 
-					await updateDraft(draft.local_id, {
-						status: "failed",
-						last_error: errorMessage,
-					});
+      const resultParts: string[] = [];
 
-					failed += 1;
-				}
-			}
+      if (synced > 0) resultParts.push(`${synced} synced`);
+      if (conflicts > 0) {
+        resultParts.push(
+          `${conflicts} conflict${
+            conflicts === 1 ? "" : "s"
+          }`,
+        );
+      }
+      if (failed > 0) resultParts.push(`${failed} failed`);
 
-			await loadPendingCount();
-
-			if (synced > 0) {
-				await loadData();
-			}
-
-			const resultParts: string[] = [];
-
-			if (synced > 0) {
-				resultParts.push(`${synced} synced`);
-			}
-
-			if (conflicts > 0) {
-				resultParts.push(
-					`${conflicts} conflict${conflicts === 1 ? "" : "s"}`,
-				);
-			}
-
-			if (failed > 0) {
-				resultParts.push(`${failed} failed`);
-			}
-
-			if (resultParts.length > 0) {
-				setMessage(resultParts.join(" · "));
-			}
-		} catch (error) {
-			setMessage(
-				error instanceof Error
-					? error.message
-					: "Could not sync mobile entries.",
-			);
-		} finally {
-			setSyncing(false);
-		}
-	}, [loadData, loadPendingCount, syncing]);
+      if (resultParts.length > 0) {
+        setMessage(resultParts.join(" · "));
+      }
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not sync mobile entries.",
+      );
+    } finally {
+      setSyncing(false);
+    }
+  }, [loadData, loadPendingCount, syncing]);
 
   useEffect(() => {
     setOnline(navigator.onLine);
 
-		const handleOnline = () => {
-			setOnline(true);
-		};
+    const handleOnline = () => setOnline(true);
     const handleOffline = () => setOnline(false);
 
     window.addEventListener("online", handleOnline);
@@ -432,20 +499,20 @@ export default function MobileBroilerApp() {
       void navigator.serviceWorker.register("/sw.js");
     }
 
-		void loadPendingCount();
-		void loadCurrentUser();
+    void loadPendingCount();
+    void loadCurrentUser();
 
     return () => {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };
-	}, [loadCurrentUser, loadPendingCount]);
+  }, [loadCurrentUser, loadPendingCount]);
 
-	useEffect(() => {
-		if (currentUser && companyId) {
-			void loadData();
-		}
-	}, [companyId, currentUser, loadData]);
+  useEffect(() => {
+    if (currentUser && companyId) {
+      void loadData();
+    }
+  }, [companyId, currentUser, loadData]);
 
   useEffect(() => {
     if (online && pendingCount > 0) {
@@ -455,14 +522,25 @@ export default function MobileBroilerApp() {
 
   const managerInsights = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
-    const activePlanIds = new Set(plans.map((plan) => plan.id));
-    const todayRecords = records.filter(
-      (record) =>
-        activePlanIds.has(record.placement_plan_id) && record.entry_date === today,
+    const activePlanIds = new Set(
+      plans.map((plan) => plan.id),
     );
 
-    const reportedPlanIds = new Set(todayRecords.map((record) => record.placement_plan_id));
-    const missing = plans.filter((plan) => !reportedPlanIds.has(plan.id));
+    const todayRecords = records.filter(
+      (record) =>
+        activePlanIds.has(record.placement_plan_id) &&
+        record.entry_date === today,
+    );
+
+    const reportedPlanIds = new Set(
+      todayRecords.map(
+        (record) => record.placement_plan_id,
+      ),
+    );
+
+    const missing = plans.filter(
+      (plan) => !reportedPlanIds.has(plan.id),
+    );
 
     const mortalityWatch = todayRecords
       .map((record) => {
@@ -472,10 +550,14 @@ export default function MobileBroilerApp() {
           numberOrZero(record.mortality_back) +
           numberOrZero(record.mortality_other);
         const opening = numberOrZero(record.opening_birds);
+
         return {
           record,
           mortality,
-          rate: opening > 0 ? (mortality / opening) * 100 : 0,
+          rate:
+            opening > 0
+              ? (mortality / opening) * 100
+              : 0,
         };
       })
       .filter((item) => item.rate >= 0.5)
@@ -484,27 +566,115 @@ export default function MobileBroilerApp() {
     const waterWatch = todayRecords.filter((record) => {
       const feed = numberOrZero(record.feed_kg);
       const water = numberOrZero(record.water_litres);
+
       if (feed <= 0 || water <= 0) return false;
+
       const ratio = water / feed;
       return ratio < 1.4 || ratio > 2.5;
     });
 
-    return { missing, mortalityWatch, waterWatch, todayRecords };
+    const totalBirds = todayRecords.reduce(
+      (sum, record) =>
+        sum + numberOrZero(record.closing_birds),
+      0,
+    );
+
+    const weightedWeightNumerator =
+      todayRecords.reduce(
+        (sum, record) =>
+          sum +
+          numberOrZero(record.avg_weight_kg) *
+            numberOrZero(record.closing_birds),
+        0,
+      );
+
+    const liveWeight =
+      totalBirds > 0
+        ? weightedWeightNumerator / totalBirds
+        : null;
+
+    const totalOpening = todayRecords.reduce(
+      (sum, record) =>
+        sum + numberOrZero(record.opening_birds),
+      0,
+    );
+
+    const totalMortality = todayRecords.reduce(
+      (sum, record) =>
+        sum + numberOrZero(record.mortality_birds),
+      0,
+    );
+
+    const mortalityRate =
+      totalOpening > 0
+        ? (totalMortality / totalOpening) * 100
+        : 0;
+
+    return {
+      missing,
+      mortalityWatch,
+      waterWatch,
+      todayRecords,
+      totalBirds,
+      liveWeight,
+      mortalityRate,
+    };
   }, [plans, records]);
-	
-	const syncIssueSummary = useMemo(() => {
-		return {
-			pending: mobileDrafts.filter(
-				(draft) => draft.status === "pending",
-			).length,
-			conflicts: mobileDrafts.filter(
-				(draft) => draft.status === "conflict",
-			).length,
-			failed: mobileDrafts.filter(
-				(draft) => draft.status === "failed",
-			).length,
-		};
-	}, [mobileDrafts]);
+
+  const syncIssueSummary = useMemo(
+    () => ({
+      pending: mobileDrafts.filter(
+        (draft) => draft.status === "pending",
+      ).length,
+      conflicts: mobileDrafts.filter(
+        (draft) => draft.status === "conflict",
+      ).length,
+      failed: mobileDrafts.filter(
+        (draft) => draft.status === "failed",
+      ).length,
+    }),
+    [mobileDrafts],
+  );
+
+  const mortalityTrend = useMemo(() => {
+    const days: {
+      key: string;
+      label: string;
+      value: number;
+    }[] = [];
+
+    for (let offset = 6; offset >= 0; offset -= 1) {
+      const date = new Date();
+      date.setDate(date.getDate() - offset);
+      const key = date.toISOString().slice(0, 10);
+      const dayRecords = records.filter(
+        (record) => record.entry_date === key,
+      );
+      const opening = dayRecords.reduce(
+        (sum, record) =>
+          sum + numberOrZero(record.opening_birds),
+        0,
+      );
+      const mortality = dayRecords.reduce(
+        (sum, record) =>
+          sum + numberOrZero(record.mortality_birds),
+        0,
+      );
+
+      days.push({
+        key,
+        label: date.toLocaleDateString("en-AU", {
+          weekday: "short",
+        }),
+        value:
+          opening > 0
+            ? (mortality / opening) * 100
+            : 0,
+      });
+    }
+
+    return days;
+  }, [records]);
 
   async function saveEntry(event: FormEvent) {
     event.preventDefault();
@@ -528,35 +698,52 @@ export default function MobileBroilerApp() {
 
     const opening = toNumber(form.opening_birds);
     const closing =
-      opening === null ? null : Math.max(0, opening - mortalityTotal - cullTotal);
+      opening === null
+        ? null
+        : Math.max(
+            0,
+            opening - mortalityTotal - cullTotal,
+          );
 
     const localId = `${companyId}-${selectedPlan.id}-${form.entry_date}`;
 
-		const existingServerRecord = records.find(
-			(record) =>
-				record.placement_plan_id === selectedPlan.id &&
-				record.entry_date === form.entry_date,
-		);
+    const existingServerRecord = records.find(
+      (record) =>
+        record.placement_plan_id === selectedPlan.id &&
+        record.entry_date === form.entry_date,
+    );
 
-		const draft: MobileDraft = {
-			local_id: localId,
-			company_id: companyId,
-			saved_at: new Date().toISOString(),
-			status: "pending",
-			server_record_id: existingServerRecord?.id ?? null,
-			server_updated_at:
-				existingServerRecord?.last_saved_at ?? null,
-			last_error: null,
-			attempt_count: 0,
-			payload: {
+    const draft: MobileDraft = {
+      local_id: localId,
+      company_id: companyId,
+      saved_at: new Date().toISOString(),
+      status: "pending",
+      server_record_id:
+        existingServerRecord?.id ?? null,
+      server_updated_at:
+        existingServerRecord?.last_saved_at ?? null,
+      last_error: null,
+      attempt_count: 0,
+      payload: {
         placement_plan_id: selectedPlan.id,
         entry_date: form.entry_date,
-        age_days: calculateAgeDays(selectedPlan.placement_date, form.entry_date),
+        age_days: calculateAgeDays(
+          selectedPlan.placement_date,
+          form.entry_date,
+        ),
         opening_birds: opening,
-        mortality_front: toNumber(form.mortality_front),
-        mortality_middle: toNumber(form.mortality_middle),
-        mortality_back: toNumber(form.mortality_back),
-        mortality_other: toNumber(form.mortality_other),
+        mortality_front: toNumber(
+          form.mortality_front,
+        ),
+        mortality_middle: toNumber(
+          form.mortality_middle,
+        ),
+        mortality_back: toNumber(
+          form.mortality_back,
+        ),
+        mortality_other: toNumber(
+          form.mortality_other,
+        ),
         mortality_birds: mortalityTotal,
         cull_legs: toNumber(form.cull_legs),
         cull_runts: toNumber(form.cull_runts),
@@ -566,8 +753,12 @@ export default function MobileBroilerApp() {
         closing_birds: closing,
         feed_kg: toNumber(form.feed_kg),
         water_litres: toNumber(form.water_litres),
-        body_weight_kg: toNumber(form.body_weight_kg),
-        avg_weight_kg: toNumber(form.body_weight_kg),
+        body_weight_kg: toNumber(
+          form.body_weight_kg,
+        ),
+        avg_weight_kg: toNumber(
+          form.body_weight_kg,
+        ),
         notes: form.notes.trim() || null,
         last_saved_by: "Mobile app",
       },
@@ -576,527 +767,1603 @@ export default function MobileBroilerApp() {
     await putDraft(draft);
     await loadPendingCount();
 
+    setSavedSummary({
+      farm: selectedPlan.farm_name ?? "Farm",
+      shed: selectedPlan.shed_name ?? "Shed",
+      cycle: selectedPlan.cycle_code ?? "Cycle",
+      entryDate: form.entry_date,
+      opening,
+      mortality: mortalityTotal,
+      culls: cullTotal,
+      closing,
+      feed: toNumber(form.feed_kg),
+      water: toNumber(form.water_litres),
+      weight: toNumber(form.body_weight_kg),
+    });
+
     setMessage(
       navigator.onLine
         ? "Entry saved. Syncing with OviCore…"
         : "Entry saved offline. It will sync when signal returns.",
     );
 
-    setForm((current) => ({
-      ...blankForm(),
-      placement_plan_id: current.placement_plan_id,
-      entry_date: current.entry_date,
-    }));
+    setEntryStage("saved");
 
     if (navigator.onLine) {
       await syncDrafts();
     }
   }
 
-	async function retryMobileDraft(draft: MobileDraft) {
-		await updateDraft(draft.local_id, {
-			status: "pending",
-			last_error: null,
-		});
+  async function retryMobileDraft(draft: MobileDraft) {
+    await updateDraft(draft.local_id, {
+      status: "pending",
+      last_error: null,
+    });
 
-		await loadPendingCount();
+    await loadPendingCount();
 
-		setMessage(
-			navigator.onLine
-				? "Entry queued for another sync attempt."
-				: "Entry will retry when connection returns.",
-		);
+    if (navigator.onLine) {
+      await syncDrafts();
+    } else {
+      setMessage(
+        "Entry will retry when connection returns.",
+      );
+    }
+  }
 
-		if (navigator.onLine) {
-			await syncDrafts();
-		}
-	}
+  async function keepServerVersion(draft: MobileDraft) {
+    await deleteDraft(draft.local_id);
+    await loadPendingCount();
+    await loadData();
+    setMessage(
+      "The OviCore server version was kept.",
+    );
+  }
 
-	async function keepServerVersion(draft: MobileDraft) {
-		await deleteDraft(draft.local_id);
-		await loadPendingCount();
-		await loadData();
+  async function keepMobileVersion(draft: MobileDraft) {
+    await updateDraft(draft.local_id, {
+      status: "pending",
+      last_error: null,
+    });
 
-		setMessage(
-			"The OviCore server version was kept and the mobile copy was removed.",
-		);
-	}
+    await loadPendingCount();
 
-	async function keepMobileVersion(draft: MobileDraft) {
-		await updateDraft(draft.local_id, {
-			status: "pending",
-			last_error: null,
-		});
+    if (navigator.onLine) {
+      await syncDrafts();
+    } else {
+      setMessage(
+        "The mobile version will sync when connection returns.",
+      );
+    }
+  }
 
-		await loadPendingCount();
-
-		if (navigator.onLine) {
-			await syncDrafts();
-		} else {
-			setMessage(
-				"The mobile version will replace the server version when connection returns.",
-			);
-		}
-	}
-
-	async function discardMobileDraft(draft: MobileDraft) {
-		await deleteDraft(draft.local_id);
-		await loadPendingCount();
-
-		setMessage("The mobile entry was discarded.");
-	}
+  async function discardMobileDraft(
+    draft: MobileDraft,
+  ) {
+    await deleteDraft(draft.local_id);
+    await loadPendingCount();
+    setMessage("The mobile entry was discarded.");
+  }
 
   async function logout() {
     try {
-      await authenticatedFetch(`${API_BASE}/api/auth/logout`, { method: "POST" });
+      await authenticatedFetch(
+        `${API_BASE}/api/auth/logout`,
+        { method: "POST" },
+      );
     } finally {
-      window.localStorage.removeItem("ovicore_selected_company_id");
+      window.localStorage.removeItem(
+        "ovicore_selected_company_id",
+      );
       window.location.href = "/login";
     }
   }
 
+  function openEntryForPlan(planId?: number) {
+    setForm((current) => ({
+      ...current,
+      placement_plan_id:
+        planId ?? current.placement_plan_id,
+    }));
+    setEntryStage(planId ? "form" : "select");
+    setTab("entry");
+  }
+
+  const displayName =
+    currentUser?.full_name?.trim() || "OviCore User";
+  const companyName =
+    currentUser?.company_name?.trim() ||
+    "Broiler Operations";
+
   return (
     <main className={styles.app}>
-      <header className={styles.header}>
-        <div className={styles.brandLogo}>
+      <header className={styles.appHeader}>
+        <div className={styles.brand}>
           <Image
             src="/assets/ovicore-icon.png"
             alt="OviCore"
-            width={40}
-            height={40}
+            width={42}
+            height={42}
             priority
           />
+          <div>
+            <strong>OviCore</strong>
+            <small>{companyName}</small>
+          </div>
         </div>
-        <div>
-          <strong>OviCore Mobile</strong>
-          <small>Broiler Operations</small>
+
+        <div className={styles.headerActions}>
+          <span
+            className={`${styles.connectionBadge} ${
+              online
+                ? styles.connectionOnline
+                : styles.connectionOffline
+            }`}
+          >
+            <i />
+            {online ? "Online" : "Offline"}
+          </span>
+          <button
+            type="button"
+            className={styles.notificationButton}
+            aria-label="Sync status"
+            onClick={() => setTab("more")}
+          >
+            ◔
+            {pendingCount > 0 && (
+              <b>{pendingCount}</b>
+            )}
+          </button>
         </div>
-        <span className={`${styles.status} ${online ? styles.online : styles.offline}`}>
-          {online ? "Online" : "Offline"}
-        </span>
       </header>
 
-      <section className={styles.content}>
-        {message && <div className={styles.message}>{message}</div>}
+      <section className={styles.screen}>
+        {message && (
+          <div className={styles.message}>
+            <span>{message}</span>
+            <button
+              type="button"
+              onClick={() => setMessage("")}
+              aria-label="Dismiss message"
+            >
+              ×
+            </button>
+          </div>
+        )}
 
         {tab === "home" && (
-          <>
-            <div className={styles.hero}>
-              <p>Today’s position</p>
-              <h1>Broiler farm overview</h1>
-              <span>
-								{pendingCount} mobile entr
-								{pendingCount === 1 ? "y" : "ies"} pending review or sync
-							</span>
-            </div>
-
-            <div className={styles.kpiGrid}>
-              <article><span>Active cycles</span><strong>{plans.length}</strong></article>
-              <article><span>Reported today</span><strong>{managerInsights.todayRecords.length}</strong></article>
-              <article className={managerInsights.missing.length ? styles.warnCard : ""}>
-                <span>Missing entries</span><strong>{managerInsights.missing.length}</strong>
-              </article>
-              <article className={managerInsights.mortalityWatch.length ? styles.badCard : ""}>
-                <span>Mortality watch</span><strong>{managerInsights.mortalityWatch.length}</strong>
-              </article>
-            </div>
-
-            <section className={styles.card}>
-              <div className={styles.cardTitle}>
-                <div><small>DIVISIONAL FOCUS</small><h2>What needs attention</h2></div>
-                <button onClick={() => void loadData()}>Refresh</button>
-              </div>
-
-              {loading ? (
-                <p>Loading production position…</p>
-              ) : (
-                <div className={styles.focusList}>
-                  {managerInsights.missing.slice(0, 4).map((plan) => (
-                    <button key={`missing-${plan.id}`} onClick={() => {
-                      setForm((current) => ({ ...current, placement_plan_id: plan.id }));
-                      setTab("entry");
-                    }}>
-                      <span className={styles.orangeDot} />
-                      <div><strong>{plan.farm_name} · {plan.shed_name}</strong><small>No house sheet received today</small></div>
-                      <b>›</b>
-                    </button>
-                  ))}
-
-                  {managerInsights.mortalityWatch.slice(0, 4).map((item) => {
-                    const plan = plans.find((p) => p.id === item.record.placement_plan_id);
-                    return (
-                      <div key={`mort-${item.record.id}`} className={styles.focusRow}>
-                        <span className={styles.redDot} />
-                        <div><strong>{plan?.farm_name} · {plan?.shed_name}</strong><small>Daily mortality {item.rate.toFixed(2)}%</small></div>
-                        <b>Review</b>
-                      </div>
-                    );
-                  })}
-
-                  {managerInsights.missing.length === 0 &&
-                    managerInsights.mortalityWatch.length === 0 && (
-                      <div className={styles.goodState}>No major daily exceptions detected.</div>
-                    )}
-                </div>
-              )}
-            </section>
-          </>
+          <HomeScreen
+            displayName={displayName}
+            companyName={companyName}
+            loading={loading}
+            plans={plans}
+            managerInsights={managerInsights}
+            pendingCount={pendingCount}
+            openEntryForPlan={openEntryForPlan}
+            refresh={() => void loadData()}
+          />
         )}
 
         {tab === "entry" && (
-          <form onSubmit={saveEntry} className={styles.entryForm}>
-            <div className={styles.pageHeading}>
-              <small>DAILY ENTRY</small>
-              <h1>Broiler House Sheet</h1>
-              <p>Save with or without reception.</p>
-            </div>
-
-            <label>
-              Farm / shed / cycle
-              <select
-                value={form.placement_plan_id}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    placement_plan_id: Number(event.target.value),
-                  }))
-                }
-                required
-              >
-                <option value="">Select cycle</option>
-                {plans.map((plan) => (
-                  <option key={plan.id} value={plan.id}>
-                    {plan.farm_name} · {plan.shed_name} · {plan.cycle_code}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <div className={styles.twoCol}>
-              <label>Date<input type="date" value={form.entry_date} onChange={(e) => setForm({...form, entry_date: e.target.value})} required /></label>
-              <label>Opening birds<input inputMode="numeric" value={form.opening_birds} onChange={(e) => setForm({...form, opening_birds: e.target.value})} /></label>
-            </div>
-
-            <FieldGroup title="Mortality">
-              <NumberField label="Front" value={form.mortality_front} onChange={(v) => setForm({...form, mortality_front: v})} />
-              <NumberField label="Middle" value={form.mortality_middle} onChange={(v) => setForm({...form, mortality_middle: v})} />
-              <NumberField label="Back" value={form.mortality_back} onChange={(v) => setForm({...form, mortality_back: v})} />
-              <NumberField label="Other" value={form.mortality_other} onChange={(v) => setForm({...form, mortality_other: v})} />
-            </FieldGroup>
-
-            <FieldGroup title="Culls">
-              <NumberField label="Legs" value={form.cull_legs} onChange={(v) => setForm({...form, cull_legs: v})} />
-              <NumberField label="Runts" value={form.cull_runts} onChange={(v) => setForm({...form, cull_runts: v})} />
-              <NumberField label="Beak" value={form.cull_beak} onChange={(v) => setForm({...form, cull_beak: v})} />
-              <NumberField label="Other" value={form.cull_other} onChange={(v) => setForm({...form, cull_other: v})} />
-            </FieldGroup>
-
-            <FieldGroup title="Performance">
-              <NumberField label="Feed kg" value={form.feed_kg} decimal onChange={(v) => setForm({...form, feed_kg: v})} />
-              <NumberField label="Water L" value={form.water_litres} decimal onChange={(v) => setForm({...form, water_litres: v})} />
-              <NumberField label="Avg weight kg" value={form.body_weight_kg} decimal onChange={(v) => setForm({...form, body_weight_kg: v})} />
-            </FieldGroup>
-
-            <label>
-              Comments
-              <textarea rows={3} value={form.notes} onChange={(e) => setForm({...form, notes: e.target.value})} />
-            </label>
-
-            <button type="submit" className={styles.saveButton}>
-              Save house sheet
-            </button>
-          </form>
-        )}
-
-        {tab === "insights" && (
           <>
-            <div className={styles.pageHeading}>
-              <small>INSIGHTS</small>
-              <h1>Manager focus areas</h1>
-              <p>Rule-based daily exceptions from submitted house sheets.</p>
-            </div>
-            <section className={styles.card}>
-              <Insight label="Missing daily entries" value={managerInsights.missing.length} detail="Active cycles without an entry dated today." />
-              <Insight label="Mortality exceptions" value={managerInsights.mortalityWatch.length} detail="Daily mortality at or above 0.50%." />
-              <Insight label="Water/feed exceptions" value={managerInsights.waterWatch.length} detail="Water-to-feed ratio below 1.4 or above 2.5." />
-              <Insight label="Pending mobile sync" value={pendingCount} detail="Locally saved entries not yet confirmed by OviCore." />
-            </section>
+            {entryStage === "select" && (
+              <SelectShedScreen
+                plans={plans}
+                records={records}
+                form={form}
+                setForm={setForm}
+                onContinue={() =>
+                  setEntryStage("form")
+                }
+              />
+            )}
+
+            {entryStage === "form" && (
+              <DailyEntryScreen
+                form={form}
+                setForm={setForm}
+                selectedPlan={selectedPlan}
+                selectedAge={selectedAge}
+                onBack={() =>
+                  setEntryStage("select")
+                }
+                onSave={saveEntry}
+              />
+            )}
+
+            {entryStage === "saved" &&
+              savedSummary && (
+                <EntrySavedScreen
+                  summary={savedSummary}
+                  pendingCount={pendingCount}
+                  online={online}
+                  onTomorrow={() => {
+                    const next = new Date(
+                      `${savedSummary.entryDate}T00:00:00`,
+                    );
+                    next.setDate(next.getDate() + 1);
+
+                    setForm((current) => ({
+                      ...blankForm(),
+                      placement_plan_id:
+                        current.placement_plan_id,
+                      entry_date: next
+                        .toISOString()
+                        .slice(0, 10),
+                    }));
+                    setEntryStage("form");
+                  }}
+                  onHome={() => setTab("home")}
+                />
+              )}
           </>
         )}
 
-				{tab === "more" && (
-					<>
-						<div className={styles.pageHeading}>
-							<small>MORE</small>
-							<h1>App settings</h1>
-						</div>
+        {tab === "insights" && (
+          <InsightsScreen
+            trend={mortalityTrend}
+            managerInsights={managerInsights}
+            plans={plans}
+          />
+        )}
 
-						<section className={styles.card}>
-							<button
-								className={styles.menuButton}
-								onClick={() => void syncDrafts()}
-								disabled={!online || syncing}
-							>
-								<span>Sync now</span>
-								<b>
-									{syncing
-										? "Syncing…"
-										: `${pendingCount} pending`}
-								</b>
-							</button>
-
-							<a
-								className={styles.menuButton}
-								href="/broilers/performance"
-							>
-								<span>Open full house sheet</span>
-								<b>Desktop ›</b>
-							</a>
-
-							<button
-								className={styles.menuButton}
-								onClick={logout}
-							>
-								<span>Log out</span>
-								<b>›</b>
-							</button>
-						</section>
-
-						<div
-							className={styles.pageHeading}
-							style={{ marginTop: 22 }}
-						>
-							<small>SYNC CONTROL</small>
-							<h1>Sync Issues</h1>
-							<p>
-								Review entries that are waiting, failed or conflicted.
-							</p>
-						</div>
-
-						<div className={styles.syncSummary}>
-							<article>
-								<span>Pending</span>
-								<strong>{syncIssueSummary.pending}</strong>
-							</article>
-
-							<article>
-								<span>Conflicts</span>
-								<strong>{syncIssueSummary.conflicts}</strong>
-							</article>
-
-							<article>
-								<span>Failed</span>
-								<strong>{syncIssueSummary.failed}</strong>
-							</article>
-						</div>
-
-						<div className={styles.syncIssueList}>
-							{mobileDrafts.length === 0 ? (
-								<div className={styles.syncIssueCard}>
-									<div className={styles.syncEmptyState}>
-										No mobile sync issues.
-									</div>
-								</div>
-							) : (
-								mobileDrafts
-									.sort((a, b) =>
-										b.saved_at.localeCompare(a.saved_at),
-									)
-									.map((draft) => {
-										const plan = plans.find(
-											(item) =>
-												item.id ===
-												draft.payload.placement_plan_id,
-										);
-
-										const statusClass =
-											draft.status === "conflict"
-												? styles.syncBadgeConflict
-												: draft.status === "failed"
-													? styles.syncBadgeFailed
-													: draft.status === "syncing"
-														? styles.syncBadgeSyncing
-														: styles.syncBadgePending;
-
-										return (
-											<article
-												key={draft.local_id}
-												className={styles.syncIssueCard}
-											>
-												<div className={styles.syncIssueHeader}>
-													<div>
-														<strong>
-															{plan?.farm_name ?? "Unknown farm"} ·{" "}
-															{plan?.shed_name ?? "Unknown shed"}
-														</strong>
-
-														<small>
-															{plan?.cycle_code ?? "Unknown cycle"}
-														</small>
-													</div>
-
-													<span
-														className={`${styles.syncBadge} ${statusClass}`}
-													>
-														{draft.status}
-													</span>
-												</div>
-
-												<div className={styles.syncIssueBody}>
-													<p>
-														{draft.last_error ??
-															"This entry is waiting to be confirmed by OviCore."}
-													</p>
-
-													<div className={styles.syncIssueMeta}>
-														<div>
-															<span>Entry date</span>
-															<strong>
-																{draft.payload.entry_date}
-															</strong>
-														</div>
-
-														<div>
-															<span>Attempts</span>
-															<strong>
-																{draft.attempt_count}
-															</strong>
-														</div>
-
-														<div>
-															<span>Opening birds</span>
-															<strong>
-																{draft.payload.opening_birds ??
-																	"Not entered"}
-															</strong>
-														</div>
-
-														<div>
-															<span>Saved locally</span>
-															<strong>
-																{new Date(
-																	draft.saved_at,
-																).toLocaleString()}
-															</strong>
-														</div>
-													</div>
-												</div>
-
-												<div className={styles.syncIssueActions}>
-													{draft.status === "conflict" ? (
-														<>
-															<button
-																type="button"
-																className={
-																	styles.syncPrimaryButton
-																}
-																onClick={() =>
-																	void keepMobileVersion(draft)
-																}
-															>
-																Keep mobile
-															</button>
-
-															<button
-																type="button"
-																className={
-																	styles.syncSecondaryButton
-																}
-																onClick={() =>
-																	void keepServerVersion(draft)
-																}
-															>
-																Keep server
-															</button>
-														</>
-													) : (
-														<button
-															type="button"
-															className={
-																styles.syncPrimaryButton
-															}
-															onClick={() =>
-																void retryMobileDraft(draft)
-															}
-															disabled={
-																!online ||
-																draft.status === "syncing"
-															}
-														>
-															Retry sync
-														</button>
-													)}
-
-													<button
-														type="button"
-														className={styles.syncDangerButton}
-														onClick={() =>
-															void discardMobileDraft(draft)
-														}
-													>
-														Discard mobile entry
-													</button>
-												</div>
-											</article>
-										);
-									})
-							)}
-						</div>
-					</>
-				)}
+        {tab === "more" && (
+          <MoreScreen
+            displayName={displayName}
+            companyName={companyName}
+            online={online}
+            syncing={syncing}
+            pendingCount={pendingCount}
+            mobileDrafts={mobileDrafts}
+            plans={plans}
+            syncIssueSummary={syncIssueSummary}
+            onSync={() => void syncDrafts()}
+            onRetry={(draft) =>
+              void retryMobileDraft(draft)
+            }
+            onKeepMobile={(draft) =>
+              void keepMobileVersion(draft)
+            }
+            onKeepServer={(draft) =>
+              void keepServerVersion(draft)
+            }
+            onDiscard={(draft) =>
+              void discardMobileDraft(draft)
+            }
+            onLogout={() => void logout()}
+          />
+        )}
       </section>
 
       <nav className={styles.bottomNav}>
-        <NavButton active={tab === "home"} label="Home" icon="⌂" onClick={() => setTab("home")} />
-        <NavButton active={tab === "entry"} label="Daily Entry" icon="＋" onClick={() => setTab("entry")} />
-        <NavButton active={tab === "insights"} label="Insights" icon="↗" onClick={() => setTab("insights")} />
-        <NavButton active={tab === "more"} label="More" icon="•••" onClick={() => setTab("more")} />
+        <NavButton
+          active={tab === "home"}
+          label="Home"
+          icon="⌂"
+          onClick={() => setTab("home")}
+        />
+        <NavButton
+          active={tab === "entry"}
+          label="Daily Entry"
+          icon="＋"
+          onClick={() => {
+            setEntryStage("select");
+            setTab("entry");
+          }}
+        />
+        <NavButton
+          active={tab === "insights"}
+          label="Insights"
+          icon="↗"
+          onClick={() => setTab("insights")}
+        />
+        <NavButton
+          active={tab === "more"}
+          label="More"
+          icon="•••"
+          onClick={() => setTab("more")}
+        />
       </nav>
     </main>
   );
 }
 
-function NumberField({
+function HomeScreen({
+  displayName,
+  companyName,
+  loading,
+  plans,
+  managerInsights,
+  pendingCount,
+  openEntryForPlan,
+  refresh,
+}: {
+  displayName: string;
+  companyName: string;
+  loading: boolean;
+  plans: DemandPlan[];
+  managerInsights: {
+    missing: DemandPlan[];
+    mortalityWatch: {
+      record: PerformanceRecord;
+      mortality: number;
+      rate: number;
+    }[];
+    waterWatch: PerformanceRecord[];
+    todayRecords: PerformanceRecord[];
+    totalBirds: number;
+    liveWeight: number | null;
+    mortalityRate: number;
+  };
+  pendingCount: number;
+  openEntryForPlan: (planId?: number) => void;
+  refresh: () => void;
+}) {
+  return (
+    <>
+      <section className={styles.welcomePanel}>
+        <div>
+          <p>Good morning,</p>
+          <h1>{displayName}</h1>
+          <span>{companyName}</span>
+        </div>
+        <button
+          type="button"
+          className={styles.avatarButton}
+          aria-label="User profile"
+        >
+          {displayName
+            .split(" ")
+            .slice(0, 2)
+            .map((part) => part[0])
+            .join("")
+            .toUpperCase()}
+        </button>
+      </section>
+
+      <section className={styles.quickAction}>
+        <div>
+          <small>DAILY HOUSE SHEET</small>
+          <strong>
+            {managerInsights.missing.length > 0
+              ? `${managerInsights.missing.length} shed${
+                  managerInsights.missing.length === 1
+                    ? ""
+                    : "s"
+                } still waiting`
+              : "All active sheds reported"}
+          </strong>
+          <span>
+            Save entries with or without reception.
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => openEntryForPlan()}
+        >
+          Add Entry
+        </button>
+      </section>
+
+      <div className={styles.sectionHeading}>
+        <div>
+          <small>TODAY</small>
+          <h2>Farm overview</h2>
+        </div>
+        <button type="button" onClick={refresh}>
+          Refresh
+        </button>
+      </div>
+
+      <section className={styles.kpiGrid}>
+        <KpiCard
+          icon="🐔"
+          label="Total Birds"
+          value={formatNumber(
+            managerInsights.totalBirds,
+          )}
+          detail={`${plans.length} active cycle${
+            plans.length === 1 ? "" : "s"
+          }`}
+        />
+        <KpiCard
+          icon="⚖"
+          label="Live Weight"
+          value={
+            managerInsights.liveWeight === null
+              ? "—"
+              : `${formatDecimal(
+                  managerInsights.liveWeight,
+                )} kg`
+          }
+          detail="Weighted average"
+        />
+        <KpiCard
+          icon="♡"
+          label="Mortality"
+          value={`${managerInsights.mortalityRate.toFixed(
+            2,
+          )}%`}
+          detail={
+            managerInsights.mortalityWatch.length > 0
+              ? `${managerInsights.mortalityWatch.length} watch item`
+              : "Within daily threshold"
+          }
+          warning={
+            managerInsights.mortalityWatch.length > 0
+          }
+        />
+        <KpiCard
+          icon="✓"
+          label="Reported"
+          value={`${managerInsights.todayRecords.length}/${plans.length}`}
+          detail={
+            pendingCount > 0
+              ? `${pendingCount} mobile pending`
+              : "Mobile sync clear"
+          }
+        />
+      </section>
+
+      <div className={styles.sectionHeading}>
+        <div>
+          <small>ALERTS</small>
+          <h2>Needs attention</h2>
+        </div>
+      </div>
+
+      <section className={styles.alertCard}>
+        {loading ? (
+          <div className={styles.emptyState}>
+            Loading production position…
+          </div>
+        ) : managerInsights.missing.length === 0 &&
+          managerInsights.mortalityWatch.length === 0 &&
+          managerInsights.waterWatch.length === 0 ? (
+          <div className={styles.allClear}>
+            <span>✓</span>
+            <div>
+              <strong>All clear</strong>
+              <small>
+                No major daily exceptions detected.
+              </small>
+            </div>
+          </div>
+        ) : (
+          <>
+            {managerInsights.missing
+              .slice(0, 4)
+              .map((plan) => (
+                <button
+                  type="button"
+                  key={`missing-${plan.id}`}
+                  className={styles.alertRow}
+                  onClick={() =>
+                    openEntryForPlan(plan.id)
+                  }
+                >
+                  <i className={styles.alertOrange} />
+                  <div>
+                    <strong>
+                      {plan.farm_name} · {plan.shed_name}
+                    </strong>
+                    <small>
+                      No house sheet received today
+                    </small>
+                  </div>
+                  <b>›</b>
+                </button>
+              ))}
+
+            {managerInsights.mortalityWatch
+              .slice(0, 3)
+              .map((item) => {
+                const plan = plans.find(
+                  (candidate) =>
+                    candidate.id ===
+                    item.record.placement_plan_id,
+                );
+
+                return (
+                  <div
+                    className={styles.alertRow}
+                    key={`mort-${item.record.id}`}
+                  >
+                    <i className={styles.alertRed} />
+                    <div>
+                      <strong>
+                        {plan?.farm_name} ·{" "}
+                        {plan?.shed_name}
+                      </strong>
+                      <small>
+                        Daily mortality{" "}
+                        {item.rate.toFixed(2)}%
+                      </small>
+                    </div>
+                    <b>Review</b>
+                  </div>
+                );
+              })}
+          </>
+        )}
+      </section>
+    </>
+  );
+}
+
+function SelectShedScreen({
+  plans,
+  records,
+  form,
+  setForm,
+  onContinue,
+}: {
+  plans: DemandPlan[];
+  records: PerformanceRecord[];
+  form: EntryForm;
+  setForm: (
+    updater:
+      | EntryForm
+      | ((current: EntryForm) => EntryForm),
+  ) => void;
+  onContinue: () => void;
+}) {
+  return (
+    <>
+      <ScreenTitle
+        eyebrow="DAILY ENTRY"
+        title="Select shed"
+        detail="Choose the active farm, shed and cycle."
+      />
+
+      <label className={styles.appField}>
+        Entry date
+        <input
+          type="date"
+          value={form.entry_date}
+          onChange={(event) =>
+            setForm((current) => ({
+              ...current,
+              entry_date: event.target.value,
+            }))
+          }
+        />
+      </label>
+
+      <div className={styles.shedList}>
+        {plans.map((plan) => {
+          const latest = records
+            .filter(
+              (record) =>
+                record.placement_plan_id === plan.id,
+            )
+            .sort((a, b) =>
+              b.entry_date.localeCompare(a.entry_date),
+            )[0];
+
+          const selected =
+            Number(form.placement_plan_id) === plan.id;
+
+          return (
+            <button
+              type="button"
+              key={plan.id}
+              className={`${styles.shedCard} ${
+                selected ? styles.shedCardSelected : ""
+              }`}
+              onClick={() =>
+                setForm((current) => ({
+                  ...current,
+                  placement_plan_id: plan.id,
+                }))
+              }
+            >
+              <div className={styles.shedIcon}>⌂</div>
+              <div className={styles.shedMain}>
+                <strong>
+                  {plan.farm_name ?? "Farm"} ·{" "}
+                  {plan.shed_name ?? "Shed"}
+                </strong>
+                <span>
+                  {plan.cycle_code ?? "Active cycle"}
+                </span>
+                <small>
+                  {formatNumber(
+                    latest?.closing_birds ??
+                      plan.planned_birds,
+                  )}{" "}
+                  birds
+                  {latest?.avg_weight_kg
+                    ? ` · ${formatDecimal(
+                        latest.avg_weight_kg,
+                      )} kg`
+                    : ""}
+                </small>
+              </div>
+              <i
+                className={
+                  latest
+                    ? styles.statusGood
+                    : styles.statusPending
+                }
+              />
+              <b>›</b>
+            </button>
+          );
+        })}
+      </div>
+
+      <button
+        type="button"
+        className={styles.primaryButton}
+        onClick={onContinue}
+        disabled={!form.placement_plan_id}
+      >
+        Continue to daily entry
+      </button>
+    </>
+  );
+}
+
+function DailyEntryScreen({
+  form,
+  setForm,
+  selectedPlan,
+  selectedAge,
+  onBack,
+  onSave,
+}: {
+  form: EntryForm;
+  setForm: (
+    updater:
+      | EntryForm
+      | ((current: EntryForm) => EntryForm),
+  ) => void;
+  selectedPlan?: DemandPlan;
+  selectedAge: number;
+  onBack: () => void;
+  onSave: (event: FormEvent) => Promise<void>;
+}) {
+  const mortalityTotal =
+    numberOrZero(toNumber(form.mortality_front)) +
+    numberOrZero(toNumber(form.mortality_middle)) +
+    numberOrZero(toNumber(form.mortality_back)) +
+    numberOrZero(toNumber(form.mortality_other));
+
+  const cullTotal =
+    numberOrZero(toNumber(form.cull_legs)) +
+    numberOrZero(toNumber(form.cull_runts)) +
+    numberOrZero(toNumber(form.cull_beak)) +
+    numberOrZero(toNumber(form.cull_other));
+
+  const opening = toNumber(form.opening_birds);
+  const closing =
+    opening === null
+      ? null
+      : Math.max(0, opening - mortalityTotal - cullTotal);
+
+  return (
+    <form
+      className={styles.entryScreen}
+      onSubmit={onSave}
+    >
+      <div className={styles.entryTopbar}>
+        <button type="button" onClick={onBack}>
+          ‹ Back
+        </button>
+        <strong>Daily Entry</strong>
+        <button type="submit">Save</button>
+      </div>
+
+      <section className={styles.selectedShedBanner}>
+        <div className={styles.shedIcon}>⌂</div>
+        <div>
+          <strong>
+            {selectedPlan?.farm_name ?? "Farm"} ·{" "}
+            {selectedPlan?.shed_name ?? "Shed"}
+          </strong>
+          <span>
+            Age {selectedAge} days ·{" "}
+            {selectedPlan?.cycle_code ?? "Active cycle"}
+          </span>
+        </div>
+        <button type="button" onClick={onBack}>
+          Change
+        </button>
+      </section>
+
+      <div className={styles.formSectionHeading}>
+        <small>BIRD NUMBERS</small>
+      </div>
+
+      <div className={styles.formCard}>
+        <NumberRow
+          label="Opening birds"
+          value={form.opening_birds}
+          onChange={(value) =>
+            setForm((current) => ({
+              ...current,
+              opening_birds: value,
+            }))
+          }
+        />
+
+        <div className={styles.formSplitRow}>
+          <span>Mortality</span>
+          <strong>{mortalityTotal}</strong>
+        </div>
+
+        <div className={styles.compactGrid}>
+          <NumberBox
+            label="Front"
+            value={form.mortality_front}
+            onChange={(value) =>
+              setForm((current) => ({
+                ...current,
+                mortality_front: value,
+              }))
+            }
+          />
+          <NumberBox
+            label="Middle"
+            value={form.mortality_middle}
+            onChange={(value) =>
+              setForm((current) => ({
+                ...current,
+                mortality_middle: value,
+              }))
+            }
+          />
+          <NumberBox
+            label="Back"
+            value={form.mortality_back}
+            onChange={(value) =>
+              setForm((current) => ({
+                ...current,
+                mortality_back: value,
+              }))
+            }
+          />
+          <NumberBox
+            label="Other"
+            value={form.mortality_other}
+            onChange={(value) =>
+              setForm((current) => ({
+                ...current,
+                mortality_other: value,
+              }))
+            }
+          />
+        </div>
+
+        <div className={styles.formSplitRow}>
+          <span>Culls</span>
+          <strong>{cullTotal}</strong>
+        </div>
+
+        <div className={styles.compactGrid}>
+          <NumberBox
+            label="Legs"
+            value={form.cull_legs}
+            onChange={(value) =>
+              setForm((current) => ({
+                ...current,
+                cull_legs: value,
+              }))
+            }
+          />
+          <NumberBox
+            label="Runts"
+            value={form.cull_runts}
+            onChange={(value) =>
+              setForm((current) => ({
+                ...current,
+                cull_runts: value,
+              }))
+            }
+          />
+          <NumberBox
+            label="Beak"
+            value={form.cull_beak}
+            onChange={(value) =>
+              setForm((current) => ({
+                ...current,
+                cull_beak: value,
+              }))
+            }
+          />
+          <NumberBox
+            label="Other"
+            value={form.cull_other}
+            onChange={(value) =>
+              setForm((current) => ({
+                ...current,
+                cull_other: value,
+              }))
+            }
+          />
+        </div>
+
+        <div className={styles.autoRow}>
+          <span>Closing birds</span>
+          <strong>{formatNumber(closing)}</strong>
+          <small>Calculated automatically</small>
+        </div>
+      </div>
+
+      <div className={styles.formSectionHeading}>
+        <small>PERFORMANCE</small>
+      </div>
+
+      <div className={styles.formCard}>
+        <NumberRow
+          label="Feed"
+          suffix="kg"
+          decimal
+          value={form.feed_kg}
+          onChange={(value) =>
+            setForm((current) => ({
+              ...current,
+              feed_kg: value,
+            }))
+          }
+        />
+        <NumberRow
+          label="Water"
+          suffix="L"
+          decimal
+          value={form.water_litres}
+          onChange={(value) =>
+            setForm((current) => ({
+              ...current,
+              water_litres: value,
+            }))
+          }
+        />
+        <NumberRow
+          label="Average weight"
+          suffix="kg"
+          decimal
+          value={form.body_weight_kg}
+          onChange={(value) =>
+            setForm((current) => ({
+              ...current,
+              body_weight_kg: value,
+            }))
+          }
+        />
+      </div>
+
+      <label className={styles.commentsCard}>
+        <span>Comments</span>
+        <textarea
+          rows={4}
+          placeholder="Add litter, bird or equipment notes…"
+          value={form.notes}
+          onChange={(event) =>
+            setForm((current) => ({
+              ...current,
+              notes: event.target.value,
+            }))
+          }
+        />
+      </label>
+
+      <button
+        type="submit"
+        className={styles.saveButton}
+      >
+        Save house sheet
+      </button>
+    </form>
+  );
+}
+
+function EntrySavedScreen({
+  summary,
+  pendingCount,
+  online,
+  onTomorrow,
+  onHome,
+}: {
+  summary: SavedSummary;
+  pendingCount: number;
+  online: boolean;
+  onTomorrow: () => void;
+  onHome: () => void;
+}) {
+  return (
+    <>
+      <div className={styles.savedHero}>
+        <div className={styles.successIcon}>✓</div>
+        <small>
+          {online
+            ? pendingCount > 0
+              ? "SAVED — SYNC IN PROGRESS"
+              : "SYNCED WITH OVICORE"
+            : "SAVED OFFLINE"}
+        </small>
+        <h1>Entry saved</h1>
+        <p>
+          Today&apos;s house sheet has been stored
+          successfully.
+        </p>
+      </div>
+
+      <section className={styles.summaryCard}>
+        <div className={styles.summaryHeader}>
+          <div>
+            <strong>
+              {summary.farm} · {summary.shed}
+            </strong>
+            <span>{summary.cycle}</span>
+          </div>
+          <b>{formatDate(summary.entryDate)}</b>
+        </div>
+
+        <div className={styles.summaryGrid}>
+          <SummaryMetric
+            label="Opening"
+            value={formatNumber(summary.opening)}
+          />
+          <SummaryMetric
+            label="Mortality"
+            value={formatNumber(summary.mortality)}
+          />
+          <SummaryMetric
+            label="Culls"
+            value={formatNumber(summary.culls)}
+          />
+          <SummaryMetric
+            label="Closing"
+            value={formatNumber(summary.closing)}
+          />
+          <SummaryMetric
+            label="Feed"
+            value={
+              summary.feed === null
+                ? "—"
+                : `${formatNumber(summary.feed)} kg`
+            }
+          />
+          <SummaryMetric
+            label="Water"
+            value={
+              summary.water === null
+                ? "—"
+                : `${formatNumber(summary.water)} L`
+            }
+          />
+        </div>
+
+        <div className={styles.weightSummary}>
+          <span>Average weight</span>
+          <strong>
+            {summary.weight === null
+              ? "—"
+              : `${formatDecimal(summary.weight)} kg`}
+          </strong>
+        </div>
+      </section>
+
+      <button
+        type="button"
+        className={styles.primaryButton}
+        onClick={onTomorrow}
+      >
+        Add tomorrow&apos;s entry
+      </button>
+
+      <button
+        type="button"
+        className={styles.secondaryButton}
+        onClick={onHome}
+      >
+        Return home
+      </button>
+    </>
+  );
+}
+
+function InsightsScreen({
+  trend,
+  managerInsights,
+  plans,
+}: {
+  trend: {
+    key: string;
+    label: string;
+    value: number;
+  }[];
+  managerInsights: {
+    mortalityWatch: {
+      record: PerformanceRecord;
+      mortality: number;
+      rate: number;
+    }[];
+    mortalityRate: number;
+    waterWatch: PerformanceRecord[];
+    missing: DemandPlan[];
+  };
+  plans: DemandPlan[];
+}) {
+  const max = Math.max(
+    0.5,
+    ...trend.map((item) => item.value),
+  );
+
+  const points = trend
+    .map((item, index) => {
+      const x =
+        trend.length === 1
+          ? 50
+          : (index / (trend.length - 1)) * 100;
+      const y = 90 - (item.value / max) * 72;
+      return `${x},${y}`;
+    })
+    .join(" ");
+
+  return (
+    <>
+      <ScreenTitle
+        eyebrow="INSIGHTS"
+        title="Broiler performance"
+        detail="Daily exceptions and recent mortality trend."
+      />
+
+      <section className={styles.chartCard}>
+        <div className={styles.chartHeader}>
+          <div>
+            <small>MORTALITY</small>
+            <strong>
+              {managerInsights.mortalityRate.toFixed(2)}%
+            </strong>
+          </div>
+          <span>Last 7 days</span>
+        </div>
+
+        <div className={styles.chartWrap}>
+          <svg
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            aria-label="Seven day mortality chart"
+          >
+            <defs>
+              <linearGradient
+                id="mortalityArea"
+                x1="0"
+                y1="0"
+                x2="0"
+                y2="1"
+              >
+                <stop
+                  offset="0%"
+                  stopColor="#0c6b50"
+                  stopOpacity="0.28"
+                />
+                <stop
+                  offset="100%"
+                  stopColor="#0c6b50"
+                  stopOpacity="0"
+                />
+              </linearGradient>
+            </defs>
+
+            <polyline
+              points={`0,90 ${points} 100,90`}
+              fill="url(#mortalityArea)"
+              stroke="none"
+            />
+            <polyline
+              points={points}
+              fill="none"
+              stroke="#0c6b50"
+              strokeWidth="2.6"
+              vectorEffect="non-scaling-stroke"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            {trend.map((item, index) => {
+              const x =
+                trend.length === 1
+                  ? 50
+                  : (index /
+                      (trend.length - 1)) *
+                    100;
+              const y =
+                90 - (item.value / max) * 72;
+
+              return (
+                <circle
+                  key={item.key}
+                  cx={x}
+                  cy={y}
+                  r="1.8"
+                  fill="#f28b20"
+                  stroke="#ffffff"
+                  strokeWidth="1"
+                  vectorEffect="non-scaling-stroke"
+                />
+              );
+            })}
+          </svg>
+
+          <div className={styles.chartLabels}>
+            {trend.map((item) => (
+              <span key={item.key}>{item.label}</span>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className={styles.insightMetricGrid}>
+        <KpiCard
+          icon="!"
+          label="Mortality Watch"
+          value={formatNumber(
+            managerInsights.mortalityWatch.length,
+          )}
+          detail="At or above 0.50%"
+          warning={
+            managerInsights.mortalityWatch.length > 0
+          }
+        />
+        <KpiCard
+          icon="≈"
+          label="Water / Feed"
+          value={formatNumber(
+            managerInsights.waterWatch.length,
+          )}
+          detail="Ratio exceptions"
+          warning={
+            managerInsights.waterWatch.length > 0
+          }
+        />
+      </section>
+
+      <div className={styles.sectionHeading}>
+        <div>
+          <small>TOP SHEDS</small>
+          <h2>Mortality exceptions</h2>
+        </div>
+      </div>
+
+      <section className={styles.rankCard}>
+        {managerInsights.mortalityWatch.length === 0 ? (
+          <div className={styles.emptyState}>
+            No mortality exceptions today.
+          </div>
+        ) : (
+          managerInsights.mortalityWatch.map(
+            (item, index) => {
+              const plan = plans.find(
+                (candidate) =>
+                  candidate.id ===
+                  item.record.placement_plan_id,
+              );
+
+              return (
+                <div
+                  className={styles.rankRow}
+                  key={item.record.id}
+                >
+                  <b>{index + 1}</b>
+                  <div>
+                    <strong>
+                      {plan?.farm_name} ·{" "}
+                      {plan?.shed_name}
+                    </strong>
+                    <small>
+                      {formatNumber(item.mortality)} birds
+                    </small>
+                  </div>
+                  <span>{item.rate.toFixed(2)}%</span>
+                </div>
+              );
+            },
+          )
+        )}
+      </section>
+    </>
+  );
+}
+
+function MoreScreen({
+  displayName,
+  companyName,
+  online,
+  syncing,
+  pendingCount,
+  mobileDrafts,
+  plans,
+  syncIssueSummary,
+  onSync,
+  onRetry,
+  onKeepMobile,
+  onKeepServer,
+  onDiscard,
+  onLogout,
+}: {
+  displayName: string;
+  companyName: string;
+  online: boolean;
+  syncing: boolean;
+  pendingCount: number;
+  mobileDrafts: MobileDraft[];
+  plans: DemandPlan[];
+  syncIssueSummary: {
+    pending: number;
+    conflicts: number;
+    failed: number;
+  };
+  onSync: () => void;
+  onRetry: (draft: MobileDraft) => void;
+  onKeepMobile: (draft: MobileDraft) => void;
+  onKeepServer: (draft: MobileDraft) => void;
+  onDiscard: (draft: MobileDraft) => void;
+  onLogout: () => void;
+}) {
+  return (
+    <>
+      <ScreenTitle
+        eyebrow="MORE"
+        title="App menu"
+        detail="Account, mobile sync and OviCore tools."
+      />
+
+      <section className={styles.profileCard}>
+        <div className={styles.profileAvatar}>
+          {displayName
+            .split(" ")
+            .slice(0, 2)
+            .map((part) => part[0])
+            .join("")
+            .toUpperCase()}
+        </div>
+        <div>
+          <strong>{displayName}</strong>
+          <span>{companyName}</span>
+        </div>
+        <b>›</b>
+      </section>
+
+      <section className={styles.menuCard}>
+        <MenuLink
+          href="/broilers"
+          icon="⌂"
+          label="Broiler Home"
+        />
+        <MenuLink
+          href="/broilers/demand-planner"
+          icon="▦"
+          label="Demand Planner"
+        />
+        <MenuLink
+          href="/broilers/performance"
+          icon="▤"
+          label="Daily House Sheet"
+        />
+        <MenuLink
+          href="/broilers/insights"
+          icon="↗"
+          label="Broiler Insights"
+        />
+        <MenuLink
+          href="/broilers/processing"
+          icon="◫"
+          label="Processing"
+        />
+        <MenuLink
+          href="/broilers/chick-supply"
+          icon="◉"
+          label="Chick Supply"
+        />
+      </section>
+
+      <div className={styles.sectionHeading}>
+        <div>
+          <small>SYNC CONTROL</small>
+          <h2>Mobile sync</h2>
+        </div>
+        <button
+          type="button"
+          onClick={onSync}
+          disabled={!online || syncing}
+        >
+          {syncing ? "Syncing…" : "Sync now"}
+        </button>
+      </div>
+
+      <section className={styles.syncSummary}>
+        <article>
+          <span>Pending</span>
+          <strong>{syncIssueSummary.pending}</strong>
+        </article>
+        <article>
+          <span>Conflicts</span>
+          <strong>{syncIssueSummary.conflicts}</strong>
+        </article>
+        <article>
+          <span>Failed</span>
+          <strong>{syncIssueSummary.failed}</strong>
+        </article>
+      </section>
+
+      <div className={styles.syncIssueList}>
+        {mobileDrafts.length === 0 ? (
+          <div className={styles.syncEmptyState}>
+            <span>✓</span>
+            <strong>No mobile sync issues</strong>
+            <small>
+              All saved entries are confirmed by OviCore.
+            </small>
+          </div>
+        ) : (
+          [...mobileDrafts]
+            .sort((a, b) =>
+              b.saved_at.localeCompare(a.saved_at),
+            )
+            .map((draft) => {
+              const plan = plans.find(
+                (item) =>
+                  item.id ===
+                  draft.payload.placement_plan_id,
+              );
+
+              return (
+                <article
+                  key={draft.local_id}
+                  className={styles.syncIssueCard}
+                >
+                  <div
+                    className={styles.syncIssueHeader}
+                  >
+                    <div>
+                      <strong>
+                        {plan?.farm_name ??
+                          "Unknown farm"}{" "}
+                        ·{" "}
+                        {plan?.shed_name ??
+                          "Unknown shed"}
+                      </strong>
+                      <small>
+                        {formatDate(
+                          draft.payload.entry_date,
+                        )}
+                      </small>
+                    </div>
+                    <SyncBadge status={draft.status} />
+                  </div>
+
+                  <p>
+                    {draft.last_error ??
+                      "Waiting to be confirmed by OviCore."}
+                  </p>
+
+                  <div
+                    className={styles.syncIssueActions}
+                  >
+                    {draft.status === "conflict" ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onKeepMobile(draft)
+                          }
+                        >
+                          Keep mobile
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onKeepServer(draft)
+                          }
+                        >
+                          Keep server
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => onRetry(draft)}
+                        disabled={
+                          !online ||
+                          draft.status === "syncing"
+                        }
+                      >
+                        Retry sync
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className={styles.dangerButton}
+                      onClick={() => onDiscard(draft)}
+                    >
+                      Discard
+                    </button>
+                  </div>
+                </article>
+              );
+            })
+        )}
+      </div>
+
+      <section className={styles.menuCard}>
+        <button
+          type="button"
+          className={styles.logoutButton}
+          onClick={onLogout}
+        >
+          <span>↪</span>
+          <strong>Log out</strong>
+          <b>›</b>
+        </button>
+      </section>
+
+      <p className={styles.versionText}>
+        OviCore Mobile · {pendingCount} pending ·{" "}
+        {online ? "Online" : "Offline"}
+      </p>
+    </>
+  );
+}
+
+function KpiCard({
+  icon,
   label,
   value,
+  detail,
+  warning = false,
+}: {
+  icon: string;
+  label: string;
+  value: string;
+  detail: string;
+  warning?: boolean;
+}) {
+  return (
+    <article
+      className={`${styles.kpiCard} ${
+        warning ? styles.kpiWarning : ""
+      }`}
+    >
+      <div className={styles.kpiIcon}>{icon}</div>
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <small>{detail}</small>
+    </article>
+  );
+}
+
+function ScreenTitle({
+  eyebrow,
+  title,
+  detail,
+}: {
+  eyebrow: string;
+  title: string;
+  detail: string;
+}) {
+  return (
+    <div className={styles.screenTitle}>
+      <small>{eyebrow}</small>
+      <h1>{title}</h1>
+      <p>{detail}</p>
+    </div>
+  );
+}
+
+function NumberRow({
+  label,
+  value,
+  suffix,
   decimal = false,
   onChange,
 }: {
   label: string;
   value: string;
+  suffix?: string;
   decimal?: boolean;
   onChange: (value: string) => void;
 }) {
   return (
-    <label>
-      {label}
+    <label className={styles.numberRow}>
+      <span>{label}</span>
+      <div>
+        <input
+          type="number"
+          inputMode={decimal ? "decimal" : "numeric"}
+          min="0"
+          step={decimal ? "0.01" : "1"}
+          value={value}
+          onChange={(event) =>
+            onChange(event.target.value)
+          }
+        />
+        {suffix && <b>{suffix}</b>}
+      </div>
+    </label>
+  );
+}
+
+function NumberBox({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className={styles.numberBox}>
+      <span>{label}</span>
       <input
         type="number"
-        inputMode={decimal ? "decimal" : "numeric"}
-        step={decimal ? "0.01" : "1"}
+        inputMode="numeric"
         min="0"
+        step="1"
         value={value}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(event) =>
+          onChange(event.target.value)
+        }
       />
     </label>
   );
 }
 
-function FieldGroup({ title, children }: { title: string; children: React.ReactNode }) {
+function SummaryMetric({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
   return (
-    <fieldset className={styles.fieldGroup}>
-      <legend>{title}</legend>
-      <div className={styles.twoCol}>{children}</div>
-    </fieldset>
+    <div>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
   );
 }
 
-function Insight({ label, value, detail }: { label: string; value: number; detail: string }) {
+function MenuLink({
+  href,
+  icon,
+  label,
+}: {
+  href: string;
+  icon: string;
+  label: string;
+}) {
   return (
-    <div className={styles.insight}>
-      <div><strong>{label}</strong><small>{detail}</small></div>
-      <b>{formatNumber(value)}</b>
-    </div>
+    <a href={href} className={styles.menuRow}>
+      <span>{icon}</span>
+      <strong>{label}</strong>
+      <b>›</b>
+    </a>
+  );
+}
+
+function SyncBadge({
+  status,
+}: {
+  status: MobileDraft["status"];
+}) {
+  return (
+    <span
+      className={`${styles.syncBadge} ${
+        status === "conflict"
+          ? styles.syncBadgeConflict
+          : status === "failed"
+            ? styles.syncBadgeFailed
+            : status === "syncing"
+              ? styles.syncBadgeSyncing
+              : styles.syncBadgePending
+      }`}
+    >
+      {status}
+    </span>
   );
 }
 
@@ -1112,8 +2379,13 @@ function NavButton({
   onClick: () => void;
 }) {
   return (
-    <button className={active ? styles.navActive : ""} onClick={onClick}>
-      <span>{icon}</span><small>{label}</small>
+    <button
+      type="button"
+      className={active ? styles.navActive : ""}
+      onClick={onClick}
+    >
+      <span>{icon}</span>
+      <small>{label}</small>
     </button>
   );
 }
