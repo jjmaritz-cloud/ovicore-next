@@ -349,8 +349,35 @@ export default function MobileBroilerApp() {
     }
   }, [companyId, currentUser]);
 
+  const checkApiConnection = useCallback(async () => {
+    if (!navigator.onLine) {
+      setOnline(false);
+      return false;
+    }
+
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/auth/me`,
+        {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        },
+      );
+
+      const reachable =
+        response.ok || response.status === 401;
+
+      setOnline(reachable);
+      return reachable;
+    } catch {
+      setOnline(false);
+      return false;
+    }
+  }, []);
+
   const syncDrafts = useCallback(async () => {
-    if (!navigator.onLine || syncing) return;
+    if (!online || syncing) return;
 
     setSyncing(true);
     setMessage("");
@@ -484,29 +511,56 @@ export default function MobileBroilerApp() {
     } finally {
       setSyncing(false);
     }
-  }, [loadData, loadPendingCount, syncing]);
+  }, [loadData, loadPendingCount, online, syncing]);
 
   useEffect(() => {
-    setOnline(navigator.onLine);
+    const handleOnline = () => {
+      void checkApiConnection();
+    };
 
-    const handleOnline = () => setOnline(true);
-    const handleOffline = () => setOnline(false);
+    const handleOffline = () => {
+      setOnline(false);
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void checkApiConnection();
+      }
+    };
 
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
+    document.addEventListener(
+      "visibilitychange",
+      handleVisibility,
+    );
 
     if ("serviceWorker" in navigator) {
       void navigator.serviceWorker.register("/sw.js");
     }
 
+    void checkApiConnection();
     void loadPendingCount();
     void loadCurrentUser();
+
+    const connectionTimer = window.setInterval(() => {
+      void checkApiConnection();
+    }, 15000);
 
     return () => {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
+      document.removeEventListener(
+        "visibilitychange",
+        handleVisibility,
+      );
+      window.clearInterval(connectionTimer);
     };
-  }, [loadCurrentUser, loadPendingCount]);
+  }, [
+    checkApiConnection,
+    loadCurrentUser,
+    loadPendingCount,
+  ]);
 
   useEffect(() => {
     if (currentUser && companyId) {
@@ -782,14 +836,14 @@ export default function MobileBroilerApp() {
     });
 
     setMessage(
-      navigator.onLine
+      online
         ? "Entry saved. Syncing with OviCore…"
         : "Entry saved offline. It will sync when signal returns.",
     );
 
     setEntryStage("saved");
 
-    if (navigator.onLine) {
+    if (online) {
       await syncDrafts();
     }
   }
@@ -802,7 +856,7 @@ export default function MobileBroilerApp() {
 
     await loadPendingCount();
 
-    if (navigator.onLine) {
+    if (online) {
       await syncDrafts();
     } else {
       setMessage(
@@ -828,7 +882,7 @@ export default function MobileBroilerApp() {
 
     await loadPendingCount();
 
-    if (navigator.onLine) {
+    if (online) {
       await syncDrafts();
     } else {
       setMessage(
@@ -2027,37 +2081,24 @@ function MoreScreen({
         <b>›</b>
       </section>
 
-      <section className={styles.menuCard}>
-        <MenuLink
-          href="/broilers"
-          icon="⌂"
-          label="Broiler Home"
-        />
-        <MenuLink
-          href="/broilers/demand-planner"
-          icon="▦"
-          label="Demand Planner"
-        />
-        <MenuLink
-          href="/broilers/performance"
-          icon="▤"
-          label="Daily House Sheet"
-        />
-        <MenuLink
-          href="/broilers/insights"
-          icon="↗"
-          label="Broiler Insights"
-        />
-        <MenuLink
-          href="/broilers/processing"
-          icon="◫"
-          label="Processing"
-        />
-        <MenuLink
-          href="/broilers/chick-supply"
-          icon="◉"
-          label="Chick Supply"
-        />
+      <section className={styles.mobileScopeCard}>
+        <div>
+          <span>✓</span>
+          <div>
+            <strong>Broiler mobile workspace</strong>
+            <small>
+              Daily House Sheet entry, operational insights,
+              alerts and offline sync only.
+            </small>
+          </div>
+        </div>
+
+        <div className={styles.mobileScopeItems}>
+          <span>Daily entry</span>
+          <span>Insights</span>
+          <span>Notifications</span>
+          <span>Offline sync</span>
+        </div>
       </section>
 
       <div className={styles.sectionHeading}>
@@ -2324,24 +2365,6 @@ function SummaryMetric({
       <span>{label}</span>
       <strong>{value}</strong>
     </div>
-  );
-}
-
-function MenuLink({
-  href,
-  icon,
-  label,
-}: {
-  href: string;
-  icon: string;
-  label: string;
-}) {
-  return (
-    <a href={href} className={styles.menuRow}>
-      <span>{icon}</span>
-      <strong>{label}</strong>
-      <b>›</b>
-    </a>
   );
 }
 
