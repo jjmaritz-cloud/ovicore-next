@@ -21,6 +21,11 @@ import styles from "./mobile.module.css";
 
 const API_BASE = "";
 
+const MOBILE_USER_CACHE_KEY =
+  "ovicore_mobile_cached_user";
+const MOBILE_DATA_CACHE_KEY =
+  "ovicore_mobile_broiler_cache_v1";
+
 type CurrentUser = {
   id: number;
   full_name: string;
@@ -102,6 +107,13 @@ type SavedSummary = {
   weight: number | null;
 };
 
+type MobileDataCache = {
+  company_id: number;
+  cached_at: string;
+  plans: DemandPlan[];
+  records: PerformanceRecord[];
+};
+
 const blankForm = (): EntryForm => ({
   placement_plan_id: "",
   entry_date: new Date().toISOString().slice(0, 10),
@@ -177,6 +189,58 @@ function formatDate(value: string) {
     month: "short",
     year: "numeric",
   });
+}
+
+function readCachedUser(): CurrentUser | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = window.localStorage.getItem(
+      MOBILE_USER_CACHE_KEY,
+    );
+
+    return raw
+      ? (JSON.parse(raw) as CurrentUser)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function readMobileDataCache(
+  companyId: number,
+): MobileDataCache | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = window.localStorage.getItem(
+      MOBILE_DATA_CACHE_KEY,
+    );
+
+    if (!raw) return null;
+
+    const cache = JSON.parse(raw) as MobileDataCache;
+
+    return cache.company_id === companyId
+      ? cache
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function applyPlanSelection(
+  plansData: DemandPlan[],
+  setForm: (
+    updater: (current: EntryForm) => EntryForm,
+  ) => void,
+) {
+  setForm((current) => ({
+    ...current,
+    placement_plan_id:
+      current.placement_plan_id ||
+      (plansData.length ? plansData[0].id : ""),
+  }));
 }
 
 async function authenticatedFetch(
@@ -277,14 +341,31 @@ export default function MobileBroilerApp() {
       }
 
       const user: CurrentUser = await response.json();
+
       setCurrentUser(user);
+      window.localStorage.setItem(
+        MOBILE_USER_CACHE_KEY,
+        JSON.stringify(user),
+      );
+
       return user;
     } catch (error) {
+      const cachedUser = readCachedUser();
+
+      if (cachedUser) {
+        setCurrentUser(cachedUser);
+        setMessage(
+          "Offline mode: using the last signed-in OviCore profile.",
+        );
+        return cachedUser;
+      }
+
       setMessage(
         error instanceof Error
           ? error.message
           : "Could not load your OviCore login.",
       );
+
       return null;
     }
   }, []);
@@ -331,19 +412,36 @@ export default function MobileBroilerApp() {
 
       setPlans(plansData);
       setRecords(recordsData);
+      applyPlanSelection(plansData, setForm);
 
-      setForm((current) => ({
-        ...current,
-        placement_plan_id:
-          current.placement_plan_id ||
-          (plansData.length ? plansData[0].id : ""),
-      }));
-    } catch (error) {
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "Could not load mobile data.",
+      const cache: MobileDataCache = {
+        company_id: companyId,
+        cached_at: new Date().toISOString(),
+        plans: plansData,
+        records: recordsData,
+      };
+
+      window.localStorage.setItem(
+        MOBILE_DATA_CACHE_KEY,
+        JSON.stringify(cache),
       );
+    } catch (error) {
+      const cache = readMobileDataCache(companyId);
+
+      if (cache) {
+        setPlans(cache.plans);
+        setRecords(cache.records);
+        applyPlanSelection(cache.plans, setForm);
+        setMessage(
+          "Offline mode: using the last synced farm, shed and cycle data.",
+        );
+      } else {
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : "Could not load mobile data.",
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -1367,7 +1465,7 @@ function SelectShedScreen({
       <ScreenTitle
         eyebrow="DAILY ENTRY"
         title="Select shed"
-        detail="Choose the active farm, shed and cycle."
+        detail="Choose the active farm, shed and cycle. Cached selections remain available offline."
       />
 
       <label className={styles.appField}>
