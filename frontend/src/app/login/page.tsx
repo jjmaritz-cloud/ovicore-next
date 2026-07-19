@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import OviCoreBrandIcon from "@/components/OviCoreBrandIcon";
 
@@ -15,17 +15,42 @@ type ApiError = {
   detail?: string;
 };
 
+function getSafeNextPath(): string {
+  if (typeof window === "undefined") {
+    return "/home";
+  }
+
+  const requestedPath = new URLSearchParams(
+    window.location.search,
+  ).get("next");
+
+  if (
+    !requestedPath ||
+    !requestedPath.startsWith("/") ||
+    requestedPath.startsWith("//")
+  ) {
+    return "/home";
+  }
+
+  return requestedPath;
+}
+
 export default function LoginPage() {
   const router = useRouter();
 
-  const [email, setEmail] = useState("jj@ovicore.com.au");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberEmail, setRememberEmail] = useState(true);
 
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+
+  useEffect(() => {
+    window.localStorage.removeItem(
+      "ovicore_remembered_email",
+    );
+  }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -72,24 +97,20 @@ export default function LoginPage() {
         throw new Error(apiError);
       }
 
-      if (rememberEmail) {
-        window.localStorage.setItem(
-          "ovicore_remembered_email",
-          normalisedEmail
-        );
-      } else {
-        window.localStorage.removeItem("ovicore_remembered_email");
-      }
+      window.localStorage.removeItem(
+        "ovicore_remembered_email",
+      );
 
       const loginData = data as LoginResponse;
+      const nextPath = getSafeNextPath();
 
-			if (loginData.must_change_password) {
-				router.replace("/home");
-				router.refresh();
-				return;
-			}
+      if (loginData.must_change_password) {
+        router.replace(nextPath);
+        router.refresh();
+        return;
+      }
 
-      router.replace("/home");
+      router.replace(nextPath);
       router.refresh();
     } catch (error) {
       console.error(error);
@@ -169,7 +190,7 @@ export default function LoginPage() {
             <h2>Welcome back</h2>
 
             <p>
-              Sign in using your OviCore account.
+              Sign in using your OviCore account. You will return to the requested OviCore screen.
             </p>
           </div>
 
@@ -220,20 +241,7 @@ export default function LoginPage() {
             </div>
 
             <div className="login-options">
-              <label className="remember-option">
-                <input
-                  type="checkbox"
-                  checked={rememberEmail}
-                  disabled={loading}
-                  onChange={(event) =>
-                    setRememberEmail(event.target.checked)
-                  }
-                />
-
-                <span>Remember email</span>
-              </label>
-
-              <button
+<button
                 type="button"
                 className="forgot-button"
                 disabled={loading}
@@ -350,7 +358,7 @@ export default function LoginPage() {
           padding: 42px 52px;
           display: flex;
           flex-direction: column;
-          justify-content: space-between;
+          justify-content: flex-end;
         }
 
         .brand-mark,
@@ -563,21 +571,6 @@ export default function LoginPage() {
           align-items: center;
           gap: 12px;
           margin: 3px 0 18px;
-        }
-
-        .remember-option {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          color: #526b61;
-          font-size: 12px;
-          cursor: pointer;
-        }
-
-        .remember-option input {
-          width: 15px;
-          height: 15px;
-          accent-color: #0b7650;
         }
 
         .forgot-button {
