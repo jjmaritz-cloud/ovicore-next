@@ -1604,6 +1604,61 @@ def update_broiler_performance(
             "body_weight_kg"
         )
 
+    if (
+        mobile_sync is not None
+        and mobile_sync.strip().lower()
+        in {"1", "true", "yes", "on"}
+    ):
+        protected_fields = []
+
+        for field, incoming_value in data.items():
+            if field in {
+                "placement_plan_id",
+                "entry_date",
+                "age_days",
+                "mortality_birds",
+                "cull_birds",
+                "closing_birds",
+                "last_saved_by",
+            }:
+                continue
+
+            existing_value = getattr(
+                entry,
+                field,
+                None,
+            )
+
+            if (
+                existing_value is None
+                or incoming_value is None
+            ):
+                continue
+
+            try:
+                values_are_equal = (
+                    float(existing_value)
+                    == float(incoming_value)
+                )
+            except (TypeError, ValueError):
+                values_are_equal = (
+                    str(existing_value).strip()
+                    == str(incoming_value).strip()
+                )
+
+            if not values_are_equal:
+                protected_fields.append(field)
+
+        if protected_fields:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Mobile sync cannot overwrite existing "
+                    "OviCore values. Protected fields: "
+                    + ", ".join(protected_fields)
+                ),
+            )
+
     if "entry_date" in data:
         duplicate = (
             db.query(BroilerDailyPerformance)
