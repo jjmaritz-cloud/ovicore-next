@@ -115,6 +115,227 @@ type MobileDataCache = {
   records: PerformanceRecord[];
 };
 
+
+type ExceptionSeverity = "critical" | "warning" | "incomplete" | "normal";
+
+type ShedException = {
+  severity: ExceptionSeverity;
+  label: string;
+  detail: string;
+  metric: "mortality" | "weight" | "water" | "reporting";
+};
+
+type ShedOverview = {
+  plan: DemandPlan;
+  latest?: PerformanceRecord;
+  today?: PerformanceRecord;
+  previous?: PerformanceRecord;
+  birdCount: number;
+  weight: number | null;
+  mortalityRate: number;
+  waterFeedRatio: number | null;
+  exceptions: ShedException[];
+  severity: ExceptionSeverity;
+};
+
+type FarmOverview = {
+  farmName: string;
+  sheds: ShedOverview[];
+  totalBirds: number;
+  reported: number;
+  critical: number;
+  warning: number;
+  incomplete: number;
+  severity: ExceptionSeverity;
+};
+
+const severityRank: Record<ExceptionSeverity, number> = {
+  critical: 0,
+  warning: 1,
+  incomplete: 2,
+  normal: 3,
+};
+
+function recordMortality(record?: PerformanceRecord) {
+  if (!record) return 0;
+  return (
+    numberOrZero(record.mortality_birds) ||
+    numberOrZero(record.mortality_front) +
+      numberOrZero(record.mortality_middle) +
+      numberOrZero(record.mortality_back) +
+      numberOrZero(record.mortality_other)
+  );
+}
+
+function buildShedOverview(
+  plan: DemandPlan,
+  records: PerformanceRecord[],
+  today: string,
+): ShedOverview {
+  const planRecords = records
+    .filter((record) => record.placement_plan_id === plan.id)
+    .sort((a, b) => b.entry_date.localeCompare(a.entry_date));
+
+  const todayRecord = planRecords.find(
+    (record) => record.entry_date === today,
+  );
+  const latest = todayRecord ?? planRecords[0];
+  const previous = planRecords.find(
+    (record) => latest && record.entry_date < latest.entry_date,
+  );
+
+  const opening = numberOrZero(todayRecord?.opening_birds);
+  const mortality = recordMortality(todayRecord);
+  const mortalityRate =
+    opening > 0 ? (mortality / opening) * 100 : 0;
+
+  const weight =
+    latest?.body_weight_kg ?? latest?.avg_weight_kg ?? null;
+  const previousWeight =
+    previous?.body_weight_kg ?? previous?.avg_weight_kg ?? null;
+  const weightChange =
+    weight !== null && previousWeight !== null && previousWeight > 0
+      ? ((weight - previousWeight) / previousWeight) * 100
+      : null;
+
+  const feed = numberOrZero(todayRecord?.feed_kg);
+  const water = numberOrZero(todayRecord?.water_litres);
+  const waterFeedRatio =
+    feed > 0 && water > 0 ? water / feed : null;
+
+  const exceptions: ShedException[] = [];
+
+  if (!todayRecord) {
+    exceptions.push({
+      severity: "incomplete",
+      label: "Daily entry missing",
+      detail: "No house sheet has been received today.",
+      metric: "reporting",
+    });
+  }
+
+  if (mortalityRate >= 0.5) {
+    exceptions.push({
+      severity: "critical",
+      label: "High mortality",
+      detail: `${mortalityRate.toFixed(2)}% today`,
+      metric: "mortality",
+    });
+  } else if (mortalityRate >= 0.25) {
+    exceptions.push({
+      severity: "warning",
+      label: "Mortality rising",
+      detail: `${mortalityRate.toFixed(2)}% today`,
+      metric: "mortality",
+    });
+  }
+
+  if (weightChange !== null && weightChange <= -5) {
+    exceptions.push({
+      severity: weightChange <= -10 ? "critical" : "warning",
+      label: "Bodyweight has dropped",
+      detail: `${Math.abs(weightChange).toFixed(1)}% below the previous entry`,
+      metric: "weight",
+    });
+  }
+
+  if (
+    waterFeedRatio !== null &&
+    (waterFeedRatio < 1.4 || waterFeedRatio > 2.5)
+  ) {
+    exceptions.push({
+      severity: "warning",
+      label: "Water/feed ratio outside range",
+      detail: `${waterFeedRatio.toFixed(2)} L/kg`,
+      metric: "water",
+    });
+  }
+
+  const severity = exceptions.reduce<ExceptionSeverity>(
+    (current, item) =>
+      severityRank[item.severity] < severityRank[current]
+        ? item.severity
+        : current,
+    "normal",
+  );
+
+  return {
+    plan,
+    latest,
+    today: todayRecord,
+    previous,
+    birdCount: numberOrZero(
+      latest?.closing_birds ?? plan.planned_birds,
+    ),
+    weight,
+    mortalityRate,
+    waterFeedRatio,
+    exceptions,
+    severity,
+  };
+}
+
+function buildFarmOverviews(
+  plans: DemandPlan[],
+  records: PerformanceRecord[],
+): FarmOverview[] {
+  const today = new Date().toISOString().slice(0, 10);
+  const sheds = plans.map((plan) =>
+    buildShedOverview(plan, records, today),
+  );
+  const grouped = new Map<string, ShedOverview[]>();
+
+  for (const shed of sheds) {
+    const farmName = shed.plan.farm_name?.trim() || "Unassigned farm";
+    grouped.set(farmName, [...(grouped.get(farmName) ?? []), shed]);
+  }
+
+  return [...grouped.entries()]
+    .map(([farmName, farmSheds]) => {
+      const critical = farmSheds.filter(
+        (shed) => shed.severity === "critical",
+      ).length;
+      const warning = farmSheds.filter(
+        (shed) => shed.severity === "warning",
+      ).length;
+      const incomplete = farmSheds.filter(
+        (shed) => shed.severity === "incomplete",
+      ).length;
+      const severity: ExceptionSeverity = critical
+        ? "critical"
+        : warning
+          ? "warning"
+          : incomplete
+            ? "incomplete"
+            : "normal";
+
+      return {
+        farmName,
+        sheds: [...farmSheds].sort(
+          (a, b) =>
+            severityRank[a.severity] - severityRank[b.severity] ||
+            (a.plan.shed_name ?? "").localeCompare(
+              b.plan.shed_name ?? "",
+            ),
+        ),
+        totalBirds: farmSheds.reduce(
+          (sum, shed) => sum + shed.birdCount,
+          0,
+        ),
+        reported: farmSheds.filter((shed) => Boolean(shed.today)).length,
+        critical,
+        warning,
+        incomplete,
+        severity,
+      };
+    })
+    .sort(
+      (a, b) =>
+        severityRank[a.severity] - severityRank[b.severity] ||
+        a.farmName.localeCompare(b.farmName),
+    );
+}
+
 const blankForm = (): EntryForm => ({
   placement_plan_id: "",
   entry_date: new Date().toISOString().slice(0, 10),
@@ -1526,6 +1747,7 @@ export default function MobileBroilerApp() {
             companyName={companyName}
             loading={loading}
             plans={plans}
+            records={records}
             managerInsights={managerInsights}
             pendingCount={pendingCount}
             openEntryForPlan={openEntryForPlan}
@@ -1671,6 +1893,7 @@ function HomeScreen({
   companyName,
   loading,
   plans,
+  records,
   managerInsights,
   pendingCount,
   openEntryForPlan,
@@ -1680,6 +1903,7 @@ function HomeScreen({
   companyName: string;
   loading: boolean;
   plans: DemandPlan[];
+  records: PerformanceRecord[];
   managerInsights: {
     missing: DemandPlan[];
     mortalityWatch: {
@@ -1697,6 +1921,65 @@ function HomeScreen({
   openEntryForPlan: (planId?: number) => void;
   refresh: () => void;
 }) {
+  const farms = useMemo(
+    () => buildFarmOverviews(plans, records),
+    [plans, records],
+  );
+  const isDivisionalView = farms.length > 1;
+  const [selectedFarmName, setSelectedFarmName] = useState<string | null>(
+    null,
+  );
+  const [selectedShedId, setSelectedShedId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!isDivisionalView && farms.length === 1 && !selectedFarmName) {
+      setSelectedFarmName(farms[0].farmName);
+    }
+  }, [farms, isDivisionalView, selectedFarmName]);
+
+  const selectedFarm = farms.find(
+    (farm) => farm.farmName === selectedFarmName,
+  );
+  const selectedShed = selectedFarm?.sheds.find(
+    (shed) => shed.plan.id === selectedShedId,
+  );
+  const farmsNeedingAttention = farms.filter(
+    (farm) => farm.severity !== "normal",
+  ).length;
+  const shedExceptions = farms.reduce(
+    (sum, farm) =>
+      sum +
+      farm.sheds.filter((shed) => shed.severity !== "normal").length,
+    0,
+  );
+  const totalReported = farms.reduce(
+    (sum, farm) => sum + farm.reported,
+    0,
+  );
+
+  if (selectedShed && selectedFarm) {
+    return (
+      <ShedDetailScreen
+        farm={selectedFarm}
+        shed={selectedShed}
+        onBack={() => setSelectedShedId(null)}
+        onOpenEntry={() => openEntryForPlan(selectedShed.plan.id)}
+      />
+    );
+  }
+
+  if (selectedFarm) {
+    return (
+      <FarmDetailScreen
+        farm={selectedFarm}
+        showDivisionBack={isDivisionalView}
+        onBack={() => setSelectedFarmName(null)}
+        onSelectShed={(planId) => setSelectedShedId(planId)}
+        onOpenEntry={openEntryForPlan}
+      />
+    );
+  }
+
   return (
     <>
       <section className={styles.welcomePanel}>
@@ -1719,26 +2002,83 @@ function HomeScreen({
         </button>
       </section>
 
-      <div className={styles.sectionHeading}>
+      <section className={styles.attentionHero}>
         <div>
-          <small>TODAY</small>
-          <h2>Farm overview</h2>
+          <small>DIVISIONAL OVERVIEW</small>
+          <strong>
+            {farmsNeedingAttention === 0
+              ? "All farms are clear"
+              : `${farmsNeedingAttention} farm${
+                  farmsNeedingAttention === 1 ? "" : "s"
+                } need attention`}
+          </strong>
+          <span>
+            {shedExceptions} shed exception{shedExceptions === 1 ? "" : "s"}
+            {managerInsights.missing.length > 0
+              ? ` · ${managerInsights.missing.length} entries missing`
+              : " · reporting complete"}
+          </span>
         </div>
         <button type="button" onClick={refresh}>
           Refresh
         </button>
+      </section>
+
+      <section className={styles.managerSummaryGrid}>
+        <ManagerSummaryCard
+          label="Farms"
+          value={formatNumber(farms.length)}
+          detail={`${farmsNeedingAttention} need attention`}
+          tone={farmsNeedingAttention > 0 ? "warning" : "good"}
+        />
+        <ManagerSummaryCard
+          label="Sheds reported"
+          value={`${totalReported}/${plans.length}`}
+          detail={
+            pendingCount > 0
+              ? `${pendingCount} mobile sync pending`
+              : "Sync clear"
+          }
+          tone={totalReported < plans.length ? "incomplete" : "good"}
+        />
+      </section>
+
+      <div className={styles.sectionHeading}>
+        <div>
+          <small>PRIORITY ORDER</small>
+          <h2>Farms</h2>
+        </div>
+      </div>
+
+      <section className={styles.farmList}>
+        {loading ? (
+          <div className={styles.emptyState}>Loading farm position…</div>
+        ) : farms.length === 0 ? (
+          <div className={styles.emptyState}>No active farms found.</div>
+        ) : (
+          farms.map((farm) => (
+            <FarmOverviewCard
+              key={farm.farmName}
+              farm={farm}
+              onClick={() => setSelectedFarmName(farm.farmName)}
+            />
+          ))
+        )}
+      </section>
+
+      <div className={styles.sectionHeading}>
+        <div>
+          <small>DIVISION SNAPSHOT</small>
+          <h2>Overall position</h2>
+        </div>
       </div>
 
       <section className={styles.kpiGrid}>
         <KpiCard
           icon="🐔"
           label="Total Birds"
-          value={formatNumber(
-            managerInsights.totalBirds,
-          )}
-          detail={`${plans.length} active cycle${
-            plans.length === 1 ? "" : "s"
-          }`}
+          value={formatNumber(managerInsights.totalBirds)}
+          detail={`${plans.length} active sheds`}
         />
         <KpiCard
           icon="⚖"
@@ -1746,122 +2086,296 @@ function HomeScreen({
           value={
             managerInsights.liveWeight === null
               ? "—"
-              : `${formatDecimal(
-                  managerInsights.liveWeight,
-                )} kg`
+              : `${formatDecimal(managerInsights.liveWeight)} kg`
           }
           detail="Weighted average"
         />
         <KpiCard
           icon="♡"
           label="Mortality"
-          value={`${managerInsights.mortalityRate.toFixed(
-            2,
-          )}%`}
-          detail={
-            managerInsights.mortalityWatch.length > 0
-              ? `${managerInsights.mortalityWatch.length} watch item`
-              : "Within daily threshold"
-          }
-          warning={
-            managerInsights.mortalityWatch.length > 0
-          }
+          value={`${managerInsights.mortalityRate.toFixed(2)}%`}
+          detail="Division today"
+          warning={managerInsights.mortalityWatch.length > 0}
         />
         <KpiCard
           icon="✓"
           label="Reported"
           value={`${managerInsights.todayRecords.length}/${plans.length}`}
-          detail={
-            pendingCount > 0
-              ? `${pendingCount} mobile pending`
-              : "Mobile sync clear"
-          }
+          detail="Daily house sheets"
         />
+      </section>
+    </>
+  );
+}
+
+function ManagerSummaryCard({
+  label,
+  value,
+  detail,
+  tone,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  tone: "good" | "warning" | "incomplete";
+}) {
+  return (
+    <article
+      className={`${styles.managerSummaryCard} ${
+        tone === "warning"
+          ? styles.managerSummaryWarning
+          : tone === "incomplete"
+            ? styles.managerSummaryIncomplete
+            : styles.managerSummaryGood
+      }`}
+    >
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <small>{detail}</small>
+    </article>
+  );
+}
+
+function FarmOverviewCard({
+  farm,
+  onClick,
+}: {
+  farm: FarmOverview;
+  onClick: () => void;
+}) {
+  const topIssues = farm.sheds
+    .flatMap((shed) =>
+      shed.exceptions.map((exception) => ({ shed, exception })),
+    )
+    .slice(0, 2);
+
+  return (
+    <button
+      type="button"
+      className={`${styles.farmOverviewCard} ${
+        styles[`severity${farm.severity[0].toUpperCase()}${farm.severity.slice(1)}`]
+      }`}
+      onClick={onClick}
+    >
+      <div className={styles.farmCardHeader}>
+        <div>
+          <strong>{farm.farmName}</strong>
+          <span>
+            {farm.sheds.length} sheds · {formatNumber(farm.totalBirds)} birds
+          </span>
+        </div>
+        <b>›</b>
+      </div>
+
+      <div className={styles.statusPills}>
+        {farm.critical > 0 && <span className={styles.statusCritical}>{farm.critical} critical</span>}
+        {farm.warning > 0 && <span className={styles.statusWarning}>{farm.warning} warning</span>}
+        {farm.incomplete > 0 && <span className={styles.statusIncomplete}>{farm.incomplete} incomplete</span>}
+        {farm.severity === "normal" && <span className={styles.statusNormal}>All sheds within range</span>}
+      </div>
+
+      <div className={styles.farmIssueList}>
+        {topIssues.length === 0 ? (
+          <small>No current anomalies detected.</small>
+        ) : (
+          topIssues.map(({ shed, exception }) => (
+            <small key={`${shed.plan.id}-${exception.metric}`}>
+              <i className={styles[`dot${exception.severity[0].toUpperCase()}${exception.severity.slice(1)}`]} />
+              {shed.plan.shed_name ?? "Shed"}: {exception.label}
+            </small>
+          ))
+        )}
+      </div>
+
+      <div className={styles.reportingLine}>
+        <span>Reporting</span>
+        <strong>{farm.reported}/{farm.sheds.length}</strong>
+      </div>
+    </button>
+  );
+}
+
+function FarmDetailScreen({
+  farm,
+  showDivisionBack,
+  onBack,
+  onSelectShed,
+  onOpenEntry,
+}: {
+  farm: FarmOverview;
+  showDivisionBack: boolean;
+  onBack: () => void;
+  onSelectShed: (planId: number) => void;
+  onOpenEntry: (planId?: number) => void;
+}) {
+  return (
+    <>
+      {showDivisionBack && (
+        <button type="button" className={styles.backButton} onClick={onBack}>
+          ‹ Division overview
+        </button>
+      )}
+
+      <ScreenTitle
+        eyebrow="FARM OVERVIEW"
+        title={farm.farmName}
+        detail={`${farm.sheds.length} active sheds · ${formatNumber(farm.totalBirds)} birds · ${farm.reported}/${farm.sheds.length} reported today`}
+      />
+
+      <section className={styles.farmAttentionStrip}>
+        <strong>
+          {farm.severity === "normal"
+            ? "All sheds are within range"
+            : `${farm.critical + farm.warning + farm.incomplete} sheds need review`}
+        </strong>
+        <span>
+          {farm.critical} critical · {farm.warning} warning · {farm.incomplete} incomplete
+        </span>
       </section>
 
       <div className={styles.sectionHeading}>
         <div>
-          <small>ALERTS</small>
-          <h2>Needs attention</h2>
+          <small>SHED PRIORITY</small>
+          <h2>Where to look first</h2>
         </div>
       </div>
 
-      <section className={styles.alertCard}>
-        {loading ? (
-          <div className={styles.emptyState}>
-            Loading production position…
-          </div>
-        ) : managerInsights.missing.length === 0 &&
-          managerInsights.mortalityWatch.length === 0 &&
-          managerInsights.waterWatch.length === 0 ? (
+      <div className={styles.shedOverviewList}>
+        {farm.sheds.map((shed) => (
+          <button
+            type="button"
+            key={shed.plan.id}
+            className={styles.shedOverviewCard}
+            onClick={() => onSelectShed(shed.plan.id)}
+          >
+            <div className={styles.shedStatusRail} data-severity={shed.severity} />
+            <div className={styles.shedOverviewMain}>
+              <div className={styles.shedOverviewHeader}>
+                <div>
+                  <strong>{shed.plan.shed_name ?? "Shed"}</strong>
+                  <span>{shed.plan.cycle_code ?? "Active cycle"}</span>
+                </div>
+                <b>›</b>
+              </div>
+              <div className={styles.shedMetricsRow}>
+                <span>{formatNumber(shed.birdCount)} birds</span>
+                <span>{shed.weight === null ? "No weight" : `${formatDecimal(shed.weight)} kg`}</span>
+                <span>{shed.today ? `${shed.mortalityRate.toFixed(2)}% mort` : "Not reported"}</span>
+              </div>
+              <div className={styles.shedExceptionSummary}>
+                {shed.exceptions.length === 0 ? (
+                  <small>✓ No current anomalies</small>
+                ) : (
+                  shed.exceptions.slice(0, 2).map((exception) => (
+                    <small key={exception.metric}>{exception.label} · {exception.detail}</small>
+                  ))
+                )}
+              </div>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      <button
+        type="button"
+        className={styles.secondaryButton}
+        onClick={() => onOpenEntry(farm.sheds[0]?.plan.id)}
+        disabled={farm.sheds.length === 0}
+      >
+        Open daily entry
+      </button>
+    </>
+  );
+}
+
+function ShedDetailScreen({
+  farm,
+  shed,
+  onBack,
+  onOpenEntry,
+}: {
+  farm: FarmOverview;
+  shed: ShedOverview;
+  onBack: () => void;
+  onOpenEntry: () => void;
+}) {
+  const latestMortality = recordMortality(shed.today);
+  const previousWeight =
+    shed.previous?.body_weight_kg ?? shed.previous?.avg_weight_kg ?? null;
+
+  return (
+    <>
+      <button type="button" className={styles.backButton} onClick={onBack}>
+        ‹ {farm.farmName}
+      </button>
+
+      <ScreenTitle
+        eyebrow="SHED ROOT CAUSE"
+        title={shed.plan.shed_name ?? "Shed"}
+        detail={`${farm.farmName} · ${shed.plan.cycle_code ?? "Active cycle"} · Age ${calculateAgeDays(shed.plan.placement_date, new Date().toISOString().slice(0, 10))} days`}
+      />
+
+      <section className={`${styles.rootCauseHero} ${styles[`severity${shed.severity[0].toUpperCase()}${shed.severity.slice(1)}`]}`}>
+        <small>CURRENT STATUS</small>
+        <strong>
+          {shed.exceptions[0]?.label ?? "No current anomalies detected"}
+        </strong>
+        <span>
+          {shed.exceptions[0]?.detail ?? "Latest available values are within the mobile thresholds."}
+        </span>
+      </section>
+
+      <section className={styles.rootMetricGrid}>
+        <RootMetric label="Birds" value={formatNumber(shed.birdCount)} detail="Latest closing" />
+        <RootMetric label="Mortality" value={shed.today ? `${shed.mortalityRate.toFixed(2)}%` : "—"} detail={shed.today ? `${formatNumber(latestMortality)} birds today` : "Entry missing"} />
+        <RootMetric label="Bodyweight" value={shed.weight === null ? "—" : `${formatDecimal(shed.weight)} kg`} detail={previousWeight === null ? "No previous comparison" : `Previous ${formatDecimal(previousWeight)} kg`} />
+        <RootMetric label="Water / feed" value={shed.waterFeedRatio === null ? "—" : shed.waterFeedRatio.toFixed(2)} detail="Litres per kg feed" />
+      </section>
+
+      <div className={styles.sectionHeading}>
+        <div>
+          <small>EXCEPTION REVIEW</small>
+          <h2>What changed</h2>
+        </div>
+      </div>
+
+      <section className={styles.rootCauseList}>
+        {shed.exceptions.length === 0 ? (
           <div className={styles.allClear}>
             <span>✓</span>
-            <div>
-              <strong>All clear</strong>
-              <small>
-                No major daily exceptions detected.
-              </small>
-            </div>
+            <div><strong>All clear</strong><small>No exception requires review.</small></div>
           </div>
         ) : (
-          <>
-            {managerInsights.missing
-              .slice(0, 4)
-              .map((plan) => (
-                <button
-                  type="button"
-                  key={`missing-${plan.id}`}
-                  className={styles.alertRow}
-                  onClick={() =>
-                    openEntryForPlan(plan.id)
-                  }
-                >
-                  <i className={styles.alertOrange} />
-                  <div>
-                    <strong>
-                      {plan.farm_name} · {plan.shed_name}
-                    </strong>
-                    <small>
-                      No house sheet received today
-                    </small>
-                  </div>
-                  <b>›</b>
-                </button>
-              ))}
-
-            {managerInsights.mortalityWatch
-              .slice(0, 3)
-              .map((item) => {
-                const plan = plans.find(
-                  (candidate) =>
-                    candidate.id ===
-                    item.record.placement_plan_id,
-                );
-
-                return (
-                  <div
-                    className={styles.alertRow}
-                    key={`mort-${item.record.id}`}
-                  >
-                    <i className={styles.alertRed} />
-                    <div>
-                      <strong>
-                        {plan?.farm_name} ·{" "}
-                        {plan?.shed_name}
-                      </strong>
-                      <small>
-                        Daily mortality{" "}
-                        {item.rate.toFixed(2)}%
-                      </small>
-                    </div>
-                    <b>Review</b>
-                  </div>
-                );
-              })}
-          </>
+          shed.exceptions.map((exception) => (
+            <article key={exception.metric}>
+              <i className={styles[`dot${exception.severity[0].toUpperCase()}${exception.severity.slice(1)}`]} />
+              <div><strong>{exception.label}</strong><small>{exception.detail}</small></div>
+            </article>
+          ))
         )}
       </section>
+
+      {shed.latest?.notes && (
+        <section className={styles.managerNotesCard}>
+          <small>LATEST FARM COMMENT</small>
+          <p>{shed.latest.notes}</p>
+        </section>
+      )}
+
+      <button type="button" className={styles.primaryButton} onClick={onOpenEntry}>
+        Open this shed&apos;s daily entry
+      </button>
     </>
+  );
+}
+
+function RootMetric({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return (
+    <article>
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <small>{detail}</small>
+    </article>
   );
 }
 

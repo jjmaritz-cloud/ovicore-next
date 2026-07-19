@@ -1556,3 +1556,414 @@
   font-size: 8px;
   font-weight: 900;
 }
+/* =========================================================
+   ROLE-BASED MANAGER OVERVIEW
+   Division -> Farm -> Shed -> Root cause
+   ========================================================= */
+
+.attentionHero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 17px;
+  border-radius: 20px;
+  color: #fff;
+  background:
+    radial-gradient(circle at 100% 0, rgba(245, 154, 45, 0.28), transparent 38%),
+    linear-gradient(135deg, var(--green-950), var(--green-700));
+  box-shadow: 0 12px 28px rgba(7, 58, 46, 0.18);
+}
+
+.attentionHero small,
+.attentionHero strong,
+.attentionHero span {
+  display: block;
+}
+
+.attentionHero small {
+  color: #ffbd70;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+
+.attentionHero strong {
+  margin-top: 5px;
+  font-size: 18px;
+  line-height: 1.15;
+}
+
+.attentionHero span {
+  margin-top: 5px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 10px;
+}
+
+.attentionHero button {
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 11px;
+  padding: 9px 10px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.managerSummaryGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.managerSummaryCard {
+  padding: 13px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 7px 18px rgba(15, 59, 48, 0.06);
+}
+
+.managerSummaryCard span,
+.managerSummaryCard strong,
+.managerSummaryCard small {
+  display: block;
+}
+
+.managerSummaryCard span {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.managerSummaryCard strong {
+  margin-top: 4px;
+  font-size: 23px;
+  letter-spacing: -0.04em;
+}
+
+.managerSummaryCard small {
+  margin-top: 4px;
+  font-size: 8px;
+}
+
+.managerSummaryGood small { color: var(--green-600); }
+.managerSummaryWarning small { color: var(--red-600); }
+.managerSummaryIncomplete small { color: #9a650b; }
+
+.farmList,
+.shedOverviewList {
+  display: grid;
+  gap: 10px;
+}
+
+.farmOverviewCard {
+  width: 100%;
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-left-width: 5px;
+  border-radius: 18px;
+  color: inherit;
+  background: #fff;
+  box-shadow: 0 8px 20px rgba(15, 59, 48, 0.06);
+  text-align: left;
+}
+
+.severityCritical { border-color: #d96960; }
+.severityWarning { border-color: var(--orange-500); }
+.severityIncomplete { border-color: #8899a3; }
+.severityNormal { border-color: #55a97b; }
+
+.farmCardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 14px 9px;
+}
+
+.farmCardHeader strong,
+.farmCardHeader span {
+  display: block;
+}
+
+.farmCardHeader strong {
+  font-size: 14px;
+}
+
+.farmCardHeader span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.farmCardHeader b {
+  color: #7c8c86;
+  font-size: 18px;
+}
+
+.statusPills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 14px 10px;
+}
+
+.statusPills span {
+  padding: 5px 7px;
+  border-radius: 999px;
+  font-size: 8px;
+  font-weight: 900;
+}
+
+.statusCritical { color: #9f2f27; background: #ffe5e1; }
+.statusWarning { color: #98540b; background: #fff0dc; }
+.statusIncomplete { color: #52636d; background: #e9eef1; }
+.statusNormal { color: #176443; background: #e3f3ea; }
+
+.farmIssueList {
+  display: grid;
+  gap: 6px;
+  padding: 0 14px 12px;
+}
+
+.farmIssueList small {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #53665f;
+  font-size: 9px;
+}
+
+.farmIssueList i,
+.rootCauseList i {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.dotCritical { background: #d34e43; }
+.dotWarning { background: var(--orange-500); }
+.dotIncomplete { background: #82939d; }
+.dotNormal { background: #38a56f; }
+
+.reportingLine {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 14px;
+  border-top: 1px solid #edf1ee;
+  background: #f8faf8;
+}
+
+.reportingLine span,
+.reportingLine strong {
+  font-size: 9px;
+}
+
+.reportingLine span { color: var(--muted); }
+.reportingLine strong { color: var(--green-700); }
+
+.backButton {
+  margin: 2px 0 10px;
+  border: 0;
+  padding: 0;
+  color: var(--green-700);
+  background: transparent;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.farmAttentionStrip {
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 7px 18px rgba(15, 59, 48, 0.05);
+}
+
+.farmAttentionStrip strong,
+.farmAttentionStrip span {
+  display: block;
+}
+
+.farmAttentionStrip strong { font-size: 13px; }
+.farmAttentionStrip span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.shedOverviewCard {
+  display: grid;
+  grid-template-columns: 5px 1fr;
+  width: 100%;
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 17px;
+  color: inherit;
+  background: #fff;
+  box-shadow: 0 7px 18px rgba(15, 59, 48, 0.05);
+  text-align: left;
+}
+
+.shedStatusRail[data-severity="critical"] { background: #d34e43; }
+.shedStatusRail[data-severity="warning"] { background: var(--orange-500); }
+.shedStatusRail[data-severity="incomplete"] { background: #82939d; }
+.shedStatusRail[data-severity="normal"] { background: #38a56f; }
+
+.shedOverviewMain { padding: 13px; }
+
+.shedOverviewHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.shedOverviewHeader strong,
+.shedOverviewHeader span { display: block; }
+.shedOverviewHeader strong { font-size: 13px; }
+.shedOverviewHeader span {
+  margin-top: 3px;
+  color: var(--green-700);
+  font-size: 9px;
+  font-weight: 800;
+}
+.shedOverviewHeader b { color: #80908a; }
+
+.shedMetricsRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.shedMetricsRow span {
+  padding: 5px 7px;
+  border-radius: 8px;
+  color: #53665f;
+  background: #f0f5f2;
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.shedExceptionSummary {
+  display: grid;
+  gap: 3px;
+  margin-top: 9px;
+}
+
+.shedExceptionSummary small {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.rootCauseHero {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-left-width: 5px;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 8px 20px rgba(15, 59, 48, 0.06);
+}
+
+.rootCauseHero small,
+.rootCauseHero strong,
+.rootCauseHero span { display: block; }
+.rootCauseHero small {
+  color: var(--orange-600);
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+.rootCauseHero strong {
+  margin-top: 5px;
+  font-size: 17px;
+}
+.rootCauseHero span {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.rootMetricGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+  margin-top: 10px;
+}
+
+.rootMetricGrid article {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: #fff;
+}
+
+.rootMetricGrid span,
+.rootMetricGrid strong,
+.rootMetricGrid small { display: block; }
+.rootMetricGrid span { color: var(--muted); font-size: 8px; }
+.rootMetricGrid strong { margin-top: 4px; font-size: 18px; }
+.rootMetricGrid small { margin-top: 4px; color: #71827c; font-size: 8px; }
+
+.rootCauseList {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 17px;
+  background: #fff;
+}
+
+.rootCauseList article {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 13px;
+  border-bottom: 1px solid #edf1ee;
+}
+
+.rootCauseList article:last-child { border-bottom: 0; }
+.rootCauseList strong,
+.rootCauseList small { display: block; }
+.rootCauseList strong { font-size: 11px; }
+.rootCauseList small { margin-top: 3px; color: var(--muted); font-size: 9px; }
+
+.managerNotesCard {
+  margin-top: 10px;
+  padding: 14px;
+  border: 1px solid #f1d1a5;
+  border-radius: 16px;
+  background: #fff7eb;
+}
+
+.managerNotesCard small {
+  color: var(--orange-600);
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+}
+
+.managerNotesCard p {
+  margin: 7px 0 0;
+  color: #5d4a31;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+@media (max-width: 365px) {
+  .attentionHero {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .attentionHero button {
+    width: 100%;
+  }
+}
