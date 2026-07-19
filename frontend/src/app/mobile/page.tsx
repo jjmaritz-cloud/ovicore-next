@@ -243,6 +243,76 @@ function numberOrZero(value?: number | null) {
   return Number(value || 0);
 }
 
+function draftToPerformanceRecord(
+  draft: MobileDraft,
+): PerformanceRecord {
+  return {
+    id: draft.server_record_id ?? -1,
+    placement_plan_id:
+      draft.payload.placement_plan_id,
+    entry_date: draft.payload.entry_date,
+    age_days: draft.payload.age_days,
+    opening_birds: draft.payload.opening_birds,
+    mortality_front:
+      draft.payload.mortality_front,
+    mortality_middle:
+      draft.payload.mortality_middle,
+    mortality_back:
+      draft.payload.mortality_back,
+    mortality_other:
+      draft.payload.mortality_other,
+    mortality_birds:
+      draft.payload.mortality_birds,
+    cull_legs: draft.payload.cull_legs,
+    cull_runts: draft.payload.cull_runts,
+    cull_beak: draft.payload.cull_beak,
+    cull_other: draft.payload.cull_other,
+    cull_birds: draft.payload.cull_birds,
+    closing_birds: draft.payload.closing_birds,
+    feed_kg: draft.payload.feed_kg,
+    water_litres: draft.payload.water_litres,
+    body_weight_kg:
+      draft.payload.body_weight_kg,
+    avg_weight_kg: draft.payload.avg_weight_kg,
+    notes: draft.payload.notes,
+    last_saved_at: draft.saved_at,
+  };
+}
+
+function mergeDraftsIntoRecords(
+  serverRecords: PerformanceRecord[],
+  drafts: MobileDraft[],
+  companyId: number,
+): PerformanceRecord[] {
+  const merged = [...serverRecords];
+
+  for (const draft of drafts) {
+    if (draft.company_id !== companyId) continue;
+
+    const localRecord =
+      draftToPerformanceRecord(draft);
+
+    const index = merged.findIndex(
+      (record) =>
+        record.placement_plan_id ===
+          localRecord.placement_plan_id &&
+        record.entry_date === localRecord.entry_date,
+    );
+
+    if (index >= 0) {
+      merged[index] = {
+        ...merged[index],
+        ...localRecord,
+        id: merged[index].id,
+      };
+    } else {
+      merged.push(localRecord);
+    }
+  }
+
+  return merged;
+}
+
 function calculateAgeDays(
   placementDate?: string,
   entryDate?: string,
@@ -564,15 +634,22 @@ export default function MobileBroilerApp() {
           ? await recordsResponse.json()
           : [];
 
+      const localDrafts = await getDrafts();
+      const mergedRecords = mergeDraftsIntoRecords(
+        recordsData,
+        localDrafts,
+        companyId,
+      );
+
       setPlans(plansData);
-      setRecords(recordsData);
+      setRecords(mergedRecords);
       applyPlanSelection(plansData, setForm);
 
       const cache: MobileDataCache = {
         company_id: companyId,
         cached_at: new Date().toISOString(),
         plans: plansData,
-        records: recordsData,
+        records: mergedRecords,
       };
 
       window.localStorage.setItem(
@@ -583,8 +660,15 @@ export default function MobileBroilerApp() {
       const cache = readMobileDataCache(companyId);
 
       if (cache) {
+        const localDrafts = await getDrafts();
+        const mergedRecords = mergeDraftsIntoRecords(
+          cache.records,
+          localDrafts,
+          companyId,
+        );
+
         setPlans(cache.plans);
-        setRecords(cache.records);
+        setRecords(mergedRecords);
         applyPlanSelection(cache.plans, setForm);
         setMessage(
           "Offline mode: using the last synced farm, shed and cycle data.",
@@ -747,6 +831,22 @@ export default function MobileBroilerApp() {
             headers,
             body: JSON.stringify(requestBody),
           });
+
+          if (response.status === 409) {
+            const detail = await response.text();
+
+            await updateDraft(draft.local_id, {
+              status: "conflict",
+              server_record_id:
+                match?.id ?? null,
+              server_updated_at:
+                match?.last_saved_at ?? null,
+              last_error: detail,
+            });
+
+            conflicts += 1;
+            continue;
+          }
 
           if (!response.ok) {
             const detail = await response.text();
@@ -1213,6 +1313,15 @@ export default function MobileBroilerApp() {
     };
 
     await putDraft(draft);
+
+    setRecords((current) =>
+      mergeDraftsIntoRecords(
+        current,
+        [draft],
+        companyId,
+      ),
+    );
+
     await loadPendingCount();
 
     setSavedSummary({
@@ -1231,8 +1340,8 @@ export default function MobileBroilerApp() {
 
     setMessage(
       online
-        ? "Entry saved. Syncing with OviCore…"
-        : "Entry saved offline. It will sync when signal returns.",
+        ? "Entry saved on this phone. Syncing with OviCore…"
+        : "Entry saved on this phone. It will sync when signal returns.",
     );
 
     setEntryStage("saved");
