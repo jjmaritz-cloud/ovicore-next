@@ -132,6 +132,77 @@ const blankForm = (): EntryForm => ({
   notes: "",
 });
 
+function valueToInput(
+  value: number | string | null | undefined,
+): string {
+  return value === null || value === undefined
+    ? ""
+    : String(value);
+}
+
+function buildEntryFormForDate(
+  planId: number | "",
+  entryDate: string,
+  record?: PerformanceRecord,
+): EntryForm {
+  return {
+    placement_plan_id: planId,
+    entry_date: entryDate,
+    opening_birds: valueToInput(
+      record?.opening_birds,
+    ),
+    mortality_front: valueToInput(
+      record?.mortality_front,
+    ),
+    mortality_middle: valueToInput(
+      record?.mortality_middle,
+    ),
+    mortality_back: valueToInput(
+      record?.mortality_back,
+    ),
+    mortality_other: valueToInput(
+      record?.mortality_other,
+    ),
+    cull_legs: valueToInput(record?.cull_legs),
+    cull_runts: valueToInput(record?.cull_runts),
+    cull_beak: valueToInput(record?.cull_beak),
+    cull_other: valueToInput(record?.cull_other),
+    feed_kg: valueToInput(record?.feed_kg),
+    water_litres: valueToInput(
+      record?.water_litres,
+    ),
+    body_weight_kg: valueToInput(
+      record?.body_weight_kg ??
+        record?.avg_weight_kg,
+    ),
+    notes: record?.notes ?? "",
+  };
+}
+
+function valuesMatch(
+  mobileValue: string,
+  serverValue: number | string | null | undefined,
+): boolean {
+  if (mobileValue.trim() === "") {
+    return serverValue === null ||
+      serverValue === undefined ||
+      serverValue === "";
+  }
+
+  if (
+    typeof serverValue === "number" ||
+    (
+      typeof serverValue === "string" &&
+      serverValue.trim() !== "" &&
+      Number.isFinite(Number(serverValue))
+    )
+  ) {
+    return Number(mobileValue) === Number(serverValue);
+  }
+
+  return mobileValue.trim() === String(serverValue ?? "").trim();
+}
+
 function toNumber(value: string) {
   if (value.trim() === "") return null;
   const parsed = Number(value);
@@ -321,6 +392,31 @@ export default function MobileBroilerApp() {
       ),
     [selectedPlan?.placement_date, form.entry_date],
   );
+
+  useEffect(() => {
+    if (!form.placement_plan_id || !form.entry_date) {
+      return;
+    }
+
+    const record = records.find(
+      (item) =>
+        item.placement_plan_id ===
+          Number(form.placement_plan_id) &&
+        item.entry_date === form.entry_date,
+    );
+
+    setForm(
+      buildEntryFormForDate(
+        form.placement_plan_id,
+        form.entry_date,
+        record,
+      ),
+    );
+  }, [
+    form.placement_plan_id,
+    form.entry_date,
+    records,
+  ]);
 
   const loadPendingCount = useCallback(async () => {
     const drafts = await getDrafts();
@@ -914,22 +1010,109 @@ export default function MobileBroilerApp() {
         record.entry_date === form.entry_date,
     );
 
-    const changedFields = [
-      ["opening_birds", form.opening_birds],
-      ["mortality_front", form.mortality_front],
-      ["mortality_middle", form.mortality_middle],
-      ["mortality_back", form.mortality_back],
-      ["mortality_other", form.mortality_other],
-      ["cull_legs", form.cull_legs],
-      ["cull_runts", form.cull_runts],
-      ["cull_beak", form.cull_beak],
-      ["cull_other", form.cull_other],
-      ["feed_kg", form.feed_kg],
-      ["water_litres", form.water_litres],
-      ["body_weight_kg", form.body_weight_kg],
-      ["notes", form.notes],
-    ]
-      .filter(([, value]) => value.trim() !== "")
+    const editableFields = [
+      [
+        "opening_birds",
+        form.opening_birds,
+        existingServerRecord?.opening_birds,
+      ],
+      [
+        "mortality_front",
+        form.mortality_front,
+        existingServerRecord?.mortality_front,
+      ],
+      [
+        "mortality_middle",
+        form.mortality_middle,
+        existingServerRecord?.mortality_middle,
+      ],
+      [
+        "mortality_back",
+        form.mortality_back,
+        existingServerRecord?.mortality_back,
+      ],
+      [
+        "mortality_other",
+        form.mortality_other,
+        existingServerRecord?.mortality_other,
+      ],
+      [
+        "cull_legs",
+        form.cull_legs,
+        existingServerRecord?.cull_legs,
+      ],
+      [
+        "cull_runts",
+        form.cull_runts,
+        existingServerRecord?.cull_runts,
+      ],
+      [
+        "cull_beak",
+        form.cull_beak,
+        existingServerRecord?.cull_beak,
+      ],
+      [
+        "cull_other",
+        form.cull_other,
+        existingServerRecord?.cull_other,
+      ],
+      [
+        "feed_kg",
+        form.feed_kg,
+        existingServerRecord?.feed_kg,
+      ],
+      [
+        "water_litres",
+        form.water_litres,
+        existingServerRecord?.water_litres,
+      ],
+      [
+        "body_weight_kg",
+        form.body_weight_kg,
+        existingServerRecord?.body_weight_kg ??
+          existingServerRecord?.avg_weight_kg,
+      ],
+      [
+        "notes",
+        form.notes,
+        existingServerRecord?.notes,
+      ],
+    ] as const;
+
+    const protectedFields = existingServerRecord
+      ? editableFields
+          .filter(
+            ([, mobileValue, serverValue]) =>
+              mobileValue.trim() !== "" &&
+              serverValue !== null &&
+              serverValue !== undefined &&
+              serverValue !== "" &&
+              !valuesMatch(
+                mobileValue,
+                serverValue,
+              ),
+          )
+          .map(([field]) => field)
+      : [];
+
+    if (protectedFields.length > 0) {
+      setMessage(
+        "This date already contains data in OviCore. " +
+          "The mobile app will not overwrite existing " +
+          `fields: ${protectedFields.join(", ")}.`,
+      );
+      return;
+    }
+
+    const changedFields = editableFields
+      .filter(
+        ([, mobileValue, serverValue]) =>
+          mobileValue.trim() !== "" &&
+          !valuesMatch(
+            mobileValue,
+            serverValue,
+          ),
+      )
       .map(([field]) => field);
 
     const draft: MobileDraft = {
