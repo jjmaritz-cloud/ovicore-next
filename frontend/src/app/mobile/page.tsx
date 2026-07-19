@@ -8,6 +8,7 @@ import {
   deleteDraft,
   getDrafts,
   putDraft,
+  updateDraft,
 } from "../../lib/mobileHouseSheetDb";
 
 const API_BASE = "";
@@ -55,6 +56,7 @@ type PerformanceRecord = {
   body_weight_kg?: number | null;
   avg_weight_kg?: number | null;
   notes?: string | null;
+	last_saved_at?: string | null;
 };
 
 type MobileTab = "home" | "entry" | "insights" | "more";
@@ -267,62 +269,149 @@ export default function MobileBroilerApp() {
     }
 	}, [companyId, currentUser]);
 
-  const syncDrafts = useCallback(async () => {
-    if (!navigator.onLine || syncing) return;
+	const syncDrafts = useCallback(async () => {
+		if (!navigator.onLine || syncing) {
+			return;
+		}
 
-    setSyncing(true);
-    setMessage("");
+		setSyncing(true);
+		setMessage("");
 
-    try {
-      const drafts = await getDrafts();
-      let synced = 0;
+		let synced = 0;
+		let conflicts = 0;
+		let failed = 0;
 
-      for (const draft of drafts.sort((a, b) => a.saved_at.localeCompare(b.saved_at))) {
-        const existingResponse = await authenticatedFetch(
-          `${API_BASE}/api/broilers/performance?company_id=${draft.company_id}&placement_plan_id=${draft.payload.placement_plan_id}`,
-        );
+		try {
+			const drafts = await getDrafts();
 
-        if (!existingResponse.ok) {
-          throw new Error(`Could not check existing records (${existingResponse.status}).`);
-        }
+			for (const draft of drafts.sort((a, b) =>
+				a.saved_at.localeCompare(b.saved_at),
+			)) {
+				if (draft.status === "conflict") {
+					conflicts += 1;
+					continue;
+				}
 
-        const existing: PerformanceRecord[] = await existingResponse.json();
-        const match = existing.find(
-          (record) =>
-            record.placement_plan_id === draft.payload.placement_plan_id &&
-            record.entry_date === draft.payload.entry_date,
-        );
+				await updateDraft(draft.local_id, {
+					status: "syncing",
+					last_error: null,
+					attempt_count: draft.attempt_count + 1,
+				});
 
-        const url = match
-          ? `${API_BASE}/api/broilers/performance/${match.id}`
-          : `${API_BASE}/api/broilers/performance`;
+				try {
+					const existingResponse = await authenticatedFetch(
+						`${API_BASE}/api/broilers/performance` +
+							`?company_id=${draft.company_id}` +
+							`&placement_plan_id=${draft.payload.placement_plan_id}`,
+					);
 
-        const response = await authenticatedFetch(url, {
-          method: match ? "PATCH" : "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(draft.payload),
-        });
+					if (!existingResponse.ok) {
+						throw new Error(
+							`Could not check existing records (${existingResponse.status}).`,
+						);
+					}
 
-        if (!response.ok) {
-          const detail = await response.text();
-          throw new Error(`Sync failed (${response.status}): ${detail}`);
-        }
+					const existing: PerformanceRecord[] =
+						await existingResponse.json();
 
-        await deleteDraft(draft.local_id);
-        synced += 1;
-      }
+					const match = existing.find(
+						(record) =>
+							record.placement_plan_id ===
+								draft.payload.placement_plan_id &&
+							record.entry_date === draft.payload.entry_date,
+					);
 
-      await loadPendingCount();
-      if (synced > 0) {
-        setMessage(`${synced} house-sheet entr${synced === 1 ? "y" : "ies"} synced.`);
-        await loadData();
-      }
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Could not sync entries.");
-    } finally {
-      setSyncing(false);
-    }
-  }, [loadData, loadPendingCount, syncing]);
+					const serverChanged =
+						Boolean(match) &&
+						Boolean(draft.server_updated_at) &&
+						Boolean(match?.last_saved_at) &&
+						draft.server_updated_at !== match?.last_saved_at;
+
+					if (serverChanged && match) {
+						await updateDraft(draft.local_id, {
+							status: "conflict",
+							server_record_id: match.id,
+							server_updated_at: match.last_saved_at ?? null,
+							last_error:
+								"This house sheet was changed in OviCore after the mobile entry was opened.",
+						});
+
+						conflicts += 1;
+						continue;
+					}
+
+					const url = match
+						? `${API_BASE}/api/broilers/performance/${match.id}`
+						: `${API_BASE}/api/broilers/performance`;
+
+					const response = await authenticatedFetch(url, {
+						method: match ? "PATCH" : "POST",
+						headers: {
+							"Content-Type": "application/json",
+						},
+						body: JSON.stringify(draft.payload),
+					});
+
+					if (!response.ok) {
+						const detail = await response.text();
+
+						throw new Error(
+							`Sync failed (${response.status}): ${detail}`,
+						);
+					}
+
+					await deleteDraft(draft.local_id);
+					synced += 1;
+				} catch (error) {
+					const errorMessage =
+						error instanceof Error
+							? error.message
+							: "Could not sync this entry.";
+
+					await updateDraft(draft.local_id, {
+						status: "failed",
+						last_error: errorMessage,
+					});
+
+					failed += 1;
+				}
+			}
+
+			await loadPendingCount();
+
+			if (synced > 0) {
+				await loadData();
+			}
+
+			const resultParts: string[] = [];
+
+			if (synced > 0) {
+				resultParts.push(`${synced} synced`);
+			}
+
+			if (conflicts > 0) {
+				resultParts.push(
+					`${conflicts} conflict${conflicts === 1 ? "" : "s"}`,
+				);
+			}
+
+			if (failed > 0) {
+				resultParts.push(`${failed} failed`);
+			}
+
+			if (resultParts.length > 0) {
+				setMessage(resultParts.join(" · "));
+			}
+		} catch (error) {
+			setMessage(
+				error instanceof Error
+					? error.message
+					: "Could not sync mobile entries.",
+			);
+		} finally {
+			setSyncing(false);
+		}
+	}, [loadData, loadPendingCount, syncing]);
 
   useEffect(() => {
     setOnline(navigator.onLine);
@@ -425,11 +514,23 @@ export default function MobileBroilerApp() {
 
     const localId = `${companyId}-${selectedPlan.id}-${form.entry_date}`;
 
-    const draft: MobileDraft = {
-      local_id: localId,
-      company_id: companyId,
-      saved_at: new Date().toISOString(),
-      payload: {
+		const existingServerRecord = records.find(
+			(record) =>
+				record.placement_plan_id === selectedPlan.id &&
+				record.entry_date === form.entry_date,
+		);
+
+		const draft: MobileDraft = {
+			local_id: localId,
+			company_id: companyId,
+			saved_at: new Date().toISOString(),
+			status: "pending",
+			server_record_id: existingServerRecord?.id ?? null,
+			server_updated_at:
+				existingServerRecord?.last_saved_at ?? null,
+			last_error: null,
+			attempt_count: 0,
+			payload: {
         placement_plan_id: selectedPlan.id,
         entry_date: form.entry_date,
         age_days: calculateAgeDays(selectedPlan.placement_date, form.entry_date),
@@ -512,7 +613,10 @@ export default function MobileBroilerApp() {
             <div className={styles.hero}>
               <p>Today’s position</p>
               <h1>Broiler farm overview</h1>
-              <span>{pendingCount} entr{pendingCount === 1 ? "y" : "ies"} waiting to sync</span>
+              <span>
+								{pendingCount} mobile entr
+								{pendingCount === 1 ? "y" : "ies"} pending review or sync
+							</span>
             </div>
 
             <div className={styles.kpiGrid}>
