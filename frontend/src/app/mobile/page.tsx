@@ -6,6 +6,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -453,6 +454,9 @@ export default function MobileBroilerApp() {
   const [savedSummary, setSavedSummary] =
     useState<SavedSummary | null>(null);
 
+  const loadedEntryKeyRef = useRef<string>("");
+  const wasOnlineRef = useRef<boolean>(true);
+
   const companyId = useMemo(() => {
     if (!currentUser) return null;
 
@@ -513,12 +517,21 @@ export default function MobileBroilerApp() {
       return;
     }
 
+    const entryKey =
+      `${form.placement_plan_id}-${form.entry_date}`;
+
+    if (loadedEntryKeyRef.current === entryKey) {
+      return;
+    }
+
     const record = records.find(
       (item) =>
         item.placement_plan_id ===
           Number(form.placement_plan_id) &&
         item.entry_date === form.entry_date,
     );
+
+    loadedEntryKeyRef.current = entryKey;
 
     setForm(
       buildEntryFormForDate(
@@ -957,7 +970,12 @@ export default function MobileBroilerApp() {
   }, [companyId, currentUser, loadData]);
 
   useEffect(() => {
-    if (online && pendingCount > 0) {
+    const cameBackOnline =
+      online && !wasOnlineRef.current;
+
+    wasOnlineRef.current = online;
+
+    if (cameBackOnline && pendingCount > 0) {
       void syncDrafts();
     }
   }, [online, pendingCount, syncDrafts]);
@@ -1429,6 +1447,8 @@ export default function MobileBroilerApp() {
   }
 
   function openEntryForPlan(planId?: number) {
+    loadedEntryKeyRef.current = "";
+
     setForm((current) => ({
       ...current,
       placement_plan_id:
@@ -1536,7 +1556,10 @@ export default function MobileBroilerApp() {
                 existingServerRecord={
                   existingServerRecord
                 }
-                onRefresh={() => void loadData()}
+                onRefresh={() => {
+                  loadedEntryKeyRef.current = "";
+                  void loadData();
+                }}
                 onBack={() =>
                   setEntryStage("select")
                 }
@@ -1555,6 +1578,8 @@ export default function MobileBroilerApp() {
                       `${savedSummary.entryDate}T00:00:00`,
                     );
                     next.setDate(next.getDate() + 1);
+
+                    loadedEntryKeyRef.current = "";
 
                     setForm((current) => ({
                       ...blankForm(),
