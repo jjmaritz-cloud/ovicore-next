@@ -118,6 +118,34 @@ function displayDateToIso(value: string | null | undefined) {
   return clean;
 }
 
+function addDaysToIsoDate(
+  isoDate: string | null,
+  days: number | null | undefined,
+) {
+  if (
+    !isoDate ||
+    days === null ||
+    days === undefined ||
+    Number.isNaN(Number(days))
+  ) {
+    return null;
+  }
+
+  const cleanIso = displayDateToIso(isoDate);
+  if (!cleanIso) return null;
+
+  const date = new Date(`${cleanIso}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return null;
+
+  date.setDate(date.getDate() + Number(days));
+
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 function isoToDisplayDateTime(value: string | null | undefined) {
   if (!value) return "";
 
@@ -263,7 +291,7 @@ function recalculateRow(row: BroilerPlanRow): BroilerPlanRow {
     capacityVarianceBirds,
     capacityVariancePct,
     requiredChicks,
-    processingDate: addDaysToDisplayDate(row.placementDate, growoutDays),
+    processingDate: addDaysToIsoDate(row.placementDate, growoutDays),
     reviewFlag,
     status: "Draft",
   };
@@ -360,8 +388,8 @@ function BroilerDemandPlannerPageContent() {
 					shedName: row.shed_name,
 					cycleCode: row.cycle_code,
 
-					placementDate: isoToDisplayDate(row.placement_date),
-					processingDate: isoToDisplayDate(row.processing_date),
+					placementDate: displayDateToIso(row.placement_date),
+					processingDate: displayDateToIso(row.processing_date),
 
 					floorAreaM2: row.floor_area_m2,
 					targetDensityKgM2: row.target_density_kg_m2,
@@ -463,15 +491,25 @@ function BroilerDemandPlannerPageContent() {
           {
             field: "placementDate",
             headerName: "Placement Date",
-            minWidth: 155,
+            minWidth: 165,
             editable: true,
+            cellDataType: "dateString",
+            cellEditor: "agDateStringCellEditor",
+            cellEditorParams: {
+              min: "2020-01-01",
+              max: "2100-12-31",
+            },
+            valueFormatter: (params: ValueFormatterParams) =>
+              isoToDisplayDate(params.value),
             cellClass: editableCellClass,
           },
           {
             field: "processingDate",
             headerName: "Processing Date",
-            minWidth: 160,
+            minWidth: 170,
             editable: false,
+            valueFormatter: (params: ValueFormatterParams) =>
+              isoToDisplayDate(params.value),
             cellClass: calculatedCellClass,
           },
         ],
