@@ -66,6 +66,20 @@ type BroilerPlanRow = {
   lastSavedBy: string | null;
 };
 
+
+type BroilerShedOption = {
+  id: number;
+  company_id: number;
+  farm_id: number;
+  farm_name: string;
+  shed_name: string;
+  floor_area_m2: number;
+  default_density_kg_m2: number;
+  default_target_lw_kg: number;
+  default_growout_days: number;
+  active: boolean;
+};
+
 const API_BASE = '';
 
 async function authenticatedFetch(
@@ -331,6 +345,8 @@ function BroilerDemandPlannerPageContent() {
 	]);
 
   const [rows, setRows] = useState<BroilerPlanRow[]>([]);
+  const [shedOptions, setShedOptions] =
+    useState<BroilerShedOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -339,6 +355,37 @@ function BroilerDemandPlannerPageContent() {
   const [lastError, setLastError] = useState<string | null>(null);
 
   const dirtyRowIds = useRef<Set<number>>(new Set());
+
+  const fetchSheds = useCallback(async () => {
+    if (loadingUser || !activeCompanyId) {
+      setShedOptions([]);
+      return;
+    }
+
+    const response = await authenticatedFetch(
+      `${API_BASE}/api/broilers/sheds?company_id=${activeCompanyId}`,
+      { cache: "no-store" },
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `Failed to load broiler sheds. Backend returned ${response.status}.`,
+      );
+    }
+
+    const data: BroilerShedOption[] =
+      await response.json();
+
+    setShedOptions(
+      data
+        .filter((shed) => shed.active)
+        .sort((a, b) =>
+          `${a.farm_name} ${a.shed_name}`.localeCompare(
+            `${b.farm_name} ${b.shed_name}`,
+          ),
+        ),
+    );
+  }, [activeCompanyId, loadingUser]);
 
 	const fetchRows = useCallback(async () => {
 		if (loadingUser) {
@@ -439,8 +486,11 @@ function BroilerDemandPlannerPageContent() {
 	]);
 
   useEffect(() => {
-    fetchRows().catch(console.error);
-  }, [fetchRows]);
+    Promise.all([
+      fetchSheds(),
+      fetchRows(),
+    ]).catch(console.error);
+  }, [fetchRows, fetchSheds]);
 
   const editableCellClass = "editable-cell";
   const calculatedCellClass = "calculated-cell";
@@ -470,23 +520,70 @@ function BroilerDemandPlannerPageContent() {
             pinned: "left",
             minWidth: 170,
             editable: false,
-            cellClass: "identity-cell",
+            cellClass: "calculated-cell identity-cell",
           },
           {
             field: "shedName",
             headerName: "Shed",
             pinned: "left",
-            minWidth: 125,
-            editable: false,
-            cellClass: "identity-cell",
+            minWidth: 180,
+            editable: true,
+            cellEditor: "agSelectCellEditor",
+            cellEditorParams: {
+              values: shedOptions.map(
+                (shed) =>
+                  `${shed.farm_name} · ${shed.shed_name}`,
+              ),
+            },
+            valueGetter: (params) => {
+              const row = params.data;
+              if (!row) return "";
+
+              return `${row.farmName} · ${row.shedName}`;
+            },
+            valueSetter: (params) => {
+              const selected = shedOptions.find(
+                (shed) =>
+                  `${shed.farm_name} · ${shed.shed_name}` ===
+                  params.newValue,
+              );
+
+              if (!selected || !params.data) {
+                return false;
+              }
+
+              params.data.shedId = selected.id;
+              params.data.farmId = selected.farm_id;
+              params.data.farmName = selected.farm_name;
+              params.data.shedName = selected.shed_name;
+              params.data.floorAreaM2 =
+                Number(selected.floor_area_m2);
+              params.data.targetDensityKgM2 =
+                Number(
+                  selected.default_density_kg_m2,
+                );
+              params.data.targetLwKg =
+                Number(
+                  selected.default_target_lw_kg,
+                );
+              params.data.growoutDays =
+                Number(
+                  selected.default_growout_days,
+                );
+
+              return true;
+            },
+            cellClass:
+              "editable-cell identity-cell",
           },
           {
             field: "cycleCode",
             headerName: "Cycle",
             pinned: "left",
             minWidth: 145,
-            editable: false,
-            cellClass: "identity-cell",
+            editable: true,
+            cellClass:
+              "editable-cell identity-cell",
           },
           {
             field: "placementDate",
@@ -674,7 +771,7 @@ function BroilerDemandPlannerPageContent() {
         ],
       },
     ],
-    []
+    [shedOptions]
   );
 
   const onGridReady = useCallback((params: GridReadyEvent) => {
@@ -894,6 +991,9 @@ function BroilerDemandPlannerPageContent() {
 				if (!row) continue;
 
 				const payload = {
+          farm_id: row.farmId,
+          shed_id: row.shedId,
+          cycle_code: row.cycleCode,
 					placement_date: displayDateToIso(row.placementDate),
 					planned_birds:
 						row.plannedBirds === null || row.plannedBirds === undefined
@@ -1061,7 +1161,12 @@ return (
           <button
             type="button"
             className="ovicore-btn"
-            onClick={() => fetchRows()}
+            onClick={() =>
+              Promise.all([
+                fetchSheds(),
+                fetchRows(),
+              ]).catch(console.error)
+            }
           >
             Reload
           </button>
@@ -1080,7 +1185,7 @@ return (
 
     <OviCoreTableCard
       title="Broiler Demand Entry"
-      subtitle="Excel-style planner with frozen identity columns, grouped headers, editable yellow cells and calculated review columns."
+      subtitle="Excel-style planner with selectable sheds, calendar placement dates, editable yellow cells and calculated review columns."
     >
       <div className="formula-bar">
         <div className="formula-name">Capacity</div>
