@@ -1,6 +1,6 @@
 import os
 from datetime import datetime
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Body, Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session, joinedload
 from app.routers import broiler_processing
@@ -293,7 +293,7 @@ def list_demand_plans(
 )
 def update_demand_plan(
     plan_id: int,
-    payload: BroilerDemandPlanPatch,
+    payload: dict = Body(...),
     current_user: models.AppUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -330,12 +330,63 @@ def update_demand_plan(
             detail="You do not have access to this company",
         )
 
-    data = payload.model_dump(
-        exclude_unset=True
+    # Validate the standard demand-plan fields while retaining farm_id and
+    # shed_id, which older BroilerDemandPlanPatch schemas may ignore.
+    validated_payload = BroilerDemandPlanPatch.model_validate(payload)
+    data = validated_payload.model_dump(exclude_unset=True)
+
+    requested_farm_id = payload.get("farm_id", plan.farm_id)
+    requested_shed_id = payload.get("shed_id", plan.shed_id)
+
+    try:
+        requested_farm_id = int(requested_farm_id)
+        requested_shed_id = int(requested_shed_id)
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=400,
+            detail="farm_id and shed_id must be valid integers",
+        )
+
+    target_farm = require_farm_access(
+        db,
+        current_user,
+        requested_farm_id,
     )
 
+    target_shed = (
+        db.query(BroilerShed)
+        .filter(
+            BroilerShed.id == requested_shed_id,
+            BroilerShed.active == True,
+        )
+        .first()
+    )
+
+    if not target_shed:
+        raise HTTPException(
+            status_code=404,
+            detail="Broiler shed not found or inactive",
+        )
+
+    if (
+        target_shed.farm_id != target_farm.id
+        or target_shed.company_id != target_farm.company_id
+        or target_farm.company_id != plan.company_id
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "The selected shed does not belong to the selected farm "
+                "and company."
+            ),
+        )
+
+    plan.farm_id = target_farm.id
+    plan.shed_id = target_shed.id
+
     for field, value in data.items():
-        setattr(plan, field, value)
+        if field not in {"farm_id", "shed_id", "company_id"}:
+            setattr(plan, field, value)
 
     plan.last_saved_by = current_user.full_name
     plan.last_saved_at = datetime.utcnow()
