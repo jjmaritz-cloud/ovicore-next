@@ -3137,6 +3137,7 @@ function InsightsScreen({
   trend,
   managerInsights,
   plans,
+  records,
 }: {
   trend: {
     key: string;
