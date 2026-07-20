@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { App as CapacitorApp } from "@capacitor/app";
 import {
   FormEvent,
   useCallback,
@@ -706,24 +707,60 @@ export default function MobileBroilerApp() {
   const loadedEntryKeyRef = useRef<string>("");
   const wasOnlineRef = useRef<boolean>(true);
 	
-	const restoringHistoryRef = useRef(false);
-	const lastHistoryKeyRef = useRef("");
+	useEffect(() => {
+  let backListener:
+    | Awaited<
+        ReturnType<typeof CapacitorApp.addListener>
+      >
+    | undefined;
 
+  const registerBackButton = async () => {
+    backListener = await CapacitorApp.addListener(
+      "backButton",
+      ({ canGoBack }) => {
+        if (tab === "entry") {
+          if (entryStage === "saved") {
+            setEntryStage("form");
+            return;
+          }
+
+          if (entryStage === "form") {
+            setEntryStage("select");
+            return;
+          }
+
+          setTab("home");
+          return;
+        }
+
+        if (tab === "insights" || tab === "more") {
+          setTab("home");
+          return;
+        }
+
+        if (canGoBack) {
+          window.history.back();
+          return;
+        }
+
+        CapacitorApp.exitApp();
+      },
+    );
+  };
+
+  void registerBackButton();
+
+  return () => {
+    void backListener?.remove();
+  };
+}, [tab, entryStage]);
+	
 	useEffect(() => {
 		const initialState: MobileHistoryState = {
 			ovicoreMobile: true,
 			tab: "home",
 			entryStage: "select",
 		};
-
-		window.history.replaceState(
-			{
-				...(window.history.state ?? {}),
-				...initialState,
-			},
-			"",
-			window.location.href,
-		);
 
 		lastHistoryKeyRef.current =
 			`${initialState.tab}:${initialState.entryStage}`;
@@ -772,11 +809,6 @@ useEffect(() => {
     entryStage,
   };
 
-  window.history.pushState(
-    state,
-    "",
-    window.location.href,
-  );
 }, [tab, entryStage]);
 
   const companyId = useMemo(() => {
