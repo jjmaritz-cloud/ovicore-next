@@ -79,12 +79,6 @@ type PerformanceRecord = {
 type MobileTab = "home" | "entry" | "insights" | "more";
 type EntryStage = "select" | "form" | "saved";
 
-type MobileHistoryState = {
-  ovicoreMobile: true;
-  tab: MobileTab;
-  entryStage: EntryStage;
-};
-
 type EntryForm = {
   placement_plan_id: number | "";
   entry_date: string;
@@ -755,61 +749,6 @@ export default function MobileBroilerApp() {
   };
 }, [tab, entryStage]);
 	
-	useEffect(() => {
-		const initialState: MobileHistoryState = {
-			ovicoreMobile: true,
-			tab: "home",
-			entryStage: "select",
-		};
-
-		lastHistoryKeyRef.current =
-			`${initialState.tab}:${initialState.entryStage}`;
-
-		const handlePopState = (event: PopStateEvent) => {
-			const state =
-				event.state as Partial<MobileHistoryState> | null;
-
-			if (!state?.ovicoreMobile || !state.tab) {
-				return;
-			}
-
-			restoringHistoryRef.current = true;
-
-			setTab(state.tab);
-			setEntryStage(state.entryStage ?? "select");
-		};
-
-		window.addEventListener("popstate", handlePopState);
-
-		return () => {
-			window.removeEventListener(
-				"popstate",
-				handlePopState,
-			);
-		};
-	}, []);
-
-useEffect(() => {
-  const historyKey = `${tab}:${entryStage}`;
-
-  if (lastHistoryKeyRef.current === historyKey) {
-    return;
-  }
-
-  lastHistoryKeyRef.current = historyKey;
-
-  if (restoringHistoryRef.current) {
-    restoringHistoryRef.current = false;
-    return;
-  }
-
-  const state: MobileHistoryState = {
-    ovicoreMobile: true,
-    tab,
-    entryStage,
-  };
-
-}, [tab, entryStage]);
 
   const companyId = useMemo(() => {
     if (!currentUser) return null;
