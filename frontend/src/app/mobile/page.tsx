@@ -69,6 +69,8 @@ type PerformanceRecord = {
   water_litres?: number | null;
   body_weight_kg?: number | null;
   avg_weight_kg?: number | null;
+  body_weight_standard_kg?: number | null;
+  target_body_weight_kg?: number | null;
   notes?: string | null;
   last_saved_at?: string | null;
 };
@@ -98,6 +100,7 @@ type SavedSummary = {
   farm: string;
   shed: string;
   cycle: string;
+  ageDays: number;
   entryDate: string;
   opening: number | null;
   mortality: number;
@@ -127,6 +130,7 @@ type ShedException = {
 
 type ShedOverview = {
   plan: DemandPlan;
+  records: PerformanceRecord[];
   latest?: PerformanceRecord;
   today?: PerformanceRecord;
   previous?: PerformanceRecord;
@@ -261,6 +265,7 @@ function buildShedOverview(
 
   return {
     plan,
+    records: planRecords,
     latest,
     today: todayRecord,
     previous,
@@ -557,6 +562,23 @@ function calculateAgeDays(
       (entry.getTime() - placement.getTime()) / 86400000,
     ),
   );
+}
+
+function ageLabel(
+  plan: DemandPlan,
+  entryDate = new Date().toISOString().slice(0, 10),
+) {
+  return `Age ${calculateAgeDays(plan.placement_date, entryDate)} days`;
+}
+
+function recordWeight(record?: PerformanceRecord) {
+  return record?.body_weight_kg ?? record?.avg_weight_kg ?? null;
+}
+
+function recordStandardWeight(record?: PerformanceRecord) {
+  return record?.body_weight_standard_kg ??
+    record?.target_body_weight_kg ??
+    null;
 }
 
 function formatNumber(value: number | null | undefined) {
@@ -1567,6 +1589,7 @@ export default function MobileBroilerApp() {
       farm: selectedPlan.farm_name ?? "Farm",
       shed: selectedPlan.shed_name ?? "Shed",
       cycle: selectedPlan.cycle_code ?? "Cycle",
+      ageDays: calculateAgeDays(selectedPlan.placement_date, form.entry_date),
       entryDate: form.entry_date,
       opening,
       mortality: mortalityTotal,
@@ -1778,10 +1801,6 @@ export default function MobileBroilerApp() {
                 existingServerRecord={
                   existingServerRecord
                 }
-                onRefresh={() => {
-                  loadedEntryKeyRef.current = "";
-                  void loadData();
-                }}
                 onBack={() =>
                   setEntryStage("select")
                 }
@@ -1824,6 +1843,7 @@ export default function MobileBroilerApp() {
             trend={mortalityTrend}
             managerInsights={managerInsights}
             plans={plans}
+            records={records}
           />
         )}
 
@@ -2181,7 +2201,7 @@ function FarmOverviewCard({
           topIssues.map(({ shed, exception }) => (
             <small key={`${shed.plan.id}-${exception.metric}`}>
               <i className={styles[`dot${exception.severity[0].toUpperCase()}${exception.severity.slice(1)}`]} />
-              {shed.plan.shed_name ?? "Shed"}: {exception.label}
+              {shed.plan.shed_name ?? "Shed"} · {ageLabel(shed.plan)}: {exception.label}
             </small>
           ))
         )}
@@ -2253,7 +2273,9 @@ function FarmDetailScreen({
               <div className={styles.shedOverviewHeader}>
                 <div>
                   <strong>{shed.plan.shed_name ?? "Shed"}</strong>
-                  <span>{shed.plan.cycle_code ?? "Active cycle"}</span>
+                  <span>
+                    {shed.plan.cycle_code ?? "Active cycle"} · {ageLabel(shed.plan)}
+                  </span>
                 </div>
                 <b>›</b>
               </div>
@@ -2332,6 +2354,8 @@ function ShedDetailScreen({
         <RootMetric label="Water / feed" value={shed.waterFeedRatio === null ? "—" : shed.waterFeedRatio.toFixed(2)} detail="Litres per kg feed" />
       </section>
 
+      <FlockPerformanceCharts shed={shed} />
+
       <div className={styles.sectionHeading}>
         <div>
           <small>EXCEPTION REVIEW</small>
@@ -2366,6 +2390,216 @@ function ShedDetailScreen({
         Open this shed&apos;s daily entry
       </button>
     </>
+  );
+}
+
+
+function FlockPerformanceCharts({ shed }: { shed: ShedOverview }) {
+  const history = [...shed.records]
+    .sort((a, b) => a.entry_date.localeCompare(b.entry_date))
+    .slice(-14);
+
+  const weightSeries = history
+    .filter((record) => recordWeight(record) !== null)
+    .map((record) => ({
+      key: record.entry_date,
+      label: `${record.age_days ?? calculateAgeDays(shed.plan.placement_date, record.entry_date)}d`,
+      actual: recordWeight(record),
+      standard: recordStandardWeight(record),
+    }));
+
+  const feedSeries = history.map((record) => ({
+    key: record.entry_date,
+    label: `${record.age_days ?? calculateAgeDays(shed.plan.placement_date, record.entry_date)}d`,
+    value: record.feed_kg ?? null,
+  }));
+
+  const waterSeries = history.map((record) => ({
+    key: record.entry_date,
+    label: `${record.age_days ?? calculateAgeDays(shed.plan.placement_date, record.entry_date)}d`,
+    value: record.water_litres ?? null,
+  }));
+
+  return (
+    <>
+      <div className={styles.sectionHeading}>
+        <div>
+          <small>FLOCK PERFORMANCE</small>
+          <h2>Actual versus target</h2>
+        </div>
+      </div>
+
+      <ComparisonTrendCard
+        title="Bodyweight"
+        unit="kg"
+        data={weightSeries}
+      />
+
+      <div className={styles.dailyTrendGrid}>
+        <SimpleTrendCard
+          title="Daily feed"
+          unit="kg"
+          data={feedSeries}
+        />
+        <SimpleTrendCard
+          title="Daily water"
+          unit="L"
+          data={waterSeries}
+        />
+      </div>
+    </>
+  );
+}
+
+function ComparisonTrendCard({
+  title,
+  unit,
+  data,
+}: {
+  title: string;
+  unit: string;
+  data: {
+    key: string;
+    label: string;
+    actual: number | null;
+    standard: number | null;
+  }[];
+}) {
+  const numeric = data.flatMap((item) =>
+    [item.actual, item.standard].filter(
+      (value): value is number => value !== null,
+    ),
+  );
+  const max = Math.max(1, ...numeric);
+  const min = Math.min(0, ...numeric);
+  const span = Math.max(0.1, max - min);
+  const actualPoints = data
+    .map((item, index) => {
+      if (item.actual === null) return null;
+      const x = data.length <= 1 ? 50 : (index / (data.length - 1)) * 100;
+      const y = 88 - ((item.actual - min) / span) * 72;
+      return `${x},${y}`;
+    })
+    .filter(Boolean)
+    .join(" ");
+  const standardPoints = data
+    .map((item, index) => {
+      if (item.standard === null) return null;
+      const x = data.length <= 1 ? 50 : (index / (data.length - 1)) * 100;
+      const y = 88 - ((item.standard - min) / span) * 72;
+      return `${x},${y}`;
+    })
+    .filter(Boolean)
+    .join(" ");
+  const latest = [...data].reverse().find((item) => item.actual !== null);
+  const hasStandard = data.some((item) => item.standard !== null);
+
+  return (
+    <section className={styles.performanceChartCard}>
+      <div className={styles.performanceChartHeader}>
+        <div>
+          <small>{title.toUpperCase()}</small>
+          <strong>
+            {latest?.actual === null || latest?.actual === undefined
+              ? "—"
+              : `${formatDecimal(latest.actual)} ${unit}`}
+          </strong>
+          <span>{latest?.label ?? "No entries"}</span>
+        </div>
+        <div className={styles.chartLegend}>
+          <span><i />Actual</span>
+          <span className={styles.standardLegend}><i />Standard</span>
+        </div>
+      </div>
+
+      {data.length === 0 ? (
+        <div className={styles.emptyState}>No bodyweight entries yet.</div>
+      ) : (
+        <>
+          <svg className={styles.performanceSvg} viewBox="0 0 100 100" preserveAspectRatio="none">
+            {hasStandard && standardPoints && (
+              <polyline
+                points={standardPoints}
+                fill="none"
+                stroke="#82918c"
+                strokeWidth="2"
+                strokeDasharray="5 4"
+                vectorEffect="non-scaling-stroke"
+              />
+            )}
+            {actualPoints && (
+              <polyline
+                points={actualPoints}
+                fill="none"
+                stroke="#0c6b50"
+                strokeWidth="2.6"
+                vectorEffect="non-scaling-stroke"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            )}
+          </svg>
+          <div className={styles.performanceAxis}>
+            {data.map((item) => <span key={item.key}>{item.label}</span>)}
+          </div>
+          {!hasStandard && (
+            <p className={styles.standardUnavailable}>
+              Breed standard is not yet supplied by the performance API.
+            </p>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+function SimpleTrendCard({
+  title,
+  unit,
+  data,
+}: {
+  title: string;
+  unit: string;
+  data: { key: string; label: string; value: number | null }[];
+}) {
+  const values = data
+    .map((item) => item.value)
+    .filter((value): value is number => value !== null);
+  const max = Math.max(1, ...values);
+  const points = data
+    .map((item, index) => {
+      if (item.value === null) return null;
+      const x = data.length <= 1 ? 50 : (index / (data.length - 1)) * 100;
+      const y = 88 - (item.value / max) * 72;
+      return `${x},${y}`;
+    })
+    .filter(Boolean)
+    .join(" ");
+  const latest = [...data].reverse().find((item) => item.value !== null);
+
+  return (
+    <article className={styles.simpleTrendCard}>
+      <small>{title}</small>
+      <strong>
+        {latest?.value === null || latest?.value === undefined
+          ? "—"
+          : `${formatNumber(latest.value)} ${unit}`}
+      </strong>
+      <span>{latest?.label ?? "No entries"}</span>
+      <svg viewBox="0 0 100 50" preserveAspectRatio="none">
+        {points && (
+          <polyline
+            points={points}
+            fill="none"
+            stroke="#0c6b50"
+            strokeWidth="2.4"
+            vectorEffect="non-scaling-stroke"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        )}
+      </svg>
+    </article>
   );
 }
 
@@ -2460,7 +2694,7 @@ function SelectShedScreen({
                     latest?.closing_birds ??
                       plan.planned_birds,
                   )}{" "}
-                  birds
+                  birds · {ageLabel(plan, form.entry_date)}
                   {latest?.avg_weight_kg
                     ? ` · ${formatDecimal(
                         latest.avg_weight_kg,
@@ -2499,7 +2733,6 @@ function DailyEntryScreen({
   selectedPlan,
   selectedAge,
   existingServerRecord,
-  onRefresh,
   onBack,
   onSave,
 }: {
@@ -2512,7 +2745,6 @@ function DailyEntryScreen({
   selectedPlan?: DemandPlan;
   selectedAge: number;
   existingServerRecord?: PerformanceRecord;
-  onRefresh: () => void;
   onBack: () => void;
   onSave: (event: FormEvent) => Promise<void>;
 }) {
@@ -2567,21 +2799,6 @@ function DailyEntryScreen({
           Change
         </button>
       </section>
-
-      {existingServerRecord && (
-        <section className={styles.message}>
-          <span>
-            Grey fields are already synced from OviCore and
-            cannot be changed in the mobile app.
-          </span>
-          <button
-            type="button"
-            onClick={onRefresh}
-          >
-            Refresh
-          </button>
-        </section>
-      )}
 
       <div className={styles.formSectionHeading}>
         <small>BIRD NUMBERS</small>
@@ -2847,7 +3064,7 @@ function EntrySavedScreen({
             <strong>
               {summary.farm} · {summary.shed}
             </strong>
-            <span>{summary.cycle}</span>
+            <span>{summary.cycle} · Age {summary.ageDays} days</span>
           </div>
           <b>{formatDate(summary.entryDate)}</b>
         </div>
@@ -2937,7 +3154,30 @@ function InsightsScreen({
     missing: DemandPlan[];
   };
   plans: DemandPlan[];
+  records: PerformanceRecord[];
 }) {
+  const farms = useMemo(
+    () => buildFarmOverviews(plans, records),
+    [plans, records],
+  );
+  const [selectedFarmName, setSelectedFarmName] = useState<string | null>(
+    farms.length === 1 ? farms[0].farmName : null,
+  );
+  const [selectedShedId, setSelectedShedId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (farms.length === 1 && !selectedFarmName) {
+      setSelectedFarmName(farms[0].farmName);
+    }
+  }, [farms, selectedFarmName]);
+
+  const selectedFarm = farms.find(
+    (farm) => farm.farmName === selectedFarmName,
+  );
+  const selectedShed = selectedFarm?.sheds.find(
+    (shed) => shed.plan.id === selectedShedId,
+  );
+
   const max = Math.max(
     0.5,
     ...trend.map((item) => item.value),
@@ -2959,8 +3199,63 @@ function InsightsScreen({
       <ScreenTitle
         eyebrow="INSIGHTS"
         title="Broiler performance"
-        detail="Daily exceptions and recent mortality trend."
+        detail="Select a farm, then drill into a shed or flock."
       />
+
+      <section className={styles.insightDrilldown}>
+        <div className={styles.insightSelectorHeader}>
+          <strong>{selectedFarm ? selectedFarm.farmName : "Select a farm"}</strong>
+          {selectedFarm && farms.length > 1 && (
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedFarmName(null);
+                setSelectedShedId(null);
+              }}
+            >
+              Change farm
+            </button>
+          )}
+        </div>
+
+        {!selectedFarm ? (
+          <div className={styles.insightFarmGrid}>
+            {farms.map((farm) => (
+              <button
+                type="button"
+                key={farm.farmName}
+                onClick={() => setSelectedFarmName(farm.farmName)}
+              >
+                <strong>{farm.farmName}</strong>
+                <span>{farm.sheds.length} sheds · {formatNumber(farm.totalBirds)} birds</span>
+                <small>
+                  {farm.severity === "normal"
+                    ? "All sheds within range"
+                    : `${farm.critical + farm.warning + farm.incomplete} need review`}
+                </small>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className={styles.insightShedChips}>
+            {selectedFarm.sheds.map((shed) => (
+              <button
+                type="button"
+                key={shed.plan.id}
+                className={selectedShedId === shed.plan.id ? styles.insightChipActive : ""}
+                onClick={() => setSelectedShedId(shed.plan.id)}
+              >
+                <strong>{shed.plan.shed_name ?? "Shed"}</strong>
+                <span>{ageLabel(shed.plan)}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {selectedShed && (
+        <FlockPerformanceCharts shed={selectedShed} />
+      )}
 
       <section className={styles.chartCard}>
         <div className={styles.chartHeader}>
@@ -3105,6 +3400,7 @@ function InsightsScreen({
                       {plan?.shed_name}
                     </strong>
                     <small>
+                      {plan ? `${ageLabel(plan, item.record.entry_date)} · ` : ""}
                       {formatNumber(item.mortality)} birds
                     </small>
                   </div>
@@ -3267,7 +3563,7 @@ function MoreScreen({
                       <small>
                         {formatDate(
                           draft.payload.entry_date,
-                        )}
+                        )} · {plan ? ageLabel(plan, draft.payload.entry_date) : "Age unavailable"}
                       </small>
                     </div>
                     <SyncBadge status={draft.status} />
