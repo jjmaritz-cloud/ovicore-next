@@ -244,6 +244,8 @@ function ReviewPill(params: ICellRendererParams) {
 function getRowValidationErrors(row: BroilerPlanRow) {
   const errors: string[] = [];
 
+  if (!row.farmId) errors.push("Farm is required.");
+  if (!row.shedId) errors.push("Shed is required.");
   if (!row.placementDate) errors.push("Placement date is required.");
   if (!row.plannedBirds || Number(row.plannedBirds) <= 0) errors.push("Planned birds must be greater than 0.");
   if (!row.targetDensityKgM2 || Number(row.targetDensityKgM2) <= 0) errors.push("Target kg/m² must be greater than 0.");
@@ -495,6 +497,23 @@ function BroilerDemandPlannerPageContent() {
   const editableCellClass = "editable-cell";
   const calculatedCellClass = "calculated-cell";
 
+  const farmOptions = useMemo(() => {
+    const farms = new Map<number, { id: number; name: string }>();
+
+    for (const shed of shedOptions) {
+      if (!farms.has(shed.farm_id)) {
+        farms.set(shed.farm_id, {
+          id: shed.farm_id,
+          name: shed.farm_name,
+        });
+      }
+    }
+
+    return [...farms.values()].sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+  }, [shedOptions]);
+
   const defaultColDef = useMemo<ColDef<BroilerPlanRow>>(
     () => ({
       resizable: true,
@@ -519,38 +538,62 @@ function BroilerDemandPlannerPageContent() {
             headerName: "Farm",
             pinned: "left",
             minWidth: 170,
-            editable: false,
-            cellClass: "calculated-cell identity-cell",
+            editable: true,
+            cellEditor: "agSelectCellEditor",
+            cellEditorParams: {
+              values: farmOptions.map((farm) => farm.name),
+            },
+            valueSetter: (params) => {
+              if (!params.data) return false;
+
+              const selectedFarm = farmOptions.find(
+                (farm) => farm.name === params.newValue,
+              );
+
+              if (!selectedFarm) return false;
+
+              const farmChanged =
+                params.data.farmId !== selectedFarm.id;
+
+              params.data.farmId = selectedFarm.id;
+              params.data.farmName = selectedFarm.name;
+
+              if (farmChanged) {
+                params.data.shedId = undefined;
+                params.data.shedName = "";
+                params.data.floorAreaM2 = 0;
+                params.data.calculatedCapacityBirds = 0;
+              }
+
+              return true;
+            },
+            cellClass: "editable-cell identity-cell",
           },
           {
             field: "shedName",
             headerName: "Shed",
             pinned: "left",
             minWidth: 180,
-            editable: true,
+            editable: (params) => Boolean(params.data?.farmId),
             cellEditor: "agSelectCellEditor",
-            cellEditorParams: {
-              values: shedOptions.map(
-                (shed) =>
-                  `${shed.farm_name} · ${shed.shed_name}`,
-              ),
-            },
-            valueGetter: (params) => {
-              const row = params.data;
-              if (!row) return "";
-
-              return `${row.farmName} · ${row.shedName}`;
-            },
+            cellEditorParams: (params: { data?: BroilerPlanRow }) => ({
+              values: shedOptions
+                .filter(
+                  (shed) =>
+                    shed.farm_id === params.data?.farmId,
+                )
+                .map((shed) => shed.shed_name),
+            }),
             valueSetter: (params) => {
+              if (!params.data) return false;
+
               const selected = shedOptions.find(
                 (shed) =>
-                  `${shed.farm_name} · ${shed.shed_name}` ===
-                  params.newValue,
+                  shed.farm_id === params.data?.farmId &&
+                  shed.shed_name === params.newValue,
               );
 
-              if (!selected || !params.data) {
-                return false;
-              }
+              if (!selected) return false;
 
               params.data.shedId = selected.id;
               params.data.farmId = selected.farm_id;
@@ -559,22 +602,15 @@ function BroilerDemandPlannerPageContent() {
               params.data.floorAreaM2 =
                 Number(selected.floor_area_m2);
               params.data.targetDensityKgM2 =
-                Number(
-                  selected.default_density_kg_m2,
-                );
+                Number(selected.default_density_kg_m2);
               params.data.targetLwKg =
-                Number(
-                  selected.default_target_lw_kg,
-                );
+                Number(selected.default_target_lw_kg);
               params.data.growoutDays =
-                Number(
-                  selected.default_growout_days,
-                );
+                Number(selected.default_growout_days);
 
               return true;
             },
-            cellClass:
-              "editable-cell identity-cell",
+            cellClass: "editable-cell identity-cell",
           },
           {
             field: "cycleCode",
@@ -771,7 +807,7 @@ function BroilerDemandPlannerPageContent() {
         ],
       },
     ],
-    [shedOptions]
+    [farmOptions, shedOptions]
   );
 
   const onGridReady = useCallback((params: GridReadyEvent) => {
