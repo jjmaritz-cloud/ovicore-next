@@ -1951,12 +1951,6 @@ function HomeScreen({
   );
   const [selectedShedId, setSelectedShedId] = useState<number | null>(null);
 
-  useEffect(() => {
-    if (!isDivisionalView && farms.length === 1 && !selectedFarmName) {
-      setSelectedFarmName(farms[0].farmName);
-    }
-  }, [farms, isDivisionalView, selectedFarmName]);
-
   const selectedFarm = farms.find(
     (farm) => farm.farmName === selectedFarmName,
   );
@@ -2181,7 +2175,7 @@ function FarmOverviewCard({
         <div>
           <strong>{farm.farmName}</strong>
           <span>
-            {farm.sheds.length} sheds · {formatNumber(farm.totalBirds)} birds
+            {farm.sheds.length} active flocks · {formatNumber(farm.totalBirds)} birds
           </span>
         </div>
         <b>›</b>
@@ -2239,14 +2233,14 @@ function FarmDetailScreen({
       <ScreenTitle
         eyebrow="FARM OVERVIEW"
         title={farm.farmName}
-        detail={`${farm.sheds.length} active sheds · ${formatNumber(farm.totalBirds)} birds · ${farm.reported}/${farm.sheds.length} reported today`}
+        detail={`${new Set(farm.sheds.map((shed) => shed.plan.shed_name ?? "Shed")).size} sheds · ${farm.sheds.length} active flocks · ${formatNumber(farm.totalBirds)} birds · ${farm.reported}/${farm.sheds.length} reported today`}
       />
 
       <section className={styles.farmAttentionStrip}>
         <strong>
           {farm.severity === "normal"
             ? "All sheds are within range"
-            : `${farm.critical + farm.warning + farm.incomplete} sheds need review`}
+            : `${farm.critical + farm.warning + farm.incomplete} flocks need review`}
         </strong>
         <span>
           {farm.critical} critical · {farm.warning} warning · {farm.incomplete} incomplete
@@ -2255,8 +2249,8 @@ function FarmDetailScreen({
 
       <div className={styles.sectionHeading}>
         <div>
-          <small>SHED PRIORITY</small>
-          <h2>Where to look first</h2>
+          <small>FARM FLOCKS</small>
+          <h2>Sheds and active flocks</h2>
         </div>
       </div>
 
@@ -3228,7 +3222,7 @@ function InsightsScreen({
                 onClick={() => setSelectedFarmName(farm.farmName)}
               >
                 <strong>{farm.farmName}</strong>
-                <span>{farm.sheds.length} sheds · {formatNumber(farm.totalBirds)} birds</span>
+                <span>{farm.sheds.length} active flocks · {formatNumber(farm.totalBirds)} birds</span>
                 <small>
                   {farm.severity === "normal"
                     ? "All sheds within range"
