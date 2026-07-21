@@ -456,10 +456,7 @@ def ensure_daily_standard_schema() -> None:
     original weekly-only importer. Fresh databases are created directly
     from the updated SQLAlchemy model.
     """
-    bind = Base.metadata.bind
-
-    # Base.metadata.bind is normally unset in SQLAlchemy 2, so use the
-    # application engine imported lazily to avoid circular imports.
+    # Import the application engine lazily to avoid circular imports.
     from app.db import engine
 
     if not inspect(engine).has_table("performance_standards"):
