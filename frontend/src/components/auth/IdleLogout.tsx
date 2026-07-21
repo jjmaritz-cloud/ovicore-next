@@ -41,6 +41,14 @@ export default function IdleLogout({ children }: IdleLogoutProps) {
     pathname === "/forgot-password" ||
     pathname === "/reset-password";
 
+  // Mobile uses the separate 14-day remembered-session policy.
+  // Do not let the desktop 30-minute idle timer fight farm users
+  // or make offline daily entry inaccessible.
+  const isMobilePage =
+    pathname === "/mobile" || pathname.startsWith("/mobile/");
+
+  const isTimerExempt = isPublicPage || isMobilePage;
+
   const clearTimers = useCallback(() => {
     if (warningTimerRef.current) {
       clearTimeout(warningTimerRef.current);
@@ -83,7 +91,7 @@ export default function IdleLogout({ children }: IdleLogoutProps) {
   );
 
   const startTimers = useCallback(() => {
-    if (isPublicPage || loggingOut) return;
+    if (isTimerExempt || loggingOut) return;
 
     clearTimers();
     setShowWarning(false);
@@ -95,10 +103,10 @@ export default function IdleLogout({ children }: IdleLogoutProps) {
     logoutTimerRef.current = setTimeout(() => {
       void logout("idle");
     }, IDLE_TIMEOUT_MS);
-  }, [clearTimers, isPublicPage, loggingOut, logout]);
+  }, [clearTimers, isTimerExempt, loggingOut, logout]);
 
   const registerActivity = useCallback(() => {
-    if (isPublicPage || loggingOut) return;
+    if (isTimerExempt || loggingOut) return;
 
     const now = Date.now();
 
@@ -106,10 +114,10 @@ export default function IdleLogout({ children }: IdleLogoutProps) {
 
     lastResetRef.current = now;
     startTimers();
-  }, [isPublicPage, loggingOut, startTimers]);
+  }, [isTimerExempt, loggingOut, startTimers]);
 
   useEffect(() => {
-    if (isPublicPage) {
+    if (isTimerExempt) {
       clearTimers();
       setShowWarning(false);
       return;
@@ -130,13 +138,13 @@ export default function IdleLogout({ children }: IdleLogoutProps) {
         window.removeEventListener(eventName, registerActivity);
       });
     };
-  }, [clearTimers, isPublicPage, registerActivity, startTimers]);
+  }, [clearTimers, isTimerExempt, registerActivity, startTimers]);
 
   return (
     <>
       {children}
 
-      {showWarning && !isPublicPage ? (
+      {showWarning && !isTimerExempt ? (
         <div className="idle-overlay" role="dialog" aria-modal="true">
           <div className="idle-dialog">
             <div className="idle-icon">!</div>

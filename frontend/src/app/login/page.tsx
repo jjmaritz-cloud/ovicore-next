@@ -6,6 +6,10 @@ import OviCoreBrandIcon from "@/components/OviCoreBrandIcon";
 
 const API_BASE = "";
 
+const MOBILE_KEEP_SIGNED_IN_KEY =
+  "ovicore_mobile_keep_signed_in";
+const REMEMBERED_EMAIL_KEY = "ovicore_remembered_email";
+
 type LoginResponse = {
   message: string;
   must_change_password: boolean;
@@ -42,14 +46,30 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
 
   const [showPassword, setShowPassword] = useState(false);
+  const [keepSignedIn, setKeepSignedIn] = useState(true);
+  const [isMobileLogin, setIsMobileLogin] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
-    window.localStorage.removeItem(
-      "ovicore_remembered_email",
+    const nextPath = getSafeNextPath();
+    const mobileLogin = nextPath.startsWith("/mobile");
+    const storedPreference = window.localStorage.getItem(
+      MOBILE_KEEP_SIGNED_IN_KEY,
     );
+    const rememberedEmail = window.localStorage.getItem(
+      REMEMBERED_EMAIL_KEY,
+    );
+
+    setIsMobileLogin(mobileLogin);
+    setKeepSignedIn(
+      mobileLogin ? storedPreference !== "false" : false,
+    );
+
+    if (mobileLogin && rememberedEmail) {
+      setEmail(rememberedEmail);
+    }
   }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -97,12 +117,31 @@ export default function LoginPage() {
         throw new Error(apiError);
       }
 
-      window.localStorage.removeItem(
-        "ovicore_remembered_email",
-      );
+      const nextPath = getSafeNextPath();
+      const mobileLogin = nextPath.startsWith("/mobile");
+
+      if (mobileLogin) {
+        window.localStorage.setItem(
+          MOBILE_KEEP_SIGNED_IN_KEY,
+          keepSignedIn ? "true" : "false",
+        );
+
+        if (keepSignedIn) {
+          window.localStorage.setItem(
+            REMEMBERED_EMAIL_KEY,
+            normalisedEmail,
+          );
+        } else {
+          window.localStorage.removeItem(REMEMBERED_EMAIL_KEY);
+          window.localStorage.removeItem(
+            "ovicore_mobile_cached_user",
+          );
+        }
+      } else {
+        window.localStorage.removeItem(REMEMBERED_EMAIL_KEY);
+      }
 
       const loginData = data as LoginResponse;
-      const nextPath = getSafeNextPath();
 
       if (loginData.must_change_password) {
         router.replace(nextPath);
@@ -241,7 +280,26 @@ export default function LoginPage() {
             </div>
 
             <div className="login-options">
-<button
+              {isMobileLogin ? (
+                <label className="remember-option">
+                  <input
+                    type="checkbox"
+                    checked={keepSignedIn}
+                    disabled={loading}
+                    onChange={(event) =>
+                      setKeepSignedIn(event.target.checked)
+                    }
+                  />
+                  <span>
+                    <strong>Keep me signed in on this device</strong>
+                    <small>
+                      Stay signed in for 14 days and keep offline access available.
+                    </small>
+                  </span>
+                </label>
+              ) : null}
+
+              <button
                 type="button"
                 className="forgot-button"
                 disabled={loading}
@@ -567,10 +625,45 @@ export default function LoginPage() {
 
         .login-options {
           display: flex;
+          flex-direction: column;
           justify-content: space-between;
-          align-items: center;
+          align-items: flex-start;
           gap: 12px;
           margin: 3px 0 18px;
+        }
+
+        .remember-option {
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          color: #294a3e;
+          cursor: pointer;
+        }
+
+        .remember-option input {
+          width: 18px;
+          height: 18px;
+          margin: 1px 0 0;
+          accent-color: #0d7a50;
+          flex: 0 0 auto;
+        }
+
+        .remember-option span,
+        .remember-option strong,
+        .remember-option small {
+          display: block;
+        }
+
+        .remember-option strong {
+          font-size: 12px;
+          font-weight: 850;
+        }
+
+        .remember-option small {
+          margin-top: 3px;
+          color: #6d8179;
+          font-size: 10px;
+          line-height: 1.35;
         }
 
         .forgot-button {

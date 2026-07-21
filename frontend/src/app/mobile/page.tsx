@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import { App as CapacitorApp } from "@capacitor/app";
 import {
   FormEvent,
   PointerEvent,
@@ -32,58 +31,65 @@ const MOBILE_DATA_CACHE_KEY =
 const MOBILE_SELECTED_PLAN_KEY =
   "ovicore_mobile_selected_plan_id";
 
-const MOBILE_APP_LAUNCH_KEY =
-  "ovicore_mobile_app_launch_v1";
+const MOBILE_REMEMBER_DAYS = 14;
+const MOBILE_KEEP_SIGNED_IN_KEY =
+  "ovicore_mobile_keep_signed_in";
 
-function clearMobileSessionState() {
+type MobileRememberedSession = {
+  user: CurrentUser;
+  authenticated_at: string;
+  expires_at: string;
+};
+
+function clearRememberedMobileAuth() {
   if (typeof window === "undefined") return;
 
-  window.localStorage.removeItem(
-    MOBILE_USER_CACHE_KEY,
-  );
-  window.localStorage.removeItem(
-    MOBILE_DATA_CACHE_KEY,
-  );
-  window.localStorage.removeItem(
-    MOBILE_SELECTED_PLAN_KEY,
-  );
-  window.localStorage.removeItem(
-    "ovicore_selected_farm_id",
-  );
-  window.localStorage.removeItem(
-    "ovicore_selected_shed_id",
-  );
-  window.localStorage.removeItem(
-    "ovicore_selected_flock_id",
-  );
-  window.localStorage.removeItem(
-    "ovicore_remembered_email",
-  );
-
+  window.localStorage.removeItem(MOBILE_USER_CACHE_KEY);
+  window.localStorage.removeItem(MOBILE_SELECTED_PLAN_KEY);
+  window.localStorage.removeItem("ovicore_selected_company_id");
+  window.localStorage.removeItem("ovicore_selected_farm_id");
+  window.localStorage.removeItem("ovicore_selected_shed_id");
+  window.localStorage.removeItem("ovicore_selected_flock_id");
+  window.localStorage.removeItem("ovicore_remembered_email");
   window.sessionStorage.clear();
 }
 
+function rememberMobileUser(user: CurrentUser) {
+  if (typeof window === "undefined") return;
 
-function redirectToMobileLogin() {
-  clearMobileSessionState();
+  const keepSignedIn =
+    window.localStorage.getItem(MOBILE_KEEP_SIGNED_IN_KEY) !== "false";
 
-  window.sessionStorage.setItem(
-    MOBILE_APP_LAUNCH_KEY,
-    "active",
-  );
+  if (!keepSignedIn) {
+    window.localStorage.removeItem(MOBILE_USER_CACHE_KEY);
+    return;
+  }
 
-  window.location.replace(
-    "/login?next=%2Fmobile",
+  const authenticatedAt = new Date();
+  const expiresAt = new Date(authenticatedAt);
+  expiresAt.setDate(expiresAt.getDate() + MOBILE_REMEMBER_DAYS);
+
+  const session: MobileRememberedSession = {
+    user,
+    authenticated_at: authenticatedAt.toISOString(),
+    expires_at: expiresAt.toISOString(),
+  };
+
+  window.localStorage.setItem(
+    MOBILE_USER_CACHE_KEY,
+    JSON.stringify(session),
   );
 }
 
-function endMobileSession() {
-  clearMobileSessionState();
+function redirectToMobileLogin() {
+  // Keep cached farm data and IndexedDB drafts. Only the remembered
+  // identity is cleared, so unsynced production entries are never lost.
+  clearRememberedMobileAuth();
+  window.location.replace("/login?next=%2Fmobile");
+}
 
-  window.sessionStorage.setItem(
-    MOBILE_APP_LAUNCH_KEY,
-    "active",
-  );
+function endMobileSession() {
+  clearRememberedMobileAuth();
 
   // Redirect immediately. The server logout finishes in the background.
   void fetch(`${API_BASE}/api/auth/logout`, {
@@ -92,12 +98,10 @@ function endMobileSession() {
     cache: "no-store",
     keepalive: true,
   }).catch(() => {
-    // Local state is already cleared, so offline logout still succeeds.
+    // Remembered authentication is already cleared, so offline logout works.
   });
 
-  window.location.replace(
-    "/login?next=%2Fmobile",
-  );
+  window.location.replace("/login?next=%2Fmobile");
 }
 
 type CurrentUser = {
@@ -690,14 +694,20 @@ function readCachedUser(): CurrentUser | null {
   if (typeof window === "undefined") return null;
 
   try {
-    const raw = window.localStorage.getItem(
-      MOBILE_USER_CACHE_KEY,
-    );
+    const raw = window.localStorage.getItem(MOBILE_USER_CACHE_KEY);
+    if (!raw) return null;
 
-    return raw
-      ? (JSON.parse(raw) as CurrentUser)
-      : null;
+    const session = JSON.parse(raw) as Partial<MobileRememberedSession>;
+    const expiresAt = Date.parse(session.expires_at ?? "");
+
+    if (!session.user || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+      window.localStorage.removeItem(MOBILE_USER_CACHE_KEY);
+      return null;
+    }
+
+    return session.user;
   } catch {
+    window.localStorage.removeItem(MOBILE_USER_CACHE_KEY);
     return null;
   }
 }
@@ -802,24 +812,8 @@ export default function MobileBroilerApp() {
   const loadedEntryKeyRef = useRef<string>("");
   const wasOnlineRef = useRef<boolean>(true);
 	
-	const sessionEndingRef =
-		useRef<boolean>(false);
-	
-	useEffect(() => {
-		const currentLaunch =
-			window.sessionStorage.getItem(
-				MOBILE_APP_LAUNCH_KEY,
-			);
+  const sessionEndingRef = useRef<boolean>(false);
 
-		if (currentLaunch === "active") {
-			return;
-		}
-
-		sessionEndingRef.current = true;
-
-		endMobileSession();
-	}, []);
-	
   const companyId = useMemo(() => {
     if (!currentUser) return null;
 
@@ -904,43 +898,65 @@ export default function MobileBroilerApp() {
   }, []);
 
   const loadCurrentUser = useCallback(async () => {
-    try {
-      const response = await authenticatedFetch(
-        `${API_BASE}/api/auth/me`,
-      );
+    const cachedUser = readCachedUser();
 
-      if (!response.ok) {
-        throw new Error(
-          `Could not load your OviCore login (${response.status}).`,
-        );
-      }
+    // Open immediately from the valid device session. Online validation and
+    // renewal happen quietly below without blocking daily entry.
+    if (cachedUser) {
+      setCurrentUser(cachedUser);
+    }
 
-      const user: CurrentUser = await response.json();
-
-      setCurrentUser(user);
-      window.localStorage.setItem(
-        MOBILE_USER_CACHE_KEY,
-        JSON.stringify(user),
-      );
-
-      return user;
-    } catch (error) {
-      const cachedUser = readCachedUser();
-
+    if (!navigator.onLine) {
       if (cachedUser) {
-        setCurrentUser(cachedUser);
         setMessage(
-          "Offline mode: using the last signed-in OviCore profile.",
+          "Offline mode: using your remembered OviCore login. Entries will sync when signal returns.",
         );
         return cachedUser;
       }
 
+      setLoading(false);
+      setMessage(
+        "This device has no valid offline login. Connect to the internet and sign in once to enable offline access.",
+      );
+      return null;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE}/api/auth/me`, {
+        credentials: "include",
+        cache: "no-store",
+      });
+
+      if (response.status === 401) {
+        redirectToMobileLogin();
+        return null;
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          `Could not validate your OviCore login (${response.status}).`,
+        );
+      }
+
+      const user: CurrentUser = await response.json();
+      setCurrentUser(user);
+      rememberMobileUser(user);
+      return user;
+    } catch (error) {
+      if (cachedUser) {
+        setCurrentUser(cachedUser);
+        setMessage(
+          "Connection unavailable: continuing with your remembered OviCore login.",
+        );
+        return cachedUser;
+      }
+
+      setLoading(false);
       setMessage(
         error instanceof Error
           ? error.message
           : "Could not load your OviCore login.",
       );
-
       return null;
     }
   }, []);
@@ -1778,13 +1794,22 @@ export default function MobileBroilerApp() {
     setMessage("The mobile entry was discarded.");
   }
 
-	async function logout() {
-		if (sessionEndingRef.current) return;
+  async function logout() {
+    if (sessionEndingRef.current) return;
 
-		sessionEndingRef.current = true;
+    if (pendingCount > 0) {
+      const shouldLogout = window.confirm(
+        `You have ${pendingCount} unsynced mobile entr${
+          pendingCount === 1 ? "y" : "ies"
+        }. They will remain safely stored on this device, but you will need to sign in again before they can sync. Log out anyway?`,
+      );
 
-		endMobileSession();
-	}
+      if (!shouldLogout) return;
+    }
+
+    sessionEndingRef.current = true;
+    endMobileSession();
+  }
 
   function selectCompany(companyIdValue: number) {
     setSelectedCompanyId(companyIdValue);
