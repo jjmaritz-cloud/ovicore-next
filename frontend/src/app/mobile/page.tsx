@@ -4,7 +4,6 @@ import Image from "next/image";
 import { App as CapacitorApp } from "@capacitor/app";
 import {
   FormEvent,
-  PointerEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -77,18 +76,28 @@ function redirectToMobileLogin() {
   );
 }
 
-async function endMobileSession() {
-  try {
-    await fetch(`${API_BASE}/api/auth/logout`, {
-      method: "POST",
-      credentials: "include",
-      cache: "no-store",
-    });
-  } catch {
-    // The local session must still be cleared when offline.
-  } finally {
-    redirectToMobileLogin();
-  }
+function endMobileSession() {
+  clearMobileSessionState();
+
+  window.sessionStorage.setItem(
+    MOBILE_APP_LAUNCH_KEY,
+    "active",
+  );
+
+  // Do not make the user wait for the logout request.
+  // keepalive allows the browser to finish it after navigation starts.
+  void fetch(`${API_BASE}/api/auth/logout`, {
+    method: "POST",
+    credentials: "include",
+    cache: "no-store",
+    keepalive: true,
+  }).catch(() => {
+    // Local state is already cleared, so offline logout still succeeds.
+  });
+
+  window.location.replace(
+    "/login?next=%2Fmobile",
+  );
 }
 
 type CurrentUser = {
@@ -808,7 +817,7 @@ export default function MobileBroilerApp() {
 
 		sessionEndingRef.current = true;
 
-		void endMobileSession();
+		endMobileSession();
 	}, []);
 	
   const companyId = useMemo(() => {
@@ -1774,7 +1783,7 @@ export default function MobileBroilerApp() {
 
 		sessionEndingRef.current = true;
 
-		await endMobileSession();
+		endMobileSession();
 	}
 
   function selectCompany(companyIdValue: number) {
@@ -2686,13 +2695,13 @@ function FlockPerformanceCharts({ shed }: { shed: ShedOverview }) {
       },
       feed: {
         title: "Daily feed per bird",
-        unit: "gbd",
+        unit: "g/bird/day",
         decimals: 1,
         empty: "No feed entries yet.",
       },
       water: {
         title: "Daily water per bird",
-        unit: "mL/bird",
+        unit: "mL/bird/day",
         decimals: 1,
         empty: "No water entries yet.",
       },
@@ -2784,25 +2793,15 @@ function UnifiedPerformanceChart({
   };
 
   const actualCoordinates = data
-    .map((item, index) => {
-      const point = pointFor(item.actual, index);
-      return point ? { ...point, dataIndex: index } : null;
-    })
+    .map((item, index) => pointFor(item.actual, index))
     .filter(
-      (
-        point,
-      ): point is { x: number; y: number; dataIndex: number } =>
+      (point): point is { x: number; y: number } =>
         point !== null,
     );
   const standardCoordinates = data
-    .map((item, index) => {
-      const point = pointFor(item.standard, index);
-      return point ? { ...point, dataIndex: index } : null;
-    })
+    .map((item, index) => pointFor(item.standard, index))
     .filter(
-      (
-        point,
-      ): point is { x: number; y: number; dataIndex: number } =>
+      (point): point is { x: number; y: number } =>
         point !== null,
     );
   const actualPoints = actualCoordinates
@@ -2815,25 +2814,9 @@ function UnifiedPerformanceChart({
     actualCoordinates.length > 0
       ? `0,92 ${actualPoints} 100,92`
       : "";
-  const latestIndex = [...data]
-    .map((item, index) => ({ item, index }))
+  const latest = [...data]
     .reverse()
-    .find(({ item }) => item.actual !== null)?.index ?? -1;
-  const [selectedIndex, setSelectedIndex] = useState(latestIndex);
-
-  useEffect(() => {
-    setSelectedIndex(latestIndex);
-  }, [latestIndex, metric, range]);
-
-  const selected =
-    selectedIndex >= 0 && data[selectedIndex]?.actual !== null
-      ? data[selectedIndex]
-      : latestIndex >= 0
-        ? data[latestIndex]
-        : undefined;
-  const selectedPoint = actualCoordinates.find(
-    (point) => point.dataIndex === selectedIndex,
-  );
+    .find((item) => item.actual !== null);
   const hasStandard = standardCoordinates.length > 0;
 
   const axisLabelStep =
@@ -2845,39 +2828,10 @@ function UnifiedPerformanceChart({
           ? 4
           : Math.ceil(data.length / 8);
 
-  const selectedValue =
-    selected?.actual === null || selected?.actual === undefined
+  const latestValue =
+    latest?.actual === null || latest?.actual === undefined
       ? "—"
-      : `${formatDecimal(selected.actual, decimals)} ${unit}`;
-
-  const selectNearestPoint = (
-    event: PointerEvent<SVGSVGElement>,
-  ) => {
-    if (data.length === 0 || actualCoordinates.length === 0) return;
-
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const relativeX = Math.min(
-      Math.max(event.clientX - bounds.left, 0),
-      bounds.width,
-    );
-    const approximateIndex =
-      data.length <= 1
-        ? 0
-        : Math.round((relativeX / bounds.width) * (data.length - 1));
-
-    let nearest = actualCoordinates[0];
-
-    for (const point of actualCoordinates.slice(1)) {
-      if (
-        Math.abs(point.dataIndex - approximateIndex) <
-        Math.abs(nearest.dataIndex - approximateIndex)
-      ) {
-        nearest = point;
-      }
-    }
-
-    setSelectedIndex(nearest.dataIndex);
-  };
+      : `${formatDecimal(latest.actual, decimals)} ${unit}`;
 
   return (
     <article className={styles.unifiedChartCard}>
@@ -2931,12 +2885,8 @@ function UnifiedPerformanceChart({
       <div className={styles.performanceChartHeader}>
         <div>
           <small>{title.toUpperCase()}</small>
-          <strong>{selectedValue}</strong>
-          <span>
-            {selected
-              ? `${selected.label} · ${formatDate(selected.key)}`
-              : "No entries"}
-          </span>
+          <strong>{latestValue}</strong>
+          <span>{latest?.label ?? "No entries"}</span>
         </div>
 
         <div className={styles.chartLegend}>
@@ -2961,16 +2911,7 @@ function UnifiedPerformanceChart({
             className={styles.performanceSvg}
             viewBox="0 0 100 100"
             preserveAspectRatio="none"
-            aria-label={`${title} performance graph. Touch or drag across the graph to inspect a day.`}
-            onPointerDown={(event) => {
-              event.currentTarget.setPointerCapture(event.pointerId);
-              selectNearestPoint(event);
-            }}
-            onPointerMove={(event) => {
-              if (event.buttons > 0 || event.pointerType === "touch") {
-                selectNearestPoint(event);
-              }
-            }}
+            aria-label={`${title} performance graph`}
           >
             <line
               x1="0"
@@ -3001,27 +2942,13 @@ function UnifiedPerformanceChart({
               fill="none"
               vectorEffect="non-scaling-stroke"
             />
-            {selectedPoint && (
-              <line
-                x1={selectedPoint.x}
-                y1="8"
-                x2={selectedPoint.x}
-                y2="92"
-                className={styles.chartSelectionLine}
-                vectorEffect="non-scaling-stroke"
-              />
-            )}
-            {actualCoordinates.map((point) => (
+            {actualCoordinates.map((point, index) => (
               <circle
-                key={`${point.x}-${point.dataIndex}`}
+                key={`${point.x}-${index}`}
                 cx={point.x}
                 cy={point.y}
-                r={point.dataIndex === selectedIndex ? "2.6" : "1.7"}
-                className={
-                  point.dataIndex === selectedIndex
-                    ? styles.chartPointSelected
-                    : styles.chartPoint
-                }
+                r="1.7"
+                className={styles.chartPoint}
                 vectorEffect="non-scaling-stroke"
               />
             ))}
