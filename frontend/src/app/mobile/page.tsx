@@ -4,6 +4,7 @@ import Image from "next/image";
 import { App as CapacitorApp } from "@capacitor/app";
 import {
   FormEvent,
+  PointerEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -2685,13 +2686,13 @@ function FlockPerformanceCharts({ shed }: { shed: ShedOverview }) {
       },
       feed: {
         title: "Daily feed per bird",
-        unit: "g/bird/day",
+        unit: "gbd",
         decimals: 1,
         empty: "No feed entries yet.",
       },
       water: {
         title: "Daily water per bird",
-        unit: "mL/bird/day",
+        unit: "mL/bird",
         decimals: 1,
         empty: "No water entries yet.",
       },
@@ -2783,15 +2784,25 @@ function UnifiedPerformanceChart({
   };
 
   const actualCoordinates = data
-    .map((item, index) => pointFor(item.actual, index))
+    .map((item, index) => {
+      const point = pointFor(item.actual, index);
+      return point ? { ...point, dataIndex: index } : null;
+    })
     .filter(
-      (point): point is { x: number; y: number } =>
+      (
+        point,
+      ): point is { x: number; y: number; dataIndex: number } =>
         point !== null,
     );
   const standardCoordinates = data
-    .map((item, index) => pointFor(item.standard, index))
+    .map((item, index) => {
+      const point = pointFor(item.standard, index);
+      return point ? { ...point, dataIndex: index } : null;
+    })
     .filter(
-      (point): point is { x: number; y: number } =>
+      (
+        point,
+      ): point is { x: number; y: number; dataIndex: number } =>
         point !== null,
     );
   const actualPoints = actualCoordinates
@@ -2804,9 +2815,25 @@ function UnifiedPerformanceChart({
     actualCoordinates.length > 0
       ? `0,92 ${actualPoints} 100,92`
       : "";
-  const latest = [...data]
+  const latestIndex = [...data]
+    .map((item, index) => ({ item, index }))
     .reverse()
-    .find((item) => item.actual !== null);
+    .find(({ item }) => item.actual !== null)?.index ?? -1;
+  const [selectedIndex, setSelectedIndex] = useState(latestIndex);
+
+  useEffect(() => {
+    setSelectedIndex(latestIndex);
+  }, [latestIndex, metric, range]);
+
+  const selected =
+    selectedIndex >= 0 && data[selectedIndex]?.actual !== null
+      ? data[selectedIndex]
+      : latestIndex >= 0
+        ? data[latestIndex]
+        : undefined;
+  const selectedPoint = actualCoordinates.find(
+    (point) => point.dataIndex === selectedIndex,
+  );
   const hasStandard = standardCoordinates.length > 0;
 
   const axisLabelStep =
@@ -2818,10 +2845,39 @@ function UnifiedPerformanceChart({
           ? 4
           : Math.ceil(data.length / 8);
 
-  const latestValue =
-    latest?.actual === null || latest?.actual === undefined
+  const selectedValue =
+    selected?.actual === null || selected?.actual === undefined
       ? "—"
-      : `${formatDecimal(latest.actual, decimals)} ${unit}`;
+      : `${formatDecimal(selected.actual, decimals)} ${unit}`;
+
+  const selectNearestPoint = (
+    event: PointerEvent<SVGSVGElement>,
+  ) => {
+    if (data.length === 0 || actualCoordinates.length === 0) return;
+
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const relativeX = Math.min(
+      Math.max(event.clientX - bounds.left, 0),
+      bounds.width,
+    );
+    const approximateIndex =
+      data.length <= 1
+        ? 0
+        : Math.round((relativeX / bounds.width) * (data.length - 1));
+
+    let nearest = actualCoordinates[0];
+
+    for (const point of actualCoordinates.slice(1)) {
+      if (
+        Math.abs(point.dataIndex - approximateIndex) <
+        Math.abs(nearest.dataIndex - approximateIndex)
+      ) {
+        nearest = point;
+      }
+    }
+
+    setSelectedIndex(nearest.dataIndex);
+  };
 
   return (
     <article className={styles.unifiedChartCard}>
@@ -2875,8 +2931,12 @@ function UnifiedPerformanceChart({
       <div className={styles.performanceChartHeader}>
         <div>
           <small>{title.toUpperCase()}</small>
-          <strong>{latestValue}</strong>
-          <span>{latest?.label ?? "No entries"}</span>
+          <strong>{selectedValue}</strong>
+          <span>
+            {selected
+              ? `${selected.label} · ${formatDate(selected.key)}`
+              : "No entries"}
+          </span>
         </div>
 
         <div className={styles.chartLegend}>
@@ -2901,7 +2961,16 @@ function UnifiedPerformanceChart({
             className={styles.performanceSvg}
             viewBox="0 0 100 100"
             preserveAspectRatio="none"
-            aria-label={`${title} performance graph`}
+            aria-label={`${title} performance graph. Touch or drag across the graph to inspect a day.`}
+            onPointerDown={(event) => {
+              event.currentTarget.setPointerCapture(event.pointerId);
+              selectNearestPoint(event);
+            }}
+            onPointerMove={(event) => {
+              if (event.buttons > 0 || event.pointerType === "touch") {
+                selectNearestPoint(event);
+              }
+            }}
           >
             <line
               x1="0"
@@ -2932,13 +3001,27 @@ function UnifiedPerformanceChart({
               fill="none"
               vectorEffect="non-scaling-stroke"
             />
-            {actualCoordinates.map((point, index) => (
+            {selectedPoint && (
+              <line
+                x1={selectedPoint.x}
+                y1="8"
+                x2={selectedPoint.x}
+                y2="92"
+                className={styles.chartSelectionLine}
+                vectorEffect="non-scaling-stroke"
+              />
+            )}
+            {actualCoordinates.map((point) => (
               <circle
-                key={`${point.x}-${index}`}
+                key={`${point.x}-${point.dataIndex}`}
                 cx={point.x}
                 cy={point.y}
-                r="1.7"
-                className={styles.chartPoint}
+                r={point.dataIndex === selectedIndex ? "2.6" : "1.7"}
+                className={
+                  point.dataIndex === selectedIndex
+                    ? styles.chartPointSelected
+                    : styles.chartPoint
+                }
                 vectorEffect="non-scaling-stroke"
               />
             ))}

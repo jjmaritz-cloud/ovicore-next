@@ -2338,6 +2338,9 @@
   height: clamp(240px, 60vw, 340px);
   margin-top: 8px;
   filter: drop-shadow(0 12px 10px rgba(12, 88, 67, 0.13));
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
 }
 
 .chartBaseline {
@@ -2368,6 +2371,21 @@
   fill: #f28b20;
   stroke: #fff;
   stroke-width: 1.2;
+}
+
+.chartSelectionLine {
+  stroke: rgba(12, 88, 67, 0.34);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  pointer-events: none;
+}
+
+.chartPointSelected {
+  fill: #f28b20;
+  stroke: #ffffff;
+  stroke-width: 2;
+  filter: drop-shadow(0 2px 3px rgba(12, 88, 67, 0.32));
+  pointer-events: none;
 }
 
 .unifiedChartCard .performanceAxis {
