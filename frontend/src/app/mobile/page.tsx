@@ -2134,9 +2134,7 @@ export default function MobileBroilerApp() {
             plans={plans}
             records={records}
             managerInsights={managerInsights}
-            pendingCount={pendingCount}
             openEntryForPlan={openEntryForPlan}
-            refresh={() => void loadData()}
           />
         )}
 
@@ -2276,9 +2274,7 @@ function HomeScreen({
   plans,
   records,
   managerInsights,
-  pendingCount,
   openEntryForPlan,
-  refresh,
 }: {
   displayName: string;
   companyName: string;
@@ -2298,9 +2294,7 @@ function HomeScreen({
     liveWeight: number | null;
     mortalityRate: number;
   };
-  pendingCount: number;
   openEntryForPlan: (planId?: number) => void;
-  refresh: () => void;
 }) {
   const farms = useMemo(
     () => buildFarmOverviews(plans, records),
@@ -2318,20 +2312,6 @@ function HomeScreen({
   const selectedShed = selectedFarm?.sheds.find(
     (shed) => shed.plan.id === selectedShedId,
   );
-  const farmsNeedingAttention = farms.filter(
-    (farm) => farm.severity !== "normal",
-  ).length;
-  const shedExceptions = farms.reduce(
-    (sum, farm) =>
-      sum +
-      farm.sheds.filter((shed) => shed.severity !== "normal").length,
-    0,
-  );
-  const totalReported = farms.reduce(
-    (sum, farm) => sum + farm.reported,
-    0,
-  );
-
   if (selectedShed && selectedFarm) {
     return (
       <ShedDetailScreen
@@ -2355,12 +2335,14 @@ function HomeScreen({
     );
   }
 
+  const firstName = displayName.split(/\s+/)[0] || "there";
+
   return (
     <>
       <section className={styles.welcomePanel}>
         <div>
           <p>Good morning,</p>
-          <h1>{displayName}</h1>
+          <h1>{firstName}</h1>
           <span>{companyName}</span>
         </div>
         <button
@@ -2375,47 +2357,6 @@ function HomeScreen({
             .join("")
             .toUpperCase()}
         </button>
-      </section>
-
-      <section className={styles.attentionHero}>
-        <div>
-          <small>DIVISIONAL OVERVIEW</small>
-          <strong>
-            {farmsNeedingAttention === 0
-              ? "All farms are clear"
-              : `${farmsNeedingAttention} farm${
-                  farmsNeedingAttention === 1 ? "" : "s"
-                } need attention`}
-          </strong>
-          <span>
-            {shedExceptions} shed exception{shedExceptions === 1 ? "" : "s"}
-            {managerInsights.missing.length > 0
-              ? ` · ${managerInsights.missing.length} entries missing`
-              : " · reporting complete"}
-          </span>
-        </div>
-        <button type="button" onClick={refresh}>
-          Refresh
-        </button>
-      </section>
-
-      <section className={styles.managerSummaryGrid}>
-        <ManagerSummaryCard
-          label="Farms"
-          value={formatNumber(farms.length)}
-          detail={`${farmsNeedingAttention} need attention`}
-          tone={farmsNeedingAttention > 0 ? "warning" : "good"}
-        />
-        <ManagerSummaryCard
-          label="Sheds reported"
-          value={`${totalReported}/${plans.length}`}
-          detail={
-            pendingCount > 0
-              ? `${pendingCount} mobile sync pending`
-              : "Sync clear"
-          }
-          tone={totalReported < plans.length ? "incomplete" : "good"}
-        />
       </section>
 
       <div className={styles.sectionHeading}>
@@ -2480,34 +2421,6 @@ function HomeScreen({
         />
       </section>
     </>
-  );
-}
-
-function ManagerSummaryCard({
-  label,
-  value,
-  detail,
-  tone,
-}: {
-  label: string;
-  value: string;
-  detail: string;
-  tone: "good" | "warning" | "incomplete";
-}) {
-  return (
-    <article
-      className={`${styles.managerSummaryCard} ${
-        tone === "warning"
-          ? styles.managerSummaryWarning
-          : tone === "incomplete"
-            ? styles.managerSummaryIncomplete
-            : styles.managerSummaryGood
-      }`}
-    >
-      <span>{label}</span>
-      <strong>{value}</strong>
-      <small>{detail}</small>
-    </article>
   );
 }
 
