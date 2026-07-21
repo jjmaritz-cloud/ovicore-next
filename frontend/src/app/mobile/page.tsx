@@ -100,6 +100,13 @@ type CurrentUser = {
   is_company_admin: boolean;
 };
 
+type CompanyOption = {
+  id: number;
+  name?: string;
+  company_name?: string;
+  enable_broilers?: boolean;
+};
+
 type DemandPlan = {
   id: number;
   company_id?: number;
@@ -761,6 +768,26 @@ export default function MobileBroilerApp() {
     useState<CurrentUser | null>(null);
   const [savedSummary, setSavedSummary] =
     useState<SavedSummary | null>(null);
+  const [companies, setCompanies] =
+    useState<CompanyOption[]>([]);
+  const [loadingCompanies, setLoadingCompanies] =
+    useState(false);
+  const [selectedCompanyId, setSelectedCompanyId] =
+    useState<number | null>(() => {
+      if (typeof window === "undefined") {
+        return null;
+      }
+
+      const stored = Number(
+        window.localStorage.getItem(
+          "ovicore_selected_company_id",
+        ),
+      );
+
+      return Number.isInteger(stored) && stored > 0
+        ? stored
+        : null;
+    });
 
   const loadedEntryKeyRef = useRef<string>("");
   const wasOnlineRef = useRef<boolean>(true);
@@ -790,20 +817,8 @@ export default function MobileBroilerApp() {
       return currentUser.company_id;
     }
 
-    const raw = window.localStorage.getItem(
-      "ovicore_selected_company_id",
-    );
-    const selectedCompanyId = Number(raw);
-
-    if (
-      Number.isInteger(selectedCompanyId) &&
-      selectedCompanyId > 0
-    ) {
-      return selectedCompanyId;
-    }
-
-    return currentUser.company_id;
-  }, [currentUser]);
+    return selectedCompanyId;
+  }, [currentUser, selectedCompanyId]);
 
   const selectedPlan = useMemo(
     () =>
@@ -919,6 +934,57 @@ export default function MobileBroilerApp() {
       return null;
     }
   }, []);
+
+  const loadCompanies = useCallback(async () => {
+    if (!currentUser?.is_global_admin) {
+      return;
+    }
+
+    setLoadingCompanies(true);
+
+    try {
+      const response = await authenticatedFetch(
+        `${API_BASE}/api/access/companies`,
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          `Could not load companies (${response.status}).`,
+        );
+      }
+
+      const companyData: CompanyOption[] =
+        await response.json();
+
+      const broilerCompanies = companyData.filter(
+        (company) =>
+          company.enable_broilers !== false,
+      );
+
+      setCompanies(broilerCompanies);
+
+      if (
+        selectedCompanyId &&
+        !broilerCompanies.some(
+          (company) =>
+            company.id === selectedCompanyId,
+        )
+      ) {
+        setSelectedCompanyId(null);
+        window.localStorage.removeItem(
+          "ovicore_selected_company_id",
+        );
+      }
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not load companies.",
+      );
+    } finally {
+      setLoadingCompanies(false);
+    }
+  }, [currentUser, selectedCompanyId]);
 
   const loadData = useCallback(async () => {
     if (!currentUser) return;
@@ -1276,11 +1342,17 @@ export default function MobileBroilerApp() {
     loadPendingCount,
   ]);
 
-	useEffect(() => {
-		if (currentUser) {
-			void loadData();
-		}
-	}, [companyId, currentUser, loadData]);
+  useEffect(() => {
+    if (currentUser?.is_global_admin) {
+      void loadCompanies();
+    }
+  }, [currentUser, loadCompanies]);
+
+  useEffect(() => {
+    if (currentUser) {
+      void loadData();
+    }
+  }, [companyId, currentUser, loadData]);
 
   useEffect(() => {
     const cameBackOnline =
@@ -1742,6 +1814,19 @@ export default function MobileBroilerApp() {
 		await endMobileSession();
 	}
 
+  function selectCompany(companyIdValue: number) {
+    setSelectedCompanyId(companyIdValue);
+    window.localStorage.setItem(
+      "ovicore_selected_company_id",
+      String(companyIdValue),
+    );
+    setPlans([]);
+    setRecords([]);
+    setMessage("");
+    setLoading(true);
+    setTab("home");
+  }
+
   function openEntryForPlan(planId?: number) {
     loadedEntryKeyRef.current = "";
 
@@ -1754,9 +1839,50 @@ export default function MobileBroilerApp() {
     setTab("entry");
   }
 
+  if (currentUser?.is_global_admin && !companyId) {
+    return (
+      <main className={styles.app}>
+        <header className={styles.appHeader}>
+          <div className={styles.brand}>
+            <Image src="/assets/ovicore-icon.png" alt="OviCore" width={42} height={42} priority />
+            <div><strong>OviCore</strong><small>Global Administration</small></div>
+          </div>
+        </header>
+        <section className={styles.screen}>
+          <ScreenTitle eyebrow="GLOBAL ADMIN" title="Select company" detail="Choose the company whose farms, sheds and flocks you want to view." />
+          {message && <div className={styles.message}><span>{message}</span></div>}
+          {loadingCompanies ? (
+            <div className={styles.emptyState}>Loading companies…</div>
+          ) : companies.length === 0 ? (
+            <div className={styles.emptyState}>No broiler companies are available.</div>
+          ) : (
+            <div className={styles.shedList}>
+              {companies.map((company) => (
+                <button type="button" key={company.id} className={styles.shedCard} onClick={() => selectCompany(company.id)}>
+                  <div className={styles.shedIcon}>◉</div>
+                  <div className={styles.shedMain}>
+                    <strong>{company.name ?? company.company_name ?? `Company ${company.id}`}</strong>
+                    <span>Open mobile broiler workspace</span>
+                  </div>
+                  <b>›</b>
+                </button>
+              ))}
+            </div>
+          )}
+          <button type="button" className={styles.secondaryButton} onClick={() => void logout()}>Log out</button>
+        </section>
+      </main>
+    );
+  }
+
   const displayName =
     currentUser?.full_name?.trim() || "OviCore User";
+  const selectedCompany = companies.find(
+    (company) => company.id === companyId,
+  );
   const companyName =
+    selectedCompany?.name?.trim() ||
+    selectedCompany?.company_name?.trim() ||
     currentUser?.company_name?.trim() ||
     "Broiler Operations";
 
@@ -1778,6 +1904,24 @@ export default function MobileBroilerApp() {
         </div>
 
         <div className={styles.headerActions}>
+          {currentUser?.is_global_admin && (
+            <button
+              type="button"
+              className={styles.notificationButton}
+              aria-label="Change company"
+              onClick={() => {
+                setSelectedCompanyId(null);
+                window.localStorage.removeItem(
+                  "ovicore_selected_company_id",
+                );
+                setPlans([]);
+                setRecords([]);
+                setMessage("");
+              }}
+            >
+              ⇄
+            </button>
+          )}
           <span
             className={`${styles.connectionBadge} ${
               online
