@@ -1481,45 +1481,7 @@ export default function MobileBroilerApp() {
     [mobileDrafts],
   );
 
-  const mortalityTrend = useMemo(() => {
-    const days: {
-      key: string;
-      label: string;
-      value: number;
-    }[] = [];
 
-    for (let offset = 6; offset >= 0; offset -= 1) {
-      const date = new Date();
-      date.setDate(date.getDate() - offset);
-      const key = date.toISOString().slice(0, 10);
-      const dayRecords = records.filter(
-        (record) => record.entry_date === key,
-      );
-      const opening = dayRecords.reduce(
-        (sum, record) =>
-          sum + numberOrZero(record.opening_birds),
-        0,
-      );
-      const mortality = dayRecords.reduce(
-        (sum, record) =>
-          sum + numberOrZero(record.mortality_birds),
-        0,
-      );
-
-      days.push({
-        key,
-        label: date.toLocaleDateString("en-AU", {
-          weekday: "short",
-        }),
-        value:
-          opening > 0
-            ? (mortality / opening) * 100
-            : 0,
-      });
-    }
-
-    return days;
-  }, [records]);
 
   async function saveEntry(event: FormEvent) {
     event.preventDefault();
@@ -2036,7 +1998,6 @@ export default function MobileBroilerApp() {
 
         {tab === "insights" && (
           <InsightsScreen
-            trend={mortalityTrend}
             managerInsights={managerInsights}
             plans={plans}
             records={records}
@@ -2584,211 +2545,403 @@ function ShedDetailScreen({
 }
 
 
+type PerformanceMetric =
+  | "bodyweight"
+  | "mortality"
+  | "cumulativeMortality"
+  | "feed"
+  | "water"
+  | "waterFeed";
+
+type PerformanceRange = 7 | 14 | 30 | "all";
+
+const performanceMetricOptions: {
+  value: PerformanceMetric;
+  label: string;
+}[] = [
+  { value: "bodyweight", label: "Bodyweight" },
+  { value: "mortality", label: "Daily mortality %" },
+  {
+    value: "cumulativeMortality",
+    label: "Cumulative mortality %",
+  },
+  { value: "feed", label: "Daily feed" },
+  { value: "water", label: "Daily water" },
+  { value: "waterFeed", label: "Water / feed" },
+];
+
 function FlockPerformanceCharts({ shed }: { shed: ShedOverview }) {
-  const history = [...shed.records]
-    .sort((a, b) => a.entry_date.localeCompare(b.entry_date))
-    .slice(-14);
+  const [metric, setMetric] =
+    useState<PerformanceMetric>("bodyweight");
+  const [range, setRange] =
+    useState<PerformanceRange>(14);
 
-  const weightSeries = history
-    .filter((record) => recordWeight(record) !== null)
-    .map((record) => ({
-      key: record.entry_date,
-      label: `${record.age_days ?? calculateAgeDays(shed.plan.placement_date, record.entry_date)}d`,
-      actual: recordWeight(record),
-      standard: recordStandardWeight(record),
-    }));
+  const orderedHistory = useMemo(
+    () =>
+      [...shed.records].sort((a, b) =>
+        a.entry_date.localeCompare(b.entry_date),
+      ),
+    [shed.records],
+  );
 
-  const feedSeries = history.map((record) => ({
-    key: record.entry_date,
-    label: `${record.age_days ?? calculateAgeDays(shed.plan.placement_date, record.entry_date)}d`,
-    value: record.feed_kg ?? null,
-  }));
+  const chart = useMemo(() => {
+    let cumulativeMortality = 0;
+    const placedBirds =
+      numberOrZero(orderedHistory[0]?.opening_birds) ||
+      numberOrZero(shed.plan.planned_birds);
 
-  const waterSeries = history.map((record) => ({
-    key: record.entry_date,
-    label: `${record.age_days ?? calculateAgeDays(shed.plan.placement_date, record.entry_date)}d`,
-    value: record.water_litres ?? null,
-  }));
+    const allData = orderedHistory.map((record) => {
+      const age =
+        record.age_days ??
+        calculateAgeDays(
+          shed.plan.placement_date,
+          record.entry_date,
+        );
+      const mortality = recordMortality(record);
+      const opening = numberOrZero(record.opening_birds);
+      const feed = numberOrZero(record.feed_kg);
+      const water = numberOrZero(record.water_litres);
+
+      cumulativeMortality += mortality;
+
+      let actual: number | null = null;
+      let standard: number | null = null;
+
+      switch (metric) {
+        case "bodyweight":
+          actual = recordWeight(record);
+          standard = recordStandardWeight(record);
+          break;
+        case "mortality":
+          actual =
+            opening > 0 ? (mortality / opening) * 100 : null;
+          break;
+        case "cumulativeMortality":
+          actual =
+            placedBirds > 0
+              ? (cumulativeMortality / placedBirds) * 100
+              : null;
+          break;
+        case "feed":
+          actual = record.feed_kg ?? null;
+          break;
+        case "water":
+          actual = record.water_litres ?? null;
+          break;
+        case "waterFeed":
+          actual =
+            feed > 0 && water > 0 ? water / feed : null;
+          break;
+      }
+
+      return {
+        key: record.entry_date,
+        label: `${age}d`,
+        actual,
+        standard,
+      };
+    });
+
+    const data =
+      range === "all" ? allData : allData.slice(-range);
+
+    const config: Record<
+      PerformanceMetric,
+      {
+        title: string;
+        unit: string;
+        decimals: number;
+        empty: string;
+      }
+    > = {
+      bodyweight: {
+        title: "Bodyweight",
+        unit: "kg",
+        decimals: 2,
+        empty: "No bodyweight entries yet.",
+      },
+      mortality: {
+        title: "Daily mortality",
+        unit: "%",
+        decimals: 2,
+        empty: "No mortality entries yet.",
+      },
+      cumulativeMortality: {
+        title: "Cumulative mortality",
+        unit: "%",
+        decimals: 2,
+        empty: "No mortality entries yet.",
+      },
+      feed: {
+        title: "Daily feed",
+        unit: "kg",
+        decimals: 0,
+        empty: "No feed entries yet.",
+      },
+      water: {
+        title: "Daily water",
+        unit: "L",
+        decimals: 0,
+        empty: "No water entries yet.",
+      },
+      waterFeed: {
+        title: "Water / feed",
+        unit: "L/kg",
+        decimals: 2,
+        empty: "No water-to-feed entries yet.",
+      },
+    };
+
+    return { data, ...config[metric] };
+  }, [metric, orderedHistory, range, shed.plan]);
 
   return (
-    <>
+    <section className={styles.performanceWorkspace}>
       <div className={styles.sectionHeading}>
         <div>
           <small>FLOCK PERFORMANCE</small>
-          <h2>Actual versus target</h2>
+          <h2>Performance graph</h2>
         </div>
       </div>
 
-      <ComparisonTrendCard
-        title="Bodyweight"
-        unit="kg"
-        data={weightSeries}
+      <UnifiedPerformanceChart
+        title={chart.title}
+        unit={chart.unit}
+        decimals={chart.decimals}
+        emptyMessage={chart.empty}
+        data={chart.data}
+        metric={metric}
+        range={range}
+        onMetricChange={setMetric}
+        onRangeChange={setRange}
       />
-
-      <div className={styles.dailyTrendGrid}>
-        <SimpleTrendCard
-          title="Daily feed"
-          unit="kg"
-          data={feedSeries}
-        />
-        <SimpleTrendCard
-          title="Daily water"
-          unit="L"
-          data={waterSeries}
-        />
-      </div>
-    </>
+    </section>
   );
 }
 
-function ComparisonTrendCard({
+function UnifiedPerformanceChart({
   title,
   unit,
+  decimals,
+  emptyMessage,
   data,
+  metric,
+  range,
+  onMetricChange,
+  onRangeChange,
 }: {
   title: string;
   unit: string;
+  decimals: number;
+  emptyMessage: string;
   data: {
     key: string;
     label: string;
     actual: number | null;
     standard: number | null;
   }[];
+  metric: PerformanceMetric;
+  range: PerformanceRange;
+  onMetricChange: (value: PerformanceMetric) => void;
+  onRangeChange: (value: PerformanceRange) => void;
 }) {
   const numeric = data.flatMap((item) =>
     [item.actual, item.standard].filter(
-      (value): value is number => value !== null,
+      (value): value is number =>
+        value !== null && Number.isFinite(value),
     ),
   );
-  const max = Math.max(1, ...numeric);
-  const min = Math.min(0, ...numeric);
+  const rawMax = numeric.length ? Math.max(...numeric) : 1;
+  const rawMin = numeric.length ? Math.min(...numeric) : 0;
+  const padding = Math.max((rawMax - rawMin) * 0.14, 0.05);
+  const min = Math.max(0, rawMin - padding);
+  const max = rawMax + padding;
   const span = Math.max(0.1, max - min);
-  const actualPoints = data
-    .map((item, index) => {
-      if (item.actual === null) return null;
-      const x = data.length <= 1 ? 50 : (index / (data.length - 1)) * 100;
-      const y = 88 - ((item.actual - min) / span) * 72;
-      return `${x},${y}`;
-    })
-    .filter(Boolean)
+
+  const pointFor = (
+    value: number | null,
+    index: number,
+  ) => {
+    if (value === null) return null;
+    const x =
+      data.length <= 1
+        ? 50
+        : (index / (data.length - 1)) * 100;
+    const y = 88 - ((value - min) / span) * 72;
+    return { x, y };
+  };
+
+  const actualCoordinates = data
+    .map((item, index) => pointFor(item.actual, index))
+    .filter(
+      (point): point is { x: number; y: number } =>
+        point !== null,
+    );
+  const standardCoordinates = data
+    .map((item, index) => pointFor(item.standard, index))
+    .filter(
+      (point): point is { x: number; y: number } =>
+        point !== null,
+    );
+  const actualPoints = actualCoordinates
+    .map((point) => `${point.x},${point.y}`)
     .join(" ");
-  const standardPoints = data
-    .map((item, index) => {
-      if (item.standard === null) return null;
-      const x = data.length <= 1 ? 50 : (index / (data.length - 1)) * 100;
-      const y = 88 - ((item.standard - min) / span) * 72;
-      return `${x},${y}`;
-    })
-    .filter(Boolean)
+  const standardPoints = standardCoordinates
+    .map((point) => `${point.x},${point.y}`)
     .join(" ");
-  const latest = [...data].reverse().find((item) => item.actual !== null);
-  const hasStandard = data.some((item) => item.standard !== null);
+  const areaPoints =
+    actualCoordinates.length > 0
+      ? `0,92 ${actualPoints} 100,92`
+      : "";
+  const latest = [...data]
+    .reverse()
+    .find((item) => item.actual !== null);
+  const hasStandard = standardCoordinates.length > 0;
+
+  const latestValue =
+    latest?.actual === null || latest?.actual === undefined
+      ? "—"
+      : `${formatDecimal(latest.actual, decimals)} ${unit}`;
 
   return (
-    <section className={styles.performanceChartCard}>
-      <div className={styles.performanceChartHeader}>
-        <div>
-          <small>{title.toUpperCase()}</small>
-          <strong>
-            {latest?.actual === null || latest?.actual === undefined
-              ? "—"
-              : `${formatDecimal(latest.actual)} ${unit}`}
-          </strong>
-          <span>{latest?.label ?? "No entries"}</span>
-        </div>
-        <div className={styles.chartLegend}>
-          <span><i />Actual</span>
-          <span className={styles.standardLegend}><i />Standard</span>
+    <article className={styles.unifiedChartCard}>
+      <div className={styles.chartControlRow}>
+        <label className={styles.metricSelect}>
+          <span>Metric</span>
+          <select
+            value={metric}
+            onChange={(event) =>
+              onMetricChange(
+                event.target.value as PerformanceMetric,
+              )
+            }
+          >
+            {performanceMetricOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div
+          className={styles.rangeButtons}
+          aria-label="Graph date range"
+        >
+          {(
+            [
+              [7, "7D"],
+              [14, "14D"],
+              [30, "30D"],
+              ["all", "All"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              type="button"
+              key={String(value)}
+              className={
+                range === value
+                  ? styles.rangeButtonActive
+                  : ""
+              }
+              onClick={() => onRangeChange(value)}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {data.length === 0 ? (
-        <div className={styles.emptyState}>No bodyweight entries yet.</div>
+      <div className={styles.performanceChartHeader}>
+        <div>
+          <small>{title.toUpperCase()}</small>
+          <strong>{latestValue}</strong>
+          <span>{latest?.label ?? "No entries"}</span>
+        </div>
+
+        <div className={styles.chartLegend}>
+          <span>
+            <i />
+            Actual
+          </span>
+          {hasStandard && (
+            <span className={styles.standardLegend}>
+              <i />
+              Standard
+            </span>
+          )}
+        </div>
+      </div>
+
+      {actualCoordinates.length === 0 ? (
+        <div className={styles.emptyState}>{emptyMessage}</div>
       ) : (
-        <>
-          <svg className={styles.performanceSvg} viewBox="0 0 100 100" preserveAspectRatio="none">
+        <div className={styles.unifiedChartPlot}>
+          <svg
+            className={styles.performanceSvg}
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            aria-label={`${title} performance graph`}
+          >
+            <line
+              x1="0"
+              y1="92"
+              x2="100"
+              y2="92"
+              className={styles.chartBaseline}
+              vectorEffect="non-scaling-stroke"
+            />
+            {areaPoints && (
+              <polyline
+                points={areaPoints}
+                className={styles.chartArea}
+                stroke="none"
+              />
+            )}
             {hasStandard && standardPoints && (
               <polyline
                 points={standardPoints}
+                className={styles.chartStandardLine}
                 fill="none"
-                stroke="#82918c"
-                strokeWidth="2"
-                strokeDasharray="5 4"
                 vectorEffect="non-scaling-stroke"
               />
             )}
-            {actualPoints && (
-              <polyline
-                points={actualPoints}
-                fill="none"
-                stroke="#0c6b50"
-                strokeWidth="2.6"
+            <polyline
+              points={actualPoints}
+              className={styles.chartActualLine}
+              fill="none"
+              vectorEffect="non-scaling-stroke"
+            />
+            {actualCoordinates.map((point, index) => (
+              <circle
+                key={`${point.x}-${index}`}
+                cx={point.x}
+                cy={point.y}
+                r="1.7"
+                className={styles.chartPoint}
                 vectorEffect="non-scaling-stroke"
-                strokeLinecap="round"
-                strokeLinejoin="round"
               />
-            )}
+            ))}
           </svg>
+
           <div className={styles.performanceAxis}>
-            {data.map((item) => <span key={item.key}>{item.label}</span>)}
+            {data.map((item) => (
+              <span key={item.key}>{item.label}</span>
+            ))}
           </div>
-          {!hasStandard && (
-            <p className={styles.standardUnavailable}>
-              Breed standard is not yet supplied by the performance API.
-            </p>
-          )}
-        </>
+        </div>
       )}
-    </section>
-  );
-}
 
-function SimpleTrendCard({
-  title,
-  unit,
-  data,
-}: {
-  title: string;
-  unit: string;
-  data: { key: string; label: string; value: number | null }[];
-}) {
-  const values = data
-    .map((item) => item.value)
-    .filter((value): value is number => value !== null);
-  const max = Math.max(1, ...values);
-  const points = data
-    .map((item, index) => {
-      if (item.value === null) return null;
-      const x = data.length <= 1 ? 50 : (index / (data.length - 1)) * 100;
-      const y = 88 - (item.value / max) * 72;
-      return `${x},${y}`;
-    })
-    .filter(Boolean)
-    .join(" ");
-  const latest = [...data].reverse().find((item) => item.value !== null);
+      <p className={styles.landscapeHint}>
+        Rotate your phone to landscape for a full-screen graph.
+      </p>
 
-  return (
-    <article className={styles.simpleTrendCard}>
-      <small>{title}</small>
-      <strong>
-        {latest?.value === null || latest?.value === undefined
-          ? "—"
-          : `${formatNumber(latest.value)} ${unit}`}
-      </strong>
-      <span>{latest?.label ?? "No entries"}</span>
-      <svg viewBox="0 0 100 50" preserveAspectRatio="none">
-        {points && (
-          <polyline
-            points={points}
-            fill="none"
-            stroke="#0c6b50"
-            strokeWidth="2.4"
-            vectorEffect="non-scaling-stroke"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        )}
-      </svg>
+      {metric === "bodyweight" && !hasStandard && (
+        <p className={styles.standardUnavailable}>
+          Breed or company standard is not yet supplied by the
+          performance API.
+        </p>
+      )}
     </article>
   );
 }
@@ -3324,16 +3477,10 @@ function EntrySavedScreen({
 }
 
 function InsightsScreen({
-  trend,
   managerInsights,
   plans,
   records,
 }: {
-  trend: {
-    key: string;
-    label: string;
-    value: number;
-  }[];
   managerInsights: {
     mortalityWatch: {
       record: PerformanceRecord;
@@ -3369,21 +3516,6 @@ function InsightsScreen({
     (shed) => shed.plan.id === selectedShedId,
   );
 
-  const max = Math.max(
-    0.5,
-    ...trend.map((item) => item.value),
-  );
-
-  const points = trend
-    .map((item, index) => {
-      const x =
-        trend.length === 1
-          ? 50
-          : (index / (trend.length - 1)) * 100;
-      const y = 90 - (item.value / max) * 72;
-      return `${x},${y}`;
-    })
-    .join(" ");
 
   return (
     <>
@@ -3447,91 +3579,6 @@ function InsightsScreen({
       {selectedShed && (
         <FlockPerformanceCharts shed={selectedShed} />
       )}
-
-      <section className={styles.chartCard}>
-        <div className={styles.chartHeader}>
-          <div>
-            <small>MORTALITY</small>
-            <strong>
-              {managerInsights.mortalityRate.toFixed(2)}%
-            </strong>
-          </div>
-          <span>Last 7 days</span>
-        </div>
-
-        <div className={styles.chartWrap}>
-          <svg
-            viewBox="0 0 100 100"
-            preserveAspectRatio="none"
-            aria-label="Seven day mortality chart"
-          >
-            <defs>
-              <linearGradient
-                id="mortalityArea"
-                x1="0"
-                y1="0"
-                x2="0"
-                y2="1"
-              >
-                <stop
-                  offset="0%"
-                  stopColor="#0c6b50"
-                  stopOpacity="0.28"
-                />
-                <stop
-                  offset="100%"
-                  stopColor="#0c6b50"
-                  stopOpacity="0"
-                />
-              </linearGradient>
-            </defs>
-
-            <polyline
-              points={`0,90 ${points} 100,90`}
-              fill="url(#mortalityArea)"
-              stroke="none"
-            />
-            <polyline
-              points={points}
-              fill="none"
-              stroke="#0c6b50"
-              strokeWidth="2.6"
-              vectorEffect="non-scaling-stroke"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            {trend.map((item, index) => {
-              const x =
-                trend.length === 1
-                  ? 50
-                  : (index /
-                      (trend.length - 1)) *
-                    100;
-              const y =
-                90 - (item.value / max) * 72;
-
-              return (
-                <circle
-                  key={item.key}
-                  cx={x}
-                  cy={y}
-                  r="1.8"
-                  fill="#f28b20"
-                  stroke="#ffffff"
-                  strokeWidth="1"
-                  vectorEffect="non-scaling-stroke"
-                />
-              );
-            })}
-          </svg>
-
-          <div className={styles.chartLabels}>
-            {trend.map((item) => (
-              <span key={item.key}>{item.label}</span>
-            ))}
-          </div>
-        </div>
-      </section>
 
       <section className={styles.insightMetricGrid}>
         <KpiCard
