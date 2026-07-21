@@ -34,6 +34,13 @@ const globalAdminCards = [
     signal: "Controlled setup",
   },
   {
+    title: "Data Import",
+    href: "/admin/data-import",
+    description:
+      "Upload and validate farms, sheds and flocks against a selected company.",
+    signal: "Controlled import",
+  },
+  {
     title: "Users & Access",
     href: "/admin/users",
     description:
