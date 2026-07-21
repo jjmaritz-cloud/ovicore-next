@@ -27,6 +27,8 @@ const MOBILE_USER_CACHE_KEY =
   "ovicore_mobile_cached_user";
 const MOBILE_DATA_CACHE_KEY =
   "ovicore_mobile_broiler_cache_v1";
+const MOBILE_STANDARDS_CACHE_KEY =
+  "ovicore_mobile_performance_standards_v1";
 
 const MOBILE_SELECTED_PLAN_KEY =
   "ovicore_mobile_selected_plan_id";
@@ -200,6 +202,27 @@ type MobileDataCache = {
   cached_at: string;
   plans: DemandPlan[];
   records: PerformanceRecord[];
+};
+
+
+type PerformanceStandardRow = {
+  id: number;
+  company_id: number | null;
+  standard_code: string;
+  standard_name: string;
+  standard_type: "Breed" | "Company";
+  module: string;
+  species: string;
+  breed?: string | null;
+  phase?: string | null;
+  age_week: number;
+  body_weight_g?: number | null;
+  active: boolean;
+};
+
+type MobileStandardsCache = {
+  cached_at: string;
+  rows: PerformanceStandardRow[];
 };
 
 
@@ -746,6 +769,82 @@ function applyPlanSelection(
       current.placement_plan_id ||
       (plansData.length ? plansData[0].id : ""),
   }));
+}
+
+function readStandardsCache(): PerformanceStandardRow[] {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const raw = window.localStorage.getItem(
+      MOBILE_STANDARDS_CACHE_KEY,
+    );
+
+    if (!raw) return [];
+
+    const cache = JSON.parse(raw) as MobileStandardsCache;
+    return Array.isArray(cache.rows) ? cache.rows : [];
+  } catch {
+    return [];
+  }
+}
+
+function cacheStandards(rows: PerformanceStandardRow[]) {
+  if (typeof window === "undefined") return;
+
+  const cache: MobileStandardsCache = {
+    cached_at: new Date().toISOString(),
+    rows,
+  };
+
+  window.localStorage.setItem(
+    MOBILE_STANDARDS_CACHE_KEY,
+    JSON.stringify(cache),
+  );
+}
+
+function standardWeightForAge(
+  rows: PerformanceStandardRow[],
+  ageDays: number,
+): number | null {
+  const weightedRows = rows
+    .filter(
+      (row) =>
+        row.active &&
+        row.body_weight_g !== null &&
+        row.body_weight_g !== undefined &&
+        Number.isFinite(Number(row.body_weight_g)),
+    )
+    .sort((a, b) => a.age_week - b.age_week);
+
+  if (weightedRows.length === 0) return null;
+
+  const ageWeeks = Math.max(0, ageDays / 7);
+  const lower =
+    [...weightedRows]
+      .reverse()
+      .find((row) => row.age_week <= ageWeeks) ??
+    weightedRows[0];
+  const upper =
+    weightedRows.find((row) => row.age_week >= ageWeeks) ??
+    weightedRows[weightedRows.length - 1];
+
+  const lowerWeight = Number(lower.body_weight_g);
+  const upperWeight = Number(upper.body_weight_g);
+
+  if (lower.age_week === upper.age_week) {
+    return lowerWeight / 1000;
+  }
+
+  const proportion =
+    (ageWeeks - lower.age_week) /
+    (upper.age_week - lower.age_week);
+
+  const interpolated =
+    lowerWeight +
+    (upperWeight - lowerWeight) *
+      Math.min(1, Math.max(0, proportion));
+
+  return interpolated / 1000;
 }
 
 async function authenticatedFetch(
@@ -2610,6 +2709,12 @@ function FlockPerformanceCharts({ shed }: { shed: ShedOverview }) {
     useState<PerformanceMetric>("bodyweight");
   const [range, setRange] =
     useState<PerformanceRange>(14);
+  const [standardRows, setStandardRows] =
+    useState<PerformanceStandardRow[]>(() =>
+      readStandardsCache(),
+    );
+  const [selectedStandardCode, setSelectedStandardCode] =
+    useState<string>("");
 
   const orderedHistory = useMemo(
     () =>
@@ -2617,6 +2722,115 @@ function FlockPerformanceCharts({ shed }: { shed: ShedOverview }) {
         a.entry_date.localeCompare(b.entry_date),
       ),
     [shed.records],
+  );
+
+  const availableStandards = useMemo(() => {
+    const grouped = new Map<
+      string,
+      {
+        code: string;
+        name: string;
+        type: "Breed" | "Company";
+        rows: PerformanceStandardRow[];
+      }
+    >();
+
+    for (const row of standardRows) {
+      if (
+        !row.active ||
+        row.module.trim().toLowerCase() !== "broilers" ||
+        row.body_weight_g === null ||
+        row.body_weight_g === undefined
+      ) {
+        continue;
+      }
+
+      const key = `${row.standard_type}:${row.standard_code}`;
+      const existing = grouped.get(key);
+
+      if (existing) {
+        existing.rows.push(row);
+      } else {
+        grouped.set(key, {
+          code: row.standard_code,
+          name: row.standard_name,
+          type: row.standard_type,
+          rows: [row],
+        });
+      }
+    }
+
+    return [...grouped.values()].sort((a, b) => {
+      if (a.type !== b.type) {
+        return a.type === "Breed" ? -1 : 1;
+      }
+
+      return a.name.localeCompare(b.name);
+    });
+  }, [standardRows]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadStandards() {
+      try {
+        const response = await authenticatedFetch(
+          `${API_BASE}/api/standards?include_rows=true`,
+        );
+
+        if (!response.ok) {
+          throw new Error(
+            `Could not load standards (${response.status}).`,
+          );
+        }
+
+        const rows: PerformanceStandardRow[] =
+          await response.json();
+
+        if (cancelled) return;
+
+        setStandardRows(rows);
+        cacheStandards(rows);
+      } catch {
+        if (!cancelled) {
+          setStandardRows(readStandardsCache());
+        }
+      }
+    }
+
+    void loadStandards();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (
+      selectedStandardCode &&
+      availableStandards.some(
+        (standard) =>
+          standard.code === selectedStandardCode,
+      )
+    ) {
+      return;
+    }
+
+    const preferred =
+      availableStandards.find(
+        (standard) => standard.type === "Breed",
+      ) ?? availableStandards[0];
+
+    setSelectedStandardCode(preferred?.code ?? "");
+  }, [availableStandards, selectedStandardCode]);
+
+  const selectedStandard = useMemo(
+    () =>
+      availableStandards.find(
+        (standard) =>
+          standard.code === selectedStandardCode,
+      ) ?? null,
+    [availableStandards, selectedStandardCode],
   );
 
   const chart = useMemo(() => {
@@ -2648,7 +2862,12 @@ function FlockPerformanceCharts({ shed }: { shed: ShedOverview }) {
       switch (metric) {
         case "bodyweight":
           actual = recordWeight(record);
-          standard = recordStandardWeight(record);
+          standard =
+            standardWeightForAge(
+              selectedStandard?.rows ?? [],
+              age,
+            ) ??
+            recordStandardWeight(record);
           break;
         case "mortality":
           actual =
@@ -2662,7 +2881,9 @@ function FlockPerformanceCharts({ shed }: { shed: ShedOverview }) {
           break;
         case "feed":
           actual =
-            birds > 0 && record.feed_kg !== null && record.feed_kg !== undefined
+            birds > 0 &&
+            record.feed_kg !== null &&
+            record.feed_kg !== undefined
               ? (feed * 1000) / birds
               : null;
           break;
@@ -2739,7 +2960,13 @@ function FlockPerformanceCharts({ shed }: { shed: ShedOverview }) {
     };
 
     return { data, ...config[metric] };
-  }, [metric, orderedHistory, range, shed.plan]);
+  }, [
+    metric,
+    orderedHistory,
+    range,
+    selectedStandard,
+    shed.plan,
+  ]);
 
   return (
     <section className={styles.performanceWorkspace}>
@@ -2749,6 +2976,28 @@ function FlockPerformanceCharts({ shed }: { shed: ShedOverview }) {
           <h2>Performance graph</h2>
         </div>
       </div>
+
+      {metric === "bodyweight" &&
+        availableStandards.length > 0 && (
+          <label className={styles.appField}>
+            Performance standard
+            <select
+              value={selectedStandardCode}
+              onChange={(event) =>
+                setSelectedStandardCode(event.target.value)
+              }
+            >
+              {availableStandards.map((standard) => (
+                <option
+                  key={`${standard.type}-${standard.code}`}
+                  value={standard.code}
+                >
+                  {standard.name} · {standard.type}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
       <UnifiedPerformanceChart
         title={chart.title}
@@ -2760,6 +3009,7 @@ function FlockPerformanceCharts({ shed }: { shed: ShedOverview }) {
         range={range}
         onMetricChange={setMetric}
         onRangeChange={setRange}
+        standardName={selectedStandard?.name ?? null}
       />
     </section>
   );
@@ -2775,6 +3025,7 @@ function UnifiedPerformanceChart({
   range,
   onMetricChange,
   onRangeChange,
+  standardName,
 }: {
   title: string;
   unit: string;
@@ -2790,6 +3041,7 @@ function UnifiedPerformanceChart({
   range: PerformanceRange;
   onMetricChange: (value: PerformanceMetric) => void;
   onRangeChange: (value: PerformanceRange) => void;
+  standardName: string | null;
 }) {
   const numeric = data.flatMap((item) =>
     [item.actual, item.standard].filter(
@@ -2981,7 +3233,7 @@ function UnifiedPerformanceChart({
           {hasStandard && (
             <span className={styles.standardLegend}>
               <i />
-              Standard
+              {standardName ?? "Standard"}
             </span>
           )}
         </div>
@@ -3089,8 +3341,8 @@ function UnifiedPerformanceChart({
 
       {metric === "bodyweight" && !hasStandard && (
         <p className={styles.standardUnavailable}>
-          Breed or company standard is not yet supplied by the
-          performance API.
+          No active Broilers bodyweight standard is available.
+          Import or activate a broiler standard in Admin → Standards.
         </p>
       )}
     </article>
