@@ -8,6 +8,7 @@ from app.routers import app_notes
 from app.routers import broiler_supply
 from app.routers import access
 from app.routers import auth
+from app.routers import standards
 from app.routers.auth import get_current_user
 from app import models
 
@@ -42,6 +43,7 @@ app.include_router(app_notes.router)
 app.include_router(broiler_supply.router)
 app.include_router(access.router)
 app.include_router(auth.router)
+app.include_router(standards.router)
 
 origins = [
     "http://localhost:3000",
