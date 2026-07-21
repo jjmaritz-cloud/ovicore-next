@@ -38,9 +38,6 @@ function clearMobileSessionState() {
   if (typeof window === "undefined") return;
 
   window.localStorage.removeItem(
-    "ovicore_selected_company_id",
-  );
-  window.localStorage.removeItem(
     MOBILE_USER_CACHE_KEY,
   );
   window.localStorage.removeItem(
@@ -929,9 +926,9 @@ export default function MobileBroilerApp() {
     if (!companyId) {
       setLoading(false);
       setMessage(
-        currentUser.is_global_admin
-          ? "Select a working company in the main OviCore system first."
-          : "Your user account is not assigned to a company.",
+				currentUser.is_global_admin
+					? "Select a company before opening the mobile workspace."
+					: "Your user account is not assigned to a company.",
       );
       return;
     }
@@ -1279,11 +1276,11 @@ export default function MobileBroilerApp() {
     loadPendingCount,
   ]);
 
-  useEffect(() => {
-    if (currentUser && companyId) {
-      void loadData();
-    }
-  }, [companyId, currentUser, loadData]);
+	useEffect(() => {
+		if (currentUser) {
+			void loadData();
+		}
+	}, [companyId, currentUser, loadData]);
 
   useEffect(() => {
     const cameBackOnline =
