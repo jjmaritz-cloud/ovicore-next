@@ -2664,6 +2664,9 @@ function ShedDetailScreen({
 
 type PerformanceMetric =
   | "bodyweight"
+  | "adg"
+  | "fcr"
+  | "pef"
   | "mortality"
   | "cumulativeMortality"
   | "feed"
@@ -2677,6 +2680,9 @@ const performanceMetricOptions: {
   label: string;
 }[] = [
   { value: "bodyweight", label: "Bodyweight" },
+  { value: "adg", label: "Average daily gain" },
+  { value: "fcr", label: "Feed conversion rate" },
+  { value: "pef", label: "Poultry Efficiency Factor" },
   { value: "mortality", label: "Daily mortality %" },
   {
     value: "cumulativeMortality",
@@ -2821,6 +2827,9 @@ function FlockPerformanceCharts({ shed }: { shed: ShedOverview }) {
 
   const chart = useMemo(() => {
     let cumulativeMortality = 0;
+    let cumulativeFeed = 0;
+    let previousWeight: number | null = null;
+    let previousWeightAge: number | null = null;
     const placedBirds =
       numberOrZero(orderedHistory[0]?.opening_birds) ||
       numberOrZero(shed.plan.planned_birds);
@@ -2841,19 +2850,58 @@ function FlockPerformanceCharts({ shed }: { shed: ShedOverview }) {
         numberOrZero(record.opening_birds);
 
       cumulativeMortality += mortality;
+      cumulativeFeed += feed;
+
+      const currentWeight = recordWeight(record);
+      const liveWeightKg =
+        currentWeight !== null && birds > 0
+          ? currentWeight * birds
+          : null;
+      const cumulativeFcr =
+        liveWeightKg !== null && liveWeightKg > 0 && cumulativeFeed > 0
+          ? cumulativeFeed / liveWeightKg
+          : null;
+      const livability =
+        placedBirds > 0 && birds > 0
+          ? (birds / placedBirds) * 100
+          : null;
 
       let actual: number | null = null;
       let standard: number | null = null;
 
       switch (metric) {
         case "bodyweight":
-          actual = recordWeight(record);
+          actual = currentWeight;
           standard =
             standardWeightForAge(
               selectedStandard?.rows ?? [],
               age,
             ) ??
             recordStandardWeight(record);
+          break;
+        case "adg":
+          actual =
+            currentWeight !== null &&
+            previousWeight !== null &&
+            previousWeightAge !== null &&
+            age > previousWeightAge
+              ? ((currentWeight - previousWeight) * 1000) /
+                (age - previousWeightAge)
+              : null;
+          break;
+        case "fcr":
+          actual = cumulativeFcr;
+          break;
+        case "pef":
+          actual =
+            livability !== null &&
+            currentWeight !== null &&
+            cumulativeFcr !== null &&
+            cumulativeFcr > 0 &&
+            age > 0
+              ? (livability * currentWeight * 100) /
+                (age * cumulativeFcr)
+              : null;
           break;
         case "mortality":
           actual =
@@ -2887,6 +2935,11 @@ function FlockPerformanceCharts({ shed }: { shed: ShedOverview }) {
           break;
       }
 
+      if (currentWeight !== null) {
+        previousWeight = currentWeight;
+        previousWeightAge = age;
+      }
+
       return {
         key: record.entry_date,
         label: `${age}d`,
@@ -2912,6 +2965,24 @@ function FlockPerformanceCharts({ shed }: { shed: ShedOverview }) {
         unit: "kg",
         decimals: 2,
         empty: "No bodyweight entries yet.",
+      },
+      adg: {
+        title: "Average daily gain",
+        unit: "g/day",
+        decimals: 1,
+        empty: "At least two bodyweight entries are needed.",
+      },
+      fcr: {
+        title: "Feed conversion rate",
+        unit: "FCR",
+        decimals: 3,
+        empty: "Feed and bodyweight entries are needed to calculate FCR.",
+      },
+      pef: {
+        title: "Poultry Efficiency Factor",
+        unit: "PEF",
+        decimals: 0,
+        empty: "Age, livability, bodyweight and FCR are needed to calculate PEF.",
       },
       mortality: {
         title: "Daily mortality",
