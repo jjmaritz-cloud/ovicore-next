@@ -215,7 +215,8 @@ type PerformanceStandardRow = {
   species: string;
   breed?: string | null;
   phase?: string | null;
-  age_week: number;
+  age_day?: number | null;
+  age_week?: number | null;
   body_weight_g?: number | null;
   active: boolean;
 };
@@ -806,45 +807,112 @@ function standardWeightForAge(
   rows: PerformanceStandardRow[],
   ageDays: number,
 ): number | null {
-  const weightedRows = rows
+  const usableRows = rows.filter(
+    (row) =>
+      row.active &&
+      row.body_weight_g !== null &&
+      row.body_weight_g !== undefined &&
+      Number.isFinite(Number(row.body_weight_g)),
+  );
+
+  if (usableRows.length === 0) return null;
+
+  const dailyRows = usableRows
     .filter(
       (row) =>
-        row.active &&
-        row.body_weight_g !== null &&
-        row.body_weight_g !== undefined &&
-        Number.isFinite(Number(row.body_weight_g)),
+        row.age_day !== null &&
+        row.age_day !== undefined &&
+        Number.isFinite(Number(row.age_day)),
     )
-    .sort((a, b) => a.age_week - b.age_week);
+    .sort(
+      (a, b) =>
+        Number(a.age_day) - Number(b.age_day),
+    );
 
-  if (weightedRows.length === 0) return null;
+  if (dailyRows.length > 0) {
+    const exact = dailyRows.find(
+      (row) => Number(row.age_day) === ageDays,
+    );
+
+    if (exact) {
+      return Number(exact.body_weight_g) / 1000;
+    }
+
+    const lower =
+      [...dailyRows]
+        .reverse()
+        .find(
+          (row) => Number(row.age_day) <= ageDays,
+        ) ?? dailyRows[0];
+    const upper =
+      dailyRows.find(
+        (row) => Number(row.age_day) >= ageDays,
+      ) ?? dailyRows[dailyRows.length - 1];
+
+    const lowerDay = Number(lower.age_day);
+    const upperDay = Number(upper.age_day);
+    const lowerWeight = Number(lower.body_weight_g);
+    const upperWeight = Number(upper.body_weight_g);
+
+    if (lowerDay === upperDay) {
+      return lowerWeight / 1000;
+    }
+
+    const proportion =
+      (ageDays - lowerDay) / (upperDay - lowerDay);
+
+    return (
+      lowerWeight +
+      (upperWeight - lowerWeight) *
+        Math.min(1, Math.max(0, proportion))
+    ) / 1000;
+  }
+
+  // Weekly standards remain supported for layer and rearing modules.
+  const weeklyRows = usableRows
+    .filter(
+      (row) =>
+        row.age_week !== null &&
+        row.age_week !== undefined &&
+        Number.isFinite(Number(row.age_week)),
+    )
+    .sort(
+      (a, b) =>
+        Number(a.age_week) - Number(b.age_week),
+    );
+
+  if (weeklyRows.length === 0) return null;
 
   const ageWeeks = Math.max(0, ageDays / 7);
   const lower =
-    [...weightedRows]
+    [...weeklyRows]
       .reverse()
-      .find((row) => row.age_week <= ageWeeks) ??
-    weightedRows[0];
+      .find(
+        (row) => Number(row.age_week) <= ageWeeks,
+      ) ?? weeklyRows[0];
   const upper =
-    weightedRows.find((row) => row.age_week >= ageWeeks) ??
-    weightedRows[weightedRows.length - 1];
+    weeklyRows.find(
+      (row) => Number(row.age_week) >= ageWeeks,
+    ) ?? weeklyRows[weeklyRows.length - 1];
 
+  const lowerWeek = Number(lower.age_week);
+  const upperWeek = Number(upper.age_week);
   const lowerWeight = Number(lower.body_weight_g);
   const upperWeight = Number(upper.body_weight_g);
 
-  if (lower.age_week === upper.age_week) {
+  if (lowerWeek === upperWeek) {
     return lowerWeight / 1000;
   }
 
   const proportion =
-    (ageWeeks - lower.age_week) /
-    (upper.age_week - lower.age_week);
+    (ageWeeks - lowerWeek) /
+    (upperWeek - lowerWeek);
 
-  const interpolated =
+  return (
     lowerWeight +
     (upperWeight - lowerWeight) *
-      Math.min(1, Math.max(0, proportion));
-
-  return interpolated / 1000;
+      Math.min(1, Math.max(0, proportion))
+  ) / 1000;
 }
 
 async function authenticatedFetch(

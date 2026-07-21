@@ -29,6 +29,7 @@ type StandardSummary = {
   species: string;
   breed: string | null;
   active: boolean;
+  age_unit?: "day" | "week";
   age_min: number;
   age_max: number;
   row_count: number;
@@ -591,7 +592,10 @@ export default function StandardsAdminPage() {
                     <td>{standard.module}</td>
                     <td>{standard.breed ?? "—"}</td>
                     <td>
-                      {standard.age_min}–{standard.age_max} weeks
+                      {standard.age_min}–{standard.age_max}{" "}
+                      {standard.age_unit === "day"
+                        ? "days"
+                        : "weeks"}
                     </td>
                     <td>{standard.row_count}</td>
                     <td>
