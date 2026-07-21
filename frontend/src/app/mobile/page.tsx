@@ -28,6 +28,71 @@ const MOBILE_USER_CACHE_KEY =
 const MOBILE_DATA_CACHE_KEY =
   "ovicore_mobile_broiler_cache_v1";
 
+const MOBILE_SELECTED_PLAN_KEY =
+  "ovicore_mobile_selected_plan_id";
+
+const MOBILE_APP_LAUNCH_KEY =
+  "ovicore_mobile_app_launch_v1";
+
+function clearMobileSessionState() {
+  if (typeof window === "undefined") return;
+
+  window.localStorage.removeItem(
+    "ovicore_selected_company_id",
+  );
+  window.localStorage.removeItem(
+    MOBILE_USER_CACHE_KEY,
+  );
+  window.localStorage.removeItem(
+    MOBILE_DATA_CACHE_KEY,
+  );
+  window.localStorage.removeItem(
+    MOBILE_SELECTED_PLAN_KEY,
+  );
+  window.localStorage.removeItem(
+    "ovicore_selected_farm_id",
+  );
+  window.localStorage.removeItem(
+    "ovicore_selected_shed_id",
+  );
+  window.localStorage.removeItem(
+    "ovicore_selected_flock_id",
+  );
+  window.localStorage.removeItem(
+    "ovicore_remembered_email",
+  );
+
+  window.sessionStorage.clear();
+}
+
+
+function redirectToMobileLogin() {
+  clearMobileSessionState();
+
+  window.sessionStorage.setItem(
+    MOBILE_APP_LAUNCH_KEY,
+    "active",
+  );
+
+  window.location.replace(
+    "/login?next=%2Fmobile",
+  );
+}
+
+async function endMobileSession() {
+  try {
+    await fetch(`${API_BASE}/api/auth/logout`, {
+      method: "POST",
+      credentials: "include",
+      cache: "no-store",
+    });
+  } catch {
+    // The local session must still be cleared when offline.
+  } finally {
+    redirectToMobileLogin();
+  }
+}
+
 type CurrentUser = {
   id: number;
   full_name: string;
@@ -670,9 +735,11 @@ async function authenticatedFetch(
   });
 
   if (response.status === 401) {
-    const next = `${window.location.pathname}${window.location.search}`;
-    window.location.href = `/login?next=${encodeURIComponent(next)}`;
-    throw new Error("Your login session has expired.");
+    redirectToMobileLogin();
+
+    throw new Error(
+      "Your login session has expired.",
+    );
   }
 
   return response;
@@ -701,55 +768,24 @@ export default function MobileBroilerApp() {
   const loadedEntryKeyRef = useRef<string>("");
   const wasOnlineRef = useRef<boolean>(true);
 	
-	useEffect(() => {
-  let backListener:
-    | Awaited<
-        ReturnType<typeof CapacitorApp.addListener>
-      >
-    | undefined;
-
-  const registerBackButton = async () => {
-    backListener = await CapacitorApp.addListener(
-      "backButton",
-      ({ canGoBack }) => {
-        if (tab === "entry") {
-          if (entryStage === "saved") {
-            setEntryStage("form");
-            return;
-          }
-
-          if (entryStage === "form") {
-            setEntryStage("select");
-            return;
-          }
-
-          setTab("home");
-          return;
-        }
-
-        if (tab === "insights" || tab === "more") {
-          setTab("home");
-          return;
-        }
-
-        if (canGoBack) {
-          window.history.back();
-          return;
-        }
-
-        CapacitorApp.exitApp();
-      },
-    );
-  };
-
-  void registerBackButton();
-
-  return () => {
-    void backListener?.remove();
-  };
-}, [tab, entryStage]);
+	const sessionEndingRef =
+		useRef<boolean>(false);
 	
+	useEffect(() => {
+		const currentLaunch =
+			window.sessionStorage.getItem(
+				MOBILE_APP_LAUNCH_KEY,
+			);
 
+		if (currentLaunch === "active") {
+			return;
+		}
+
+		sessionEndingRef.current = true;
+
+		void endMobileSession();
+	}, []);
+	
   const companyId = useMemo(() => {
     if (!currentUser) return null;
 
@@ -850,19 +886,6 @@ export default function MobileBroilerApp() {
       const response = await authenticatedFetch(
         `${API_BASE}/api/auth/me`,
       );
-
-      if (response.status === 401) {
-        window.localStorage.removeItem(
-          MOBILE_USER_CACHE_KEY,
-        );
-        window.localStorage.removeItem(
-          MOBILE_DATA_CACHE_KEY,
-        );
-        window.location.replace(
-          "/login?next=%2Fmobile",
-        );
-        return null;
-      }
 
       if (!response.ok) {
         throw new Error(
@@ -1714,31 +1737,13 @@ export default function MobileBroilerApp() {
     setMessage("The mobile entry was discarded.");
   }
 
-  async function logout() {
-    try {
-      await authenticatedFetch(
-        `${API_BASE}/api/auth/logout`,
-        { method: "POST" },
-      );
-    } finally {
-      window.localStorage.removeItem(
-        "ovicore_selected_company_id",
-      );
-      window.localStorage.removeItem(
-        MOBILE_USER_CACHE_KEY,
-      );
-      window.localStorage.removeItem(
-        MOBILE_DATA_CACHE_KEY,
-      );
-      window.localStorage.removeItem(
-        "ovicore_remembered_email",
-      );
+	async function logout() {
+		if (sessionEndingRef.current) return;
 
-      window.location.replace(
-        "/login?next=%2Fmobile",
-      );
-    }
-  }
+		sessionEndingRef.current = true;
+
+		await endMobileSession();
+	}
 
   function openEntryForPlan(planId?: number) {
     loadedEntryKeyRef.current = "";
