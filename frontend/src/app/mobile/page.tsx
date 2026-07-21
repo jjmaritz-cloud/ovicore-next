@@ -132,6 +132,8 @@ type DemandPlan = {
   placement_date?: string;
   processing_date?: string;
   planned_birds?: number;
+  breed?: string | null;
+  breed_code?: string | null;
 };
 
 type PerformanceRecord = {
@@ -2781,8 +2783,6 @@ function FlockPerformanceCharts({ shed }: { shed: ShedOverview }) {
     useState<PerformanceStandardRow[]>(() =>
       readStandardsCache(),
     );
-  const [selectedStandardCode, setSelectedStandardCode] =
-    useState<string>("");
 
   const orderedHistory = useMemo(
     () =>
@@ -2873,33 +2873,38 @@ function FlockPerformanceCharts({ shed }: { shed: ShedOverview }) {
     };
   }, []);
 
-  useEffect(() => {
-    if (
-      selectedStandardCode &&
-      availableStandards.some(
-        (standard) =>
-          standard.code === selectedStandardCode,
-      )
-    ) {
-      return;
+  const selectedStandard = useMemo(() => {
+    const flockBreed =
+      shed.plan.breed_code?.trim().toLowerCase() ||
+      shed.plan.breed?.trim().toLowerCase() ||
+      "";
+
+    const breedStandards = availableStandards.filter(
+      (standard) => standard.type === "Breed",
+    );
+
+    if (flockBreed) {
+      const exact = breedStandards.find((standard) => {
+        const code = standard.code.trim().toLowerCase();
+        const name = standard.name.trim().toLowerCase();
+        const rowBreed = standard.rows
+          .map((row) => row.breed?.trim().toLowerCase())
+          .find(Boolean);
+
+        return (
+          code === flockBreed ||
+          name === flockBreed ||
+          rowBreed === flockBreed ||
+          name.includes(flockBreed) ||
+          flockBreed.includes(name)
+        );
+      });
+
+      if (exact) return exact;
     }
 
-    const preferred =
-      availableStandards.find(
-        (standard) => standard.type === "Breed",
-      ) ?? availableStandards[0];
-
-    setSelectedStandardCode(preferred?.code ?? "");
-  }, [availableStandards, selectedStandardCode]);
-
-  const selectedStandard = useMemo(
-    () =>
-      availableStandards.find(
-        (standard) =>
-          standard.code === selectedStandardCode,
-      ) ?? null,
-    [availableStandards, selectedStandardCode],
-  );
+    return breedStandards[0] ?? null;
+  }, [availableStandards, shed.plan.breed, shed.plan.breed_code]);
 
   const chart = useMemo(() => {
     let cumulativeMortality = 0;
@@ -3045,28 +3050,6 @@ function FlockPerformanceCharts({ shed }: { shed: ShedOverview }) {
         </div>
       </div>
 
-      {metric === "bodyweight" &&
-        availableStandards.length > 0 && (
-          <label className={styles.appField}>
-            Performance standard
-            <select
-              value={selectedStandardCode}
-              onChange={(event) =>
-                setSelectedStandardCode(event.target.value)
-              }
-            >
-              {availableStandards.map((standard) => (
-                <option
-                  key={`${standard.type}-${standard.code}`}
-                  value={standard.code}
-                >
-                  {standard.name} · {standard.type}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-
       <UnifiedPerformanceChart
         title={chart.title}
         unit={chart.unit}
@@ -3204,6 +3187,19 @@ function UnifiedPerformanceChart({
       ? "—"
       : `${formatDecimal(selected.actual, decimals)} ${unit}`;
 
+  const selectedStandardValue =
+    selected?.standard === null || selected?.standard === undefined
+      ? null
+      : `${formatDecimal(selected.standard, decimals)} ${unit}`;
+
+  const selectedVariance =
+    selected?.actual === null ||
+    selected?.actual === undefined ||
+    selected?.standard === null ||
+    selected?.standard === undefined
+      ? null
+      : selected.actual - selected.standard;
+
   const selectNearestPoint = (
     event: PointerEvent<SVGSVGElement>,
   ) => {
@@ -3283,7 +3279,7 @@ function UnifiedPerformanceChart({
       </div>
 
       <div className={styles.performanceChartHeader}>
-        <div>
+        <div className={styles.chartSelectedSummary}>
           <small>{title.toUpperCase()}</small>
           <strong>{selectedValue}</strong>
           <span>
@@ -3291,6 +3287,21 @@ function UnifiedPerformanceChart({
               ? `${selected.label} · ${formatDate(selected.key)}`
               : "No entries"}
           </span>
+          {selectedStandardValue && (
+            <div className={styles.chartComparisonValues}>
+              <span>
+                <b>Standard</b>
+                {selectedStandardValue}
+              </span>
+              {selectedVariance !== null && (
+                <span>
+                  <b>Variance</b>
+                  {selectedVariance >= 0 ? "+" : ""}
+                  {formatDecimal(selectedVariance, decimals)} {unit}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         <div className={styles.chartLegend}>

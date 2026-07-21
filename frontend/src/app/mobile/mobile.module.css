@@ -2512,3 +2512,80 @@
     margin: 0;
   }
 }
+
+
+/* Compact interactive graph comparison values */
+.chartSelectedSummary {
+  min-width: 0;
+}
+
+.chartComparisonValues {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.chartComparisonValues > span {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  color: #52645e;
+  background: #f1f6f3;
+  font-size: 8px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.chartComparisonValues b {
+  color: #7b8b85;
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+@media (orientation: landscape) and (max-height: 650px) {
+  .unifiedChartCard {
+    grid-template-columns: minmax(170px, 0.27fr) minmax(0, 1fr);
+    gap: 8px 14px;
+  }
+
+  .metricSelect span {
+    font-size: 7px;
+  }
+
+  .metricSelect select {
+    min-height: 34px;
+    font-size: 10px;
+  }
+
+  .rangeButtons button {
+    padding: 6px 5px;
+    font-size: 7px;
+  }
+
+  .performanceChartHeader small {
+    font-size: 7px;
+  }
+
+  .performanceChartHeader strong {
+    font-size: clamp(18px, 4.2vh, 27px);
+  }
+
+  .performanceChartHeader > div:first-child > span,
+  .chartLegend,
+  .chartComparisonValues > span {
+    font-size: 7px;
+  }
+
+  .chartComparisonValues b {
+    font-size: 6px;
+  }
+
+  .chartLegend {
+    margin-top: 7px;
+  }
+}
