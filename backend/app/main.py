@@ -11,6 +11,7 @@ from app.routers import broiler_supply
 from app.routers import access
 from app.routers import auth
 from app.routers import standards
+from app.routers.standards import PerformanceStandard
 from app.routers.auth import get_current_user
 from app import models
 
@@ -1914,6 +1915,7 @@ def recalculate_broiler_performance_cycle(
         "rows_recalculated": len(entries),
     }
 
+
 def _import_text(value) -> str:
     if value is None:
         return ""
@@ -1923,30 +1925,51 @@ def _import_text(value) -> str:
 def _import_bool(value, default: bool = True) -> bool:
     if value is None or _import_text(value) == "":
         return default
-    return _import_text(value).lower() in {"1", "true", "yes", "y", "on", "active"}
+    return _import_text(value).lower() in {
+        "1", "true", "yes", "y", "on", "active"
+    }
 
 
-def _import_int(value, field_name: str, row_number: int, errors: list[str]) -> int | None:
+def _import_int(
+    value,
+    field_name: str,
+    row_number: int,
+    errors: list[str],
+) -> int | None:
     if value is None or _import_text(value) == "":
         return None
     try:
         return int(float(value))
     except (TypeError, ValueError):
-        errors.append(f"Row {row_number}: {field_name} must be a whole number.")
+        errors.append(
+            f"Row {row_number}: {field_name} must be a whole number."
+        )
         return None
 
 
-def _import_float(value, field_name: str, row_number: int, errors: list[str]) -> float | None:
+def _import_float(
+    value,
+    field_name: str,
+    row_number: int,
+    errors: list[str],
+) -> float | None:
     if value is None or _import_text(value) == "":
         return None
     try:
         return float(value)
     except (TypeError, ValueError):
-        errors.append(f"Row {row_number}: {field_name} must be numeric.")
+        errors.append(
+            f"Row {row_number}: {field_name} must be numeric."
+        )
         return None
 
 
-def _import_date(value, field_name: str, row_number: int, errors: list[str]) -> date | None:
+def _import_date(
+    value,
+    field_name: str,
+    row_number: int,
+    errors: list[str],
+) -> date | None:
     if value is None or _import_text(value) == "":
         return None
     if isinstance(value, datetime):
@@ -1960,12 +1983,17 @@ def _import_date(value, field_name: str, row_number: int, errors: list[str]) -> 
         except ValueError:
             continue
     errors.append(
-        f"Row {row_number}: {field_name} must be a valid date, preferably yyyy-mm-dd."
+        f"Row {row_number}: {field_name} must be a valid date, "
+        "preferably yyyy-mm-dd."
     )
     return None
 
 
-def _sheet_records(workbook, sheet_name: str) -> list[tuple[int, dict[str, object]]]:
+def _sheet_records(
+    workbook,
+    sheet_name: str,
+    required_headers: set[str] | None = None,
+) -> list[tuple[int, dict[str, object]]]:
     if sheet_name not in workbook.sheetnames:
         return []
 
@@ -1973,21 +2001,33 @@ def _sheet_records(workbook, sheet_name: str) -> list[tuple[int, dict[str, objec
     header_row: int | None = None
     headers: list[str] = []
     records: list[tuple[int, dict[str, object]]] = []
+    required = required_headers or set()
 
-    # Read-only openpyxl worksheets can report max_row as None. Iterating the
-    # worksheet directly avoids relying on worksheet dimensions and works for
-    # both normal and read-only workbooks.
     for row_number, cells in enumerate(sheet.iter_rows(), start=1):
         values = [cell.value for cell in cells]
 
         if header_row is None:
-            if row_number > 15:
+            if row_number > 20:
                 return []
 
-            normalised = [_import_text(value) for value in values]
-            if any(value.endswith("*") for value in normalised):
+            normalised = [
+                _import_text(value).rstrip(" *").strip()
+                for value in values
+            ]
+            present = {value for value in normalised if value}
+
+            if (
+                (required and required.issubset(present))
+                or (
+                    not required
+                    and any(
+                        _import_text(value).endswith("*")
+                        for value in values
+                    )
+                )
+            ):
                 header_row = row_number
-                headers = [value.rstrip(" *").strip() for value in normalised]
+                headers = normalised
             continue
 
         if not any(
@@ -1997,7 +2037,9 @@ def _sheet_records(workbook, sheet_name: str) -> list[tuple[int, dict[str, objec
             continue
 
         record = {
-            headers[index]: values[index] if index < len(values) else None
+            headers[index]: (
+                values[index] if index < len(values) else None
+            )
             for index in range(len(headers))
             if headers[index]
         }
@@ -2056,9 +2098,31 @@ async def import_master_data(
             detail=f"Could not read workbook: {exc}",
         )
 
-    farm_rows = _sheet_records(excel, "Farms")
-    shed_rows = _sheet_records(excel, "Sheds")
-    flock_rows = _sheet_records(excel, "Flocks")
+    farm_rows = _sheet_records(
+        excel,
+        "Farms",
+        {"Farm Code", "Farm Name", "Active"},
+    )
+    shed_rows = _sheet_records(
+        excel,
+        "Sheds",
+        {"Farm Code", "Shed Code", "Shed Name"},
+    )
+    flock_rows = _sheet_records(
+        excel,
+        "Flocks",
+        {"Farm Code", "Shed Code", "Flock Code"},
+    )
+    standard_rows = _sheet_records(
+        excel,
+        "Breed Standard",
+        {"Standard Code", "Breed", "Age Day", "Bodyweight g"},
+    )
+    performance_rows = _sheet_records(
+        excel,
+        "Daily Performance",
+        {"Farm Code", "Shed Code", "Flock Code", "Entry Date"},
+    )
 
     errors: list[str] = []
     warnings: list[str] = []
@@ -2066,14 +2130,30 @@ async def import_master_data(
         "farms": {"create": 0, "update": 0, "unchanged": 0},
         "sheds": {"create": 0, "update": 0, "unchanged": 0},
         "flocks": {"create": 0, "update": 0, "unchanged": 0},
+        "standards": {"create": 0, "update": 0, "unchanged": 0},
+        "performance": {"create": 0, "update": 0, "unchanged": 0},
     }
 
     if not farm_rows:
-        errors.append("The Farms sheet is missing or contains no data rows.")
+        errors.append(
+            "The Farms sheet is missing or contains no data rows."
+        )
     if not shed_rows:
-        errors.append("The Sheds sheet is missing or contains no data rows.")
+        errors.append(
+            "The Sheds sheet is missing or contains no data rows."
+        )
     if not flock_rows:
-        errors.append("The Flocks sheet is missing or contains no data rows.")
+        errors.append(
+            "The Flocks sheet is missing or contains no data rows."
+        )
+    if not standard_rows:
+        warnings.append(
+            "The Breed Standard sheet is missing or contains no data rows."
+        )
+    if not performance_rows:
+        warnings.append(
+            "The Daily Performance sheet is missing or contains no data rows."
+        )
 
     existing_farms = (
         db.query(BroilerFarm)
@@ -2094,16 +2174,21 @@ async def import_master_data(
         farm_name = _import_text(row.get("Farm Name"))
 
         if not farm_code:
-            errors.append(f"Farms row {row_number}: Farm Code is required.")
+            errors.append(
+                f"Farms row {row_number}: Farm Code is required."
+            )
             continue
         if not farm_name:
-            errors.append(f"Farms row {row_number}: Farm Name is required.")
+            errors.append(
+                f"Farms row {row_number}: Farm Name is required."
+            )
             continue
 
         code_key = farm_code.lower()
         if code_key in workbook_farm_codes:
             errors.append(
-                f"Farms row {row_number}: duplicate Farm Code '{farm_code}'."
+                f"Farms row {row_number}: duplicate Farm Code "
+                f"'{farm_code}'."
             )
             continue
         workbook_farm_codes.add(code_key)
@@ -2123,8 +2208,8 @@ async def import_master_data(
             elif changed:
                 actions["farms"]["unchanged"] += 1
                 warnings.append(
-                    f"Farms row {row_number}: '{farm_code}' exists and differs; "
-                    "enable Allow updates to change it."
+                    f"Farms row {row_number}: '{farm_code}' exists "
+                    "and differs; enable Allow updates to change it."
                 )
             else:
                 actions["farms"]["unchanged"] += 1
@@ -2142,16 +2227,13 @@ async def import_master_data(
         .filter(BroilerShed.company_id == company_id)
         .all()
     )
+    farm_code_by_id = {
+        farm.id: _import_text(farm.farm_code).lower()
+        for farm in existing_farms
+    }
     shed_by_key = {
         (
-            next(
-                (
-                    _import_text(farm.farm_code).lower()
-                    for farm in existing_farms
-                    if farm.id == shed.farm_id
-                ),
-                "",
-            ),
+            farm_code_by_id.get(shed.farm_id, ""),
             _import_text(shed.shed_code).lower(),
         ): shed
         for shed in existing_sheds
@@ -2168,24 +2250,27 @@ async def import_master_data(
 
         if not farm_code or not shed_code or not shed_name:
             errors.append(
-                f"Sheds row {row_number}: Farm Code, Shed Code and Shed Name are required."
+                f"Sheds row {row_number}: Farm Code, Shed Code and "
+                "Shed Name are required."
             )
             continue
 
-        farm_key = farm_code.lower()
-        shed_key = shed_code.lower()
-        composite_key = (farm_key, shed_key)
+        composite_key = (farm_code.lower(), shed_code.lower())
 
-        if farm_key not in workbook_farm_codes and farm_key not in farm_by_code:
+        if (
+            composite_key[0] not in workbook_farm_codes
+            and composite_key[0] not in farm_by_code
+        ):
             errors.append(
-                f"Sheds row {row_number}: Farm Code '{farm_code}' was not found."
+                f"Sheds row {row_number}: Farm Code "
+                f"'{farm_code}' was not found."
             )
             continue
 
         if composite_key in workbook_shed_keys:
             errors.append(
-                f"Sheds row {row_number}: duplicate Shed Code '{shed_code}' "
-                f"for Farm Code '{farm_code}'."
+                f"Sheds row {row_number}: duplicate Shed Code "
+                f"'{shed_code}' for Farm Code '{farm_code}'."
             )
             continue
         workbook_shed_keys.add(composite_key)
@@ -2215,8 +2300,9 @@ async def import_master_data(
             elif changed:
                 actions["sheds"]["unchanged"] += 1
                 warnings.append(
-                    f"Sheds row {row_number}: '{farm_code}/{shed_code}' exists "
-                    "and differs; enable Allow updates to change it."
+                    f"Sheds row {row_number}: "
+                    f"'{farm_code}/{shed_code}' exists and differs; "
+                    "enable Allow updates to change it."
                 )
             else:
                 actions["sheds"]["unchanged"] += 1
@@ -2253,14 +2339,16 @@ async def import_master_data(
 
         if not farm_code or not shed_code or not flock_code:
             errors.append(
-                f"Flocks row {row_number}: Farm Code, Shed Code and Flock Code are required."
+                f"Flocks row {row_number}: Farm Code, Shed Code and "
+                "Flock Code are required."
             )
             continue
 
         if module and module.lower() != "broilers":
             warnings.append(
-                f"Flocks row {row_number}: module '{module}' was skipped; "
-                "this importer currently creates broiler flocks only."
+                f"Flocks row {row_number}: module '{module}' was "
+                "skipped; this importer currently creates broiler "
+                "flocks only."
             )
             continue
 
@@ -2270,14 +2358,16 @@ async def import_master_data(
             and shed_lookup_key not in shed_by_key
         ):
             errors.append(
-                f"Flocks row {row_number}: shed '{farm_code}/{shed_code}' was not found."
+                f"Flocks row {row_number}: shed "
+                f"'{farm_code}/{shed_code}' was not found."
             )
             continue
 
         code_key = flock_code.lower()
         if code_key in workbook_flock_codes:
             errors.append(
-                f"Flocks row {row_number}: duplicate Flock Code '{flock_code}'."
+                f"Flocks row {row_number}: duplicate Flock Code "
+                f"'{flock_code}'."
             )
             continue
         workbook_flock_codes.add(code_key)
@@ -2298,7 +2388,8 @@ async def import_master_data(
             continue
         if placed_birds <= 0:
             errors.append(
-                f"Flocks row {row_number}: Placed Birds must be greater than zero."
+                f"Flocks row {row_number}: Placed Birds must be "
+                "greater than zero."
             )
             continue
 
@@ -2331,8 +2422,8 @@ async def import_master_data(
             elif changed:
                 actions["flocks"]["unchanged"] += 1
                 warnings.append(
-                    f"Flocks row {row_number}: '{flock_code}' exists and differs; "
-                    "enable Allow updates to change it."
+                    f"Flocks row {row_number}: '{flock_code}' exists "
+                    "and differs; enable Allow updates to change it."
                 )
             else:
                 actions["flocks"]["unchanged"] += 1
@@ -2342,12 +2433,247 @@ async def import_master_data(
             "farm_code": farm_code,
             "shed_code": shed_code,
             "flock_code": flock_code,
+            "breed": _import_text(row.get("Breed")) or None,
             "placement_date": placement_date,
             "placed_birds": placed_birds,
             "growout_days": growout_days,
             "status": status,
             "notes": notes,
             "existing": existing,
+        })
+
+    parsed_standards: list[dict[str, object]] = []
+    standard_codes: set[str] = set()
+
+    for row_number, row in standard_rows:
+        standard_code = (
+            _import_text(row.get("Standard Code"))
+            .upper()
+            .replace(" ", "_")
+        )
+        breed = _import_text(row.get("Breed"))
+        age_day = _import_int(
+            row.get("Age Day"),
+            "Age Day",
+            row_number,
+            errors,
+        )
+        bodyweight_g = _import_float(
+            row.get("Bodyweight g"),
+            "Bodyweight g",
+            row_number,
+            errors,
+        )
+        daily_feed = _import_float(
+            row.get("Daily Feed g/bird"),
+            "Daily Feed g/bird",
+            row_number,
+            errors,
+        )
+        livability = _import_float(
+            row.get("Target Livability %"),
+            "Target Livability %",
+            row_number,
+            errors,
+        )
+
+        if not standard_code or not breed:
+            errors.append(
+                f"Breed Standard row {row_number}: Standard Code "
+                "and Breed are required."
+            )
+            continue
+        if age_day is None or bodyweight_g is None:
+            continue
+
+        standard_codes.add(standard_code)
+        parsed_standards.append({
+            "row": row_number,
+            "standard_code": standard_code,
+            "standard_name": f"{breed} Broiler Standard",
+            "breed": breed,
+            "age_day": age_day,
+            "body_weight_g": bodyweight_g,
+            "feed_avg_g_bird_day": daily_feed,
+            "liveability_pct": livability,
+        })
+
+    if len(standard_codes) > 1:
+        errors.append(
+            "The Breed Standard sheet must contain only one "
+            "Standard Code per workbook."
+        )
+
+    existing_standard_rows: list[PerformanceStandard] = []
+    active_standard_code = (
+        next(iter(standard_codes)) if standard_codes else None
+    )
+
+    if active_standard_code:
+        existing_standard_rows = (
+            db.query(PerformanceStandard)
+            .filter(
+                PerformanceStandard.standard_code
+                == active_standard_code,
+                PerformanceStandard.standard_type == "Breed",
+                PerformanceStandard.company_id.is_(None),
+            )
+            .all()
+        )
+
+        if not existing_standard_rows:
+            actions["standards"]["create"] = len(parsed_standards)
+        elif allow_updates:
+            actions["standards"]["update"] = len(parsed_standards)
+        else:
+            actions["standards"]["unchanged"] = len(
+                existing_standard_rows
+            )
+            warnings.append(
+                f"Breed standard '{active_standard_code}' already "
+                "exists. Enable Allow updates to replace it."
+            )
+
+    existing_performance = (
+        db.query(BroilerDailyPerformance)
+        .filter(BroilerDailyPerformance.company_id == company_id)
+        .all()
+    )
+    perf_by_key = {
+        (entry.placement_plan_id, entry.entry_date): entry
+        for entry in existing_performance
+    }
+    parsed_performance: list[dict[str, object]] = []
+    workbook_perf_keys: set[tuple[str, date]] = set()
+
+    for row_number, row in performance_rows:
+        flock_code = _import_text(row.get("Flock Code"))
+        entry_date = _import_date(
+            row.get("Entry Date"),
+            "Entry Date",
+            row_number,
+            errors,
+        )
+
+        if not flock_code or entry_date is None:
+            errors.append(
+                f"Daily Performance row {row_number}: Flock Code "
+                "and Entry Date are required."
+            )
+            continue
+
+        code_key = flock_code.lower()
+        if (
+            code_key not in workbook_flock_codes
+            and code_key not in plan_by_code
+        ):
+            errors.append(
+                f"Daily Performance row {row_number}: Flock Code "
+                f"'{flock_code}' was not found."
+            )
+            continue
+
+        workbook_key = (code_key, entry_date)
+        if workbook_key in workbook_perf_keys:
+            errors.append(
+                f"Daily Performance row {row_number}: duplicate "
+                f"entry for '{flock_code}' on {entry_date}."
+            )
+            continue
+        workbook_perf_keys.add(workbook_key)
+
+        age_days = _import_int(
+            row.get("Age Days"),
+            "Age Days",
+            row_number,
+            errors,
+        )
+        opening = _import_int(
+            row.get("Opening Birds"),
+            "Opening Birds",
+            row_number,
+            errors,
+        )
+        mortality = _import_int(
+            row.get("Mortality Birds"),
+            "Mortality Birds",
+            row_number,
+            errors,
+        ) or 0
+        culls = _import_int(
+            row.get("Cull Birds"),
+            "Cull Birds",
+            row_number,
+            errors,
+        ) or 0
+        closing = _import_int(
+            row.get("Closing Birds"),
+            "Closing Birds",
+            row_number,
+            errors,
+        )
+        feed_kg = _import_float(
+            row.get("Feed kg"),
+            "Feed kg",
+            row_number,
+            errors,
+        )
+        water_l = _import_float(
+            row.get("Water L"),
+            "Water L",
+            row_number,
+            errors,
+        )
+        bodyweight = _import_float(
+            row.get("Bodyweight kg"),
+            "Bodyweight kg",
+            row_number,
+            errors,
+        )
+        notes = _import_text(row.get("Comments"))
+
+        existing_plan = plan_by_code.get(code_key)
+        existing_entry = (
+            perf_by_key.get((existing_plan.id, entry_date))
+            if existing_plan
+            else None
+        )
+
+        if existing_entry is None:
+            actions["performance"]["create"] += 1
+        else:
+            changed = (
+                int(existing_entry.opening_birds or 0)
+                != int(opening or 0)
+                or int(existing_entry.mortality_birds or 0)
+                != mortality
+                or int(existing_entry.cull_birds or 0) != culls
+                or float(existing_entry.feed_kg or 0)
+                != float(feed_kg or 0)
+                or float(existing_entry.water_litres or 0)
+                != float(water_l or 0)
+                or float(existing_entry.avg_weight_kg or 0)
+                != float(bodyweight or 0)
+            )
+            if changed and allow_updates:
+                actions["performance"]["update"] += 1
+            else:
+                actions["performance"]["unchanged"] += 1
+
+        parsed_performance.append({
+            "row": row_number,
+            "flock_code": flock_code,
+            "entry_date": entry_date,
+            "age_days": age_days,
+            "opening_birds": opening,
+            "mortality_birds": mortality,
+            "cull_birds": culls,
+            "closing_birds": closing,
+            "feed_kg": feed_kg,
+            "water_litres": water_l,
+            "avg_weight_kg": bodyweight,
+            "notes": notes,
+            "existing": existing_entry,
         })
 
     result = {
@@ -2391,7 +2717,10 @@ async def import_master_data(
 
             farm_objects[str(item["farm_code"]).lower()] = existing
 
-        shed_objects: dict[tuple[str, str], BroilerShed] = dict(shed_by_key)
+        shed_objects: dict[
+            tuple[str, str],
+            BroilerShed,
+        ] = dict(shed_by_key)
 
         for item in parsed_sheds:
             farm = farm_objects[str(item["farm_code"]).lower()]
@@ -2423,6 +2752,10 @@ async def import_master_data(
 
             shed_objects[key] = existing
 
+        plan_objects: dict[str, BroilerPlacementPlan] = dict(
+            plan_by_code
+        )
+
         for item in parsed_flocks:
             key = (
                 str(item["farm_code"]).lower(),
@@ -2440,7 +2773,9 @@ async def import_master_data(
                     cycle_code=item["flock_code"],
                     placement_date=item["placement_date"],
                     planned_birds=item["placed_birds"],
-                    target_density_kg_m2=shed.default_density_kg_m2,
+                    target_density_kg_m2=(
+                        shed.default_density_kg_m2
+                    ),
                     target_lw_kg=shed.default_target_lw_kg,
                     growout_days=item["growout_days"],
                     chick_allowance_pct=1.5,
@@ -2450,6 +2785,7 @@ async def import_master_data(
                     last_saved_at=datetime.utcnow(),
                 )
                 db.add(existing)
+                db.flush()
             elif allow_updates:
                 existing.farm_id = farm.id
                 existing.shed_id = shed.id
@@ -2460,6 +2796,87 @@ async def import_master_data(
                 existing.status = item["status"]
                 existing.last_saved_by = current_user.full_name
                 existing.last_saved_at = datetime.utcnow()
+
+            plan_objects[
+                str(item["flock_code"]).lower()
+            ] = existing
+
+        if parsed_standards and (
+            not existing_standard_rows or allow_updates
+        ):
+            if existing_standard_rows:
+                (
+                    db.query(PerformanceStandard)
+                    .filter(
+                        PerformanceStandard.standard_code
+                        == active_standard_code,
+                        PerformanceStandard.standard_type == "Breed",
+                        PerformanceStandard.company_id.is_(None),
+                    )
+                    .delete(synchronize_session=False)
+                )
+
+            now = datetime.utcnow()
+            for item in parsed_standards:
+                db.add(
+                    PerformanceStandard(
+                        company_id=None,
+                        standard_code=item["standard_code"],
+                        standard_name=item["standard_name"],
+                        standard_type="Breed",
+                        module="Broilers",
+                        species="Chicken",
+                        breed=item["breed"],
+                        phase="Growout",
+                        age_day=item["age_day"],
+                        age_week=None,
+                        body_weight_g=item["body_weight_g"],
+                        feed_avg_g_bird_day=(
+                            item["feed_avg_g_bird_day"]
+                        ),
+                        liveability_pct=item["liveability_pct"],
+                        source_file=filename,
+                        active=True,
+                        created_at=now,
+                        updated_at=now,
+                        imported_by=current_user.full_name,
+                    )
+                )
+
+        for item in parsed_performance:
+            plan = plan_objects[
+                str(item["flock_code"]).lower()
+            ]
+            existing = item["existing"]
+
+            if existing is None:
+                existing = BroilerDailyPerformance(
+                    company_id=company_id,
+                    placement_plan_id=plan.id,
+                    entry_date=item["entry_date"],
+                )
+                db.add(existing)
+            elif not allow_updates:
+                continue
+
+            existing.age_days = item["age_days"]
+            existing.opening_birds = item["opening_birds"]
+            existing.mortality_front = 0
+            existing.mortality_middle = 0
+            existing.mortality_back = 0
+            existing.mortality_other = item["mortality_birds"]
+            existing.cull_legs = 0
+            existing.cull_runts = 0
+            existing.cull_beak = 0
+            existing.cull_other = item["cull_birds"]
+            existing.closing_birds = item["closing_birds"]
+            existing.feed_kg = item["feed_kg"]
+            existing.water_litres = item["water_litres"]
+            existing.avg_weight_kg = item["avg_weight_kg"]
+            existing.notes = item["notes"]
+            existing.last_saved_by = current_user.full_name
+            existing.last_saved_at = datetime.utcnow()
+            recalculate_daily_performance_entry(existing)
 
         db.commit()
         result["committed"] = True

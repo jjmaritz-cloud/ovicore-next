@@ -31,6 +31,8 @@ type ImportResult = {
     farms: ImportCounts;
     sheds: ImportCounts;
     flocks: ImportCounts;
+    standards: ImportCounts;
+    performance: ImportCounts;
   };
   errors: string[];
   warnings: string[];
@@ -169,7 +171,7 @@ export default function DataImportPage() {
     <OviCoreShell module="admin">
       <OviCorePageHeader
         title="Data Import"
-        subtitle="Validate and import farms, sheds and broiler flocks into a selected company."
+        subtitle="Validate and import farms, sheds, broiler flocks, breed standards and daily performance into a selected company."
       >
         <Link href="/admin" className="ovicore-btn">
           Back to Admin
@@ -224,7 +226,7 @@ export default function DataImportPage() {
       <div style={{ marginTop: 12 }}>
         <OviCoreTableCard
           title="2. Choose workbook"
-          subtitle="Use the OviCore workbook with Farms, Sheds and Flocks sheets. Validation runs before any database changes."
+          subtitle="Use the OviCore workbook with Farms, Sheds, Flocks, Breed Standard and Daily Performance sheets. Validation runs before any database changes."
         >
           <div style={{ display: "grid", gap: 14, maxWidth: 720 }}>
             <label
@@ -271,7 +273,7 @@ export default function DataImportPage() {
                 <strong>Allow updates to existing matching codes</strong>
                 <br />
                 <small>
-                  When off, existing farms, sheds and flocks are left unchanged.
+                  When off, existing farms, sheds, flocks, standards and daily performance are left unchanged.
                 </small>
               </span>
             </label>
@@ -329,6 +331,8 @@ export default function DataImportPage() {
                   ["Farms", result.actions.farms],
                   ["Sheds", result.actions.sheds],
                   ["Flocks", result.actions.flocks],
+                  ["Breed standard", result.actions.standards],
+                  ["Daily performance", result.actions.performance],
                 ] as const
               ).map(([label, counts]) => (
                 <article
