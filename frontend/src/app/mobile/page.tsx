@@ -2601,6 +2601,9 @@ function FlockPerformanceCharts({ shed }: { shed: ShedOverview }) {
       const opening = numberOrZero(record.opening_birds);
       const feed = numberOrZero(record.feed_kg);
       const water = numberOrZero(record.water_litres);
+      const birds =
+        numberOrZero(record.closing_birds) ||
+        numberOrZero(record.opening_birds);
 
       cumulativeMortality += mortality;
 
@@ -2623,10 +2626,18 @@ function FlockPerformanceCharts({ shed }: { shed: ShedOverview }) {
               : null;
           break;
         case "feed":
-          actual = record.feed_kg ?? null;
+          actual =
+            birds > 0 && record.feed_kg !== null && record.feed_kg !== undefined
+              ? (feed * 1000) / birds
+              : null;
           break;
         case "water":
-          actual = record.water_litres ?? null;
+          actual =
+            birds > 0 &&
+            record.water_litres !== null &&
+            record.water_litres !== undefined
+              ? (water * 1000) / birds
+              : null;
           break;
         case "waterFeed":
           actual =
@@ -2673,15 +2684,15 @@ function FlockPerformanceCharts({ shed }: { shed: ShedOverview }) {
         empty: "No mortality entries yet.",
       },
       feed: {
-        title: "Daily feed",
-        unit: "kg",
-        decimals: 0,
+        title: "Daily feed per bird",
+        unit: "g/bird/day",
+        decimals: 1,
         empty: "No feed entries yet.",
       },
       water: {
-        title: "Daily water",
-        unit: "L",
-        decimals: 0,
+        title: "Daily water per bird",
+        unit: "mL/bird/day",
+        decimals: 1,
         empty: "No water entries yet.",
       },
       waterFeed: {
@@ -2797,6 +2808,15 @@ function UnifiedPerformanceChart({
     .reverse()
     .find((item) => item.actual !== null);
   const hasStandard = standardCoordinates.length > 0;
+
+  const axisLabelStep =
+    data.length <= 8
+      ? 1
+      : data.length <= 16
+        ? 2
+        : data.length <= 32
+          ? 4
+          : Math.ceil(data.length / 8);
 
   const latestValue =
     latest?.actual === null || latest?.actual === undefined
@@ -2924,10 +2944,24 @@ function UnifiedPerformanceChart({
             ))}
           </svg>
 
-          <div className={styles.performanceAxis}>
-            {data.map((item) => (
-              <span key={item.key}>{item.label}</span>
-            ))}
+          <div
+            className={styles.performanceAxis}
+            style={{
+              gridTemplateColumns: `repeat(${Math.max(data.length, 1)}, minmax(0, 1fr))`,
+            }}
+          >
+            {data.map((item, index) => {
+              const showLabel =
+                index === 0 ||
+                index === data.length - 1 ||
+                index % axisLabelStep === 0;
+
+              return (
+                <span key={item.key}>
+                  {showLabel ? item.label : ""}
+                </span>
+              );
+            })}
           </div>
         </div>
       )}
