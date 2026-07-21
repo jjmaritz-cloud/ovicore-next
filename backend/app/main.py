@@ -2351,7 +2351,14 @@ async def import_master_data(
         })
 
     result = {
-        "company": {"id": company.id, "name": company.name},
+        "company": {
+            "id": company.id,
+            "name": (
+                getattr(company, "company_name", None)
+                or getattr(company, "name", None)
+                or f"Company {company.id}"
+            ),
+        },
         "filename": filename,
         "mode": "commit" if commit else "preview",
         "allow_updates": allow_updates,
