@@ -15,6 +15,8 @@ from sqlalchemy import (
     Integer,
     String,
     UniqueConstraint,
+    text,
+    inspect,
 )
 from sqlalchemy.orm import Session
 
@@ -51,7 +53,8 @@ class PerformanceStandard(Base):
     species = Column(String(50), nullable=False, default="Chicken")
     breed = Column(String(120), nullable=True)
     phase = Column(String(50), nullable=True)
-    age_week = Column(Integer, nullable=False, index=True)
+    age_day = Column(Integer, nullable=True, index=True)
+    age_week = Column(Integer, nullable=True, index=True)
 
     lay_rate_hd_pct = Column(Float, nullable=True)
     avg_egg_weight_g = Column(Float, nullable=True)
@@ -99,7 +102,6 @@ REQUIRED_COLUMNS = {
     "species",
     "breed",
     "phase",
-    "age_week",
     "active",
 }
 
@@ -126,6 +128,7 @@ ALL_COLUMNS = [
     "species",
     "breed",
     "phase",
+    "age_day",
     "age_week",
     *FLOAT_COLUMNS,
     "source_file",
@@ -224,13 +227,35 @@ def _normalise_row(
     if not standard_name:
         raise ValueError("standard_name is required")
 
-    try:
-        age_week = int(raw.get("age_week"))
-    except (TypeError, ValueError):
-        raise ValueError("age_week must be a whole number")
+    raw_age_day = raw.get("age_day")
+    raw_age_week = raw.get("age_week")
 
-    if age_week < 0 or age_week > 200:
-        raise ValueError("age_week must be between 0 and 200")
+    age_day: int | None = None
+    age_week: int | None = None
+
+    if raw_age_day not in {None, ""}:
+        try:
+            age_day = int(raw_age_day)
+        except (TypeError, ValueError):
+            raise ValueError("age_day must be a whole number")
+
+        if age_day < 0 or age_day > 500:
+            raise ValueError("age_day must be between 0 and 500")
+
+    if raw_age_week not in {None, ""}:
+        try:
+            age_week = int(raw_age_week)
+        except (TypeError, ValueError):
+            raise ValueError("age_week must be a whole number")
+
+        if age_week < 0 or age_week > 200:
+            raise ValueError("age_week must be between 0 and 200")
+
+    if age_day is None and age_week is None:
+        raise ValueError("Either age_day or age_week is required")
+
+    if age_day is not None and age_week is not None:
+        raise ValueError("Use age_day or age_week, not both, on the same row")
 
     output: dict[str, Any] = {
         "standard_code": standard_code.upper().replace(" ", "_"),
@@ -240,6 +265,7 @@ def _normalise_row(
         "species": str(raw.get("species") or "Chicken").strip() or "Chicken",
         "breed": str(raw.get("breed") or "").strip() or None,
         "phase": str(raw.get("phase") or "").strip() or None,
+        "age_day": age_day,
         "age_week": age_week,
         "source_file": (
             str(raw.get("source_file") or "").strip()
@@ -363,23 +389,26 @@ def _read_import_rows(
             ),
         )
 
-    duplicate_ages = set()
-    seen_ages = set()
+    duplicate_ages: set[str] = set()
+    seen_ages: set[str] = set()
 
     for row in parsed_rows:
-        age_week = row["age_week"]
+        if row["age_day"] is not None:
+            age_key = f"day:{row['age_day']}"
+        else:
+            age_key = f"week:{row['age_week']}"
 
-        if age_week in seen_ages:
-            duplicate_ages.add(age_week)
+        if age_key in seen_ages:
+            duplicate_ages.add(age_key)
 
-        seen_ages.add(age_week)
+        seen_ages.add(age_key)
 
     if duplicate_ages:
         raise HTTPException(
             status_code=400,
             detail=(
-                "Duplicate age_week values in the workbook: "
-                + ", ".join(str(value) for value in sorted(duplicate_ages))
+                "Duplicate age values in the workbook: "
+                + ", ".join(sorted(duplicate_ages))
             ),
         )
 
@@ -397,6 +426,7 @@ def _serialise_standard(row: PerformanceStandard) -> dict[str, Any]:
         "species": row.species,
         "breed": row.breed,
         "phase": row.phase,
+        "age_day": row.age_day,
         "age_week": row.age_week,
         "lay_rate_hd_pct": row.lay_rate_hd_pct,
         "avg_egg_weight_g": row.avg_egg_weight_g,
@@ -416,6 +446,42 @@ def _serialise_standard(row: PerformanceStandard) -> dict[str, Any]:
         "updated_at": row.updated_at,
         "imported_by": row.imported_by,
     }
+
+
+
+@router.on_event("startup")
+def ensure_daily_standard_schema() -> None:
+    """
+    Upgrade an existing performance_standards table created by the
+    original weekly-only importer. Fresh databases are created directly
+    from the updated SQLAlchemy model.
+    """
+    bind = Base.metadata.bind
+
+    # Base.metadata.bind is normally unset in SQLAlchemy 2, so use the
+    # application engine imported lazily to avoid circular imports.
+    from app.db import engine
+
+    if not inspect(engine).has_table("performance_standards"):
+        return
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "ALTER TABLE performance_standards "
+                "ADD COLUMN IF NOT EXISTS age_day INTEGER"
+            )
+        )
+
+        # PostgreSQL requires the old weekly column to become nullable so
+        # daily broiler rows can store age_day without a fake age_week.
+        if connection.dialect.name == "postgresql":
+            connection.execute(
+                text(
+                    "ALTER TABLE performance_standards "
+                    "ALTER COLUMN age_week DROP NOT NULL"
+                )
+            )
 
 
 @router.get("")
@@ -446,7 +512,8 @@ def list_standards(
         query
         .order_by(
             PerformanceStandard.standard_name.asc(),
-            PerformanceStandard.age_week.asc(),
+            PerformanceStandard.age_day.asc().nullslast(),
+            PerformanceStandard.age_week.asc().nullslast(),
         )
         .all()
     )
@@ -474,17 +541,37 @@ def list_standards(
                 "species": row.species,
                 "breed": row.breed,
                 "active": row.active,
-                "age_min": row.age_week,
-                "age_max": row.age_week,
+                "age_unit": (
+                    "day" if row.age_day is not None else "week"
+                ),
+                "age_min": (
+                    row.age_day
+                    if row.age_day is not None
+                    else row.age_week
+                ),
+                "age_max": (
+                    row.age_day
+                    if row.age_day is not None
+                    else row.age_week
+                ),
                 "row_count": 0,
                 "updated_at": row.updated_at,
                 "source_file": row.source_file,
             },
         )
 
+        age_value = (
+            row.age_day
+            if row.age_day is not None
+            else row.age_week
+        )
+
         item["row_count"] += 1
-        item["age_min"] = min(item["age_min"], row.age_week)
-        item["age_max"] = max(item["age_max"], row.age_week)
+
+        if age_value is not None:
+            item["age_min"] = min(item["age_min"], age_value)
+            item["age_max"] = max(item["age_max"], age_value)
+
         item["active"] = item["active"] or row.active
 
         if row.updated_at and (
@@ -528,7 +615,10 @@ def get_standard_rows(
 
     rows = (
         query
-        .order_by(PerformanceStandard.age_week.asc())
+        .order_by(
+            PerformanceStandard.age_day.asc().nullslast(),
+            PerformanceStandard.age_week.asc().nullslast(),
+        )
         .all()
     )
 
