@@ -1970,25 +1970,32 @@ def _sheet_records(workbook, sheet_name: str) -> list[tuple[int, dict[str, objec
         return []
 
     sheet = workbook[sheet_name]
-    header_row = None
+    header_row: int | None = None
     headers: list[str] = []
-
-    for row_number in range(1, min(sheet.max_row, 15) + 1):
-        values = [cell.value for cell in sheet[row_number]]
-        normalised = [_import_text(value) for value in values]
-        if any(value.endswith("*") for value in normalised):
-            header_row = row_number
-            headers = [value.rstrip(" *").strip() for value in normalised]
-            break
-
-    if header_row is None:
-        return []
-
     records: list[tuple[int, dict[str, object]]] = []
-    for row_number in range(header_row + 1, sheet.max_row + 1):
-        values = [cell.value for cell in sheet[row_number]]
-        if not any(value is not None and _import_text(value) != "" for value in values):
+
+    # Read-only openpyxl worksheets can report max_row as None. Iterating the
+    # worksheet directly avoids relying on worksheet dimensions and works for
+    # both normal and read-only workbooks.
+    for row_number, cells in enumerate(sheet.iter_rows(), start=1):
+        values = [cell.value for cell in cells]
+
+        if header_row is None:
+            if row_number > 15:
+                return []
+
+            normalised = [_import_text(value) for value in values]
+            if any(value.endswith("*") for value in normalised):
+                header_row = row_number
+                headers = [value.rstrip(" *").strip() for value in normalised]
             continue
+
+        if not any(
+            value is not None and _import_text(value) != ""
+            for value in values
+        ):
+            continue
+
         record = {
             headers[index]: values[index] if index < len(values) else None
             for index in range(len(headers))
@@ -2344,12 +2351,7 @@ async def import_master_data(
         })
 
     result = {
-        "company": {
-            "id": company.id,
-            "name": getattr(company, "company_name", None)
-            or getattr(company, "name", None)
-            or f"Company {company.id}",
-        },
+        "company": {"id": company.id, "name": company.name},
         "filename": filename,
         "mode": "commit" if commit else "preview",
         "allow_updates": allow_updates,
