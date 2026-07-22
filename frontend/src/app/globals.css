@@ -8622,3 +8622,124 @@ a.home-module-card:hover {
   background: linear-gradient(135deg, #043c32, #08785e) !important;
   color: #ffffff !important;
 }
+
+/* =========================================================
+   OviCore Module Selector — wider, denser desktop layout v4
+   ========================================================= */
+@media (min-width: 1100px) {
+  .ovicore-home-shell {
+    padding-left: clamp(10px, 0.8vw, 18px) !important;
+    padding-right: clamp(10px, 0.8vw, 18px) !important;
+  }
+
+  .ovicore-home-content {
+    max-width: 2280px !important;
+  }
+
+  .home-select-header {
+    padding: 18px 24px !important;
+    border-radius: 18px !important;
+  }
+
+  .home-select-title h1 {
+    font-size: clamp(28px, 2vw, 38px) !important;
+  }
+
+  .home-module-filters {
+    margin-top: 10px !important;
+    margin-bottom: 2px !important;
+    padding: 5px 7px !important;
+  }
+
+  .home-module-filters button {
+    min-height: 30px !important;
+    padding: 0 11px !important;
+    font-size: 10px !important;
+  }
+
+  .home-module-section {
+    margin-top: 11px !important;
+    padding: 11px !important;
+    border-radius: 17px !important;
+  }
+
+  .home-section-heading {
+    margin-bottom: 8px !important;
+  }
+
+  .home-section-heading h2 {
+    font-size: 18px !important;
+  }
+
+  .home-featured-grid,
+  .home-module-grid-sorted {
+    gap: 8px !important;
+  }
+
+  .home-module-card,
+  .home-module-card-compact {
+    min-height: 0 !important;
+    padding: 10px 12px 9px !important;
+    border-radius: 14px !important;
+  }
+
+  .home-module-card-top,
+  .home-module-card-compact .home-module-card-top {
+    margin-bottom: 6px !important;
+  }
+
+  .home-module-icon {
+    width: 34px !important;
+    height: 34px !important;
+    border-radius: 10px !important;
+  }
+
+  .home-module-heading h2 {
+    font-size: 18px !important;
+    line-height: 1 !important;
+  }
+
+  .home-module-eyebrow {
+    font-size: 8px !important;
+  }
+
+  .home-module-description {
+    margin: 5px 0 7px !important;
+    font-size: 10px !important;
+    line-height: 1.32 !important;
+  }
+
+  .home-module-tags {
+    gap: 4px !important;
+    margin-bottom: 7px !important;
+  }
+
+  .home-module-tags span {
+    padding: 3px 6px !important;
+    font-size: 8px !important;
+  }
+
+  .home-module-signal {
+    padding: 6px 8px !important;
+    border-radius: 9px !important;
+  }
+
+  .home-module-signal span {
+    font-size: 8px !important;
+  }
+
+  .home-module-signal strong {
+    font-size: 9px !important;
+  }
+
+  .home-module-footer {
+    min-height: 26px !important;
+    padding-top: 7px !important;
+    font-size: 9px !important;
+  }
+
+  .home-module-arrow {
+    width: 24px !important;
+    height: 24px !important;
+  }
+}
