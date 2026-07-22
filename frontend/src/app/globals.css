@@ -8294,3 +8294,331 @@ a.home-module-card:hover {
   .home-section-heading { align-items: flex-start; }
   .home-section-heading p { padding-top: 5px; }
 }
+
+/* =========================================================
+   OviCore Module Selector — stronger branded colour treatment
+   ========================================================= */
+.ovicore-home-shell {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(7, 81, 66, 0.24), transparent 30%),
+    radial-gradient(circle at 94% 4%, rgba(240, 139, 22, 0.16), transparent 25%),
+    linear-gradient(145deg, #dfeee9 0%, #f5faf7 44%, #e4efeb 100%);
+}
+
+.home-select-header {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background:
+    radial-gradient(circle at 82% 20%, rgba(255, 255, 255, 0.1), transparent 27%),
+    linear-gradient(115deg, #073d34 0%, #075b49 58%, #0c8b6d 100%);
+  box-shadow: 0 20px 46px rgba(4, 47, 39, 0.22);
+}
+
+.home-select-title .home-hero-eyebrow,
+.home-select-title h1,
+.home-select-title p {
+  color: #ffffff;
+}
+
+.home-select-title .home-hero-eyebrow {
+  opacity: 0.78;
+}
+
+.home-select-title p {
+  opacity: 0.78;
+}
+
+.home-module-search {
+  border-color: rgba(255, 255, 255, 0.26);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 12px 28px rgba(2, 35, 29, 0.2);
+}
+
+.home-module-filters {
+  margin-top: 16px;
+  padding: 8px;
+  border: 1px solid rgba(7, 61, 52, 0.1);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 10px 26px rgba(7, 45, 38, 0.07);
+}
+
+.home-module-filters button {
+  border-color: transparent;
+  background: #edf5f1;
+  color: #214f45;
+}
+
+.home-module-filters button:hover,
+.home-module-filters button.active {
+  border-color: #075b49;
+  background: linear-gradient(135deg, #073d34, #0b765d);
+  color: #ffffff;
+  box-shadow: 0 8px 18px rgba(7, 81, 66, 0.18);
+}
+
+.home-module-section {
+  border-color: rgba(7, 61, 52, 0.11);
+  background: linear-gradient(145deg, rgba(247, 251, 249, 0.98), rgba(232, 243, 238, 0.94));
+  box-shadow: 0 14px 34px rgba(7, 45, 38, 0.08);
+}
+
+.home-featured-section {
+  border-color: rgba(240, 139, 22, 0.25);
+  background:
+    radial-gradient(circle at 88% 0%, rgba(240, 139, 22, 0.11), transparent 28%),
+    linear-gradient(135deg, #e7f4ee 0%, #f9fbfa 72%);
+}
+
+.home-section-heading span {
+  color: #d97706;
+}
+
+.home-section-heading h2 {
+  color: #073d34;
+}
+
+.home-section-heading p {
+  color: #56716a;
+}
+
+.home-module-card {
+  border: 1px solid rgba(7, 61, 52, 0.12);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(12, 139, 109, 0.07), transparent 31%),
+    #ffffff;
+  box-shadow: 0 12px 28px rgba(7, 45, 38, 0.09);
+}
+
+.home-module-card:hover {
+  border-color: rgba(7, 91, 73, 0.34);
+  box-shadow: 0 18px 38px rgba(7, 45, 38, 0.16);
+}
+
+.home-module-heading h2 {
+  color: #073d34;
+}
+
+.home-module-eyebrow {
+  color: #d97706;
+}
+
+.home-module-description {
+  color: #4f6962;
+}
+
+.home-module-tags span {
+  border-color: rgba(7, 91, 73, 0.1);
+  background: #eaf5f0;
+  color: #245c4e;
+}
+
+.home-module-footer {
+  border-top-color: rgba(7, 61, 52, 0.1);
+  color: #075b49;
+}
+
+.home-module-arrow {
+  color: #ef8b16;
+}
+
+.home-icon-rearing,
+.home-icon-layers,
+.home-icon-grading {
+  background: linear-gradient(145deg, #fff4dc, #ffe5b4);
+  color: #b65f05;
+}
+
+.home-icon-broilers,
+.home-icon-processing {
+  background: linear-gradient(145deg, #dff4eb, #c4eadc);
+  color: #075b49;
+}
+
+.home-icon-breeders,
+.home-icon-hatchery {
+  background: linear-gradient(145deg, #e6f4f0, #cfe8e1);
+  color: #0a6d59;
+}
+
+.home-icon-planning {
+  background: linear-gradient(145deg, #d9f1ea, #bce5da);
+  color: #075b49;
+}
+
+.home-icon-admin {
+  background: linear-gradient(145deg, #e9efed, #d8e2df);
+  color: #294f46;
+}
+
+.home-group-egg-production {
+  border-left-color: #ef8b16;
+}
+
+.home-group-broiler-production,
+.home-group-breeder-hatchery,
+.home-group-planning-operations {
+  border-left-color: #08745f;
+}
+
+.home-group-management-setup {
+  border-left-color: #3f6159;
+}
+
+.home-module-empty {
+  border-color: rgba(7, 91, 73, 0.26);
+  background: rgba(248, 252, 250, 0.94);
+}
+
+/* =========================================================
+   OviCore Module Selector — command-centre palette v2
+   Matches the stronger Broiler Home visual language
+   ========================================================= */
+.ovicore-home-shell {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(8, 117, 91, 0.22), transparent 30%),
+    linear-gradient(180deg, #dcece7 0%, #eef5f2 28%, #e8f0ed 100%);
+}
+
+.home-select-header {
+  background: linear-gradient(105deg, #053f34 0%, #075a48 58%, #0a936f 100%);
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 16px 34px rgba(4, 49, 40, 0.24);
+}
+
+.home-module-section {
+  background: linear-gradient(120deg, rgba(232, 246, 240, 0.98), rgba(255, 255, 255, 0.98) 40%);
+  border: 1px solid rgba(6, 75, 61, 0.14);
+  box-shadow: 0 10px 24px rgba(6, 58, 48, 0.08);
+}
+
+.home-featured-section {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(243, 143, 24, 0.16), transparent 24%),
+    linear-gradient(120deg, #dff2ea 0%, #ffffff 42%);
+  border-color: rgba(230, 126, 18, 0.3);
+}
+
+.home-module-card {
+  background: #ffffff;
+  border-color: rgba(5, 74, 60, 0.16);
+  box-shadow: 0 8px 20px rgba(5, 61, 50, 0.08);
+}
+
+a.home-module-card:hover {
+  border-color: rgba(8, 132, 101, 0.5);
+  box-shadow: 0 15px 30px rgba(5, 61, 50, 0.15);
+}
+
+.home-module-heading h2,
+.home-module-footer {
+  color: #063f34;
+}
+
+.home-module-eyebrow,
+.home-section-heading span {
+  color: #078367;
+}
+
+.home-module-description {
+  color: #405f58;
+}
+
+.home-module-tags span {
+  background: #e7f3ee;
+  color: #23594d;
+}
+
+.home-module-signal {
+  background: linear-gradient(110deg, #e4f5ee, #f5faf8);
+  border-color: rgba(7, 119, 92, 0.18);
+}
+
+.home-module-signal span {
+  color: #4e7269;
+}
+
+.home-module-signal strong {
+  color: #06483b;
+}
+
+.home-module-arrow {
+  background: #08755c;
+  color: #ffffff;
+}
+
+.home-group-egg-production { border-left-color: #f08b18; }
+.home-group-broiler-production { border-left-color: #078b69; }
+.home-group-breeder-hatchery { border-left-color: #0f6f78; }
+.home-group-planning-operations { border-left-color: #075b49; }
+.home-group-management-setup { border-left-color: #425f58; }
+
+/* =========================================================
+   OviCore Module Selector — high-contrast branded palette v3
+   ========================================================= */
+.ovicore-home-shell {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(7, 132, 101, 0.28), transparent 30%),
+    radial-gradient(circle at 92% 4%, rgba(240, 139, 22, 0.15), transparent 24%),
+    linear-gradient(180deg, #d7e9e3 0%, #e7f1ed 36%, #eef4f1 100%) !important;
+}
+
+.home-select-header {
+  background: linear-gradient(108deg, #032f28 0%, #075a48 55%, #08906d 100%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.24) !important;
+  box-shadow: 0 18px 42px rgba(3, 47, 40, 0.28) !important;
+}
+
+.home-module-section {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(8, 132, 101, 0.11), transparent 26%),
+    linear-gradient(135deg, #e0f0ea 0%, #f8fbfa 42%, #ffffff 100%) !important;
+  border: 1px solid rgba(5, 88, 70, 0.18) !important;
+  box-shadow: 0 12px 30px rgba(4, 66, 53, 0.11) !important;
+}
+
+.home-featured-section {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(240, 139, 22, 0.2), transparent 27%),
+    linear-gradient(135deg, #d9eee6 0%, #f5faf8 48%, #ffffff 100%) !important;
+  border-color: rgba(224, 119, 10, 0.38) !important;
+}
+
+.home-module-card {
+  border: 1px solid rgba(4, 79, 63, 0.2) !important;
+  background:
+    linear-gradient(180deg, rgba(230, 244, 238, 0.62) 0, rgba(255, 255, 255, 0) 74px),
+    #ffffff !important;
+  box-shadow: 0 10px 24px rgba(4, 63, 51, 0.1) !important;
+}
+
+.home-module-card:hover {
+  border-color: rgba(7, 139, 105, 0.62) !important;
+  box-shadow: 0 18px 38px rgba(4, 63, 51, 0.18) !important;
+}
+
+.home-module-signal {
+  background: linear-gradient(110deg, #dff2ea, #f4faf7) !important;
+  border: 1px solid rgba(7, 119, 92, 0.22) !important;
+}
+
+.home-module-tags span {
+  background: #dff0e9 !important;
+  color: #164f42 !important;
+  border-color: rgba(5, 91, 72, 0.14) !important;
+}
+
+.home-module-filters {
+  background: rgba(244, 250, 247, 0.94) !important;
+  border-color: rgba(5, 91, 72, 0.18) !important;
+}
+
+.home-module-filters button {
+  background: #dfeee8 !important;
+  color: #164f42 !important;
+}
+
+.home-module-filters button.active,
+.home-module-filters button:hover {
+  background: linear-gradient(135deg, #043c32, #08785e) !important;
+  color: #ffffff !important;
+}
