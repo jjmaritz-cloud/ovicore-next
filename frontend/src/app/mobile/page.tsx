@@ -22,6 +22,7 @@ import {
 import styles from "./mobile.module.css";
 
 const API_BASE = "";
+const API_REQUEST_TIMEOUT_MS = 15000;
 
 const MOBILE_USER_CACHE_KEY =
   "ovicore_mobile_cached_user";
@@ -921,21 +922,40 @@ async function authenticatedFetch(
   input: RequestInfo | URL,
   init: RequestInit = {},
 ) {
-  const response = await fetch(input, {
-    ...init,
-    credentials: "include",
-    cache: "no-store",
-  });
+  const controller = new AbortController();
+  const timeout = window.setTimeout(
+    () => controller.abort(),
+    API_REQUEST_TIMEOUT_MS,
+  );
 
-  if (response.status === 401) {
-    redirectToMobileLogin();
+  try {
+    const response = await fetch(input, {
+      ...init,
+      credentials: "include",
+      cache: "no-store",
+      signal: controller.signal,
+    });
 
-    throw new Error(
-      "Your login session has expired.",
-    );
+    if (response.status === 401) {
+      redirectToMobileLogin();
+
+      throw new Error(
+        "Your login session has expired.",
+      );
+    }
+
+    return response;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error(
+        "OviCore is taking too long to respond. Showing the last synced data.",
+      );
+    }
+
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
   }
-
-  return response;
 }
 
 export default function MobileBroilerApp() {
@@ -952,6 +972,7 @@ export default function MobileBroilerApp() {
     useState<MobileDraft[]>([]);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
+  const [dataRefreshing, setDataRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [currentUser, setCurrentUser] =
     useState<CurrentUser | null>(null);
@@ -1187,15 +1208,58 @@ export default function MobileBroilerApp() {
     if (!companyId) {
       setLoading(false);
       setMessage(
-				currentUser.is_global_admin
-					? "Select a company before opening the mobile workspace."
-					: "Your user account is not assigned to a company.",
+        currentUser.is_global_admin
+          ? "Select a company before opening the mobile workspace."
+          : "Your user account is not assigned to a company.",
       );
       return;
     }
 
-    setLoading(true);
+    const cache = readMobileDataCache(companyId);
+    let localDrafts: MobileDraft[] = [];
+
+    try {
+      localDrafts = await getDrafts();
+    } catch {
+      localDrafts = [];
+    }
+
+    // Cached-first startup: show the last successful farm position immediately,
+    // then refresh quietly in the background.
+    if (cache) {
+      const cachedRecords = mergeDraftsIntoRecords(
+        cache.records,
+        localDrafts,
+        companyId,
+      );
+
+      setPlans(cache.plans);
+      setRecords(cachedRecords);
+      applyPlanSelection(cache.plans, setForm);
+      setLoading(false);
+      setDataRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
     setMessage("");
+
+    if (!navigator.onLine) {
+      setDataRefreshing(false);
+
+      if (cache) {
+        setMessage(
+          "Offline mode: using the last synced farm, shed and cycle data.",
+        );
+      } else {
+        setMessage(
+          "No cached farm data is available yet. Connect once to complete the first sync.",
+        );
+      }
+
+      setLoading(false);
+      return;
+    }
 
     try {
       const [plansResponse, recordsResponse] =
@@ -1221,7 +1285,6 @@ export default function MobileBroilerApp() {
           ? await recordsResponse.json()
           : [];
 
-      const localDrafts = await getDrafts();
       const mergedRecords = mergeDraftsIntoRecords(
         recordsData,
         localDrafts,
@@ -1232,7 +1295,7 @@ export default function MobileBroilerApp() {
       setRecords(mergedRecords);
       applyPlanSelection(plansData, setForm);
 
-      const cache: MobileDataCache = {
+      const nextCache: MobileDataCache = {
         company_id: companyId,
         cached_at: new Date().toISOString(),
         plans: plansData,
@@ -1241,26 +1304,10 @@ export default function MobileBroilerApp() {
 
       window.localStorage.setItem(
         MOBILE_DATA_CACHE_KEY,
-        JSON.stringify(cache),
+        JSON.stringify(nextCache),
       );
     } catch (error) {
-      const cache = readMobileDataCache(companyId);
-
-      if (cache) {
-        const localDrafts = await getDrafts();
-        const mergedRecords = mergeDraftsIntoRecords(
-          cache.records,
-          localDrafts,
-          companyId,
-        );
-
-        setPlans(cache.plans);
-        setRecords(mergedRecords);
-        applyPlanSelection(cache.plans, setForm);
-        setMessage(
-          "Offline mode: using the last synced farm, shed and cycle data.",
-        );
-      } else {
+      if (!cache) {
         setMessage(
           error instanceof Error
             ? error.message
@@ -1269,6 +1316,7 @@ export default function MobileBroilerApp() {
       }
     } finally {
       setLoading(false);
+      setDataRefreshing(false);
     }
   }, [companyId, currentUser]);
 
@@ -2131,6 +2179,7 @@ export default function MobileBroilerApp() {
             displayName={displayName}
             companyName={companyName}
             loading={loading}
+            dataRefreshing={dataRefreshing}
             plans={plans}
             records={records}
             managerInsights={managerInsights}
@@ -2271,6 +2320,7 @@ function HomeScreen({
   displayName,
   companyName,
   loading,
+  dataRefreshing,
   plans,
   records,
   managerInsights,
@@ -2279,6 +2329,7 @@ function HomeScreen({
   displayName: string;
   companyName: string;
   loading: boolean;
+  dataRefreshing: boolean;
   plans: DemandPlan[];
   records: PerformanceRecord[];
   managerInsights: {
@@ -2367,18 +2418,29 @@ function HomeScreen({
       </div>
 
       <section className={styles.farmList}>
-        {loading ? (
-          <div className={styles.emptyState}>Loading farm position…</div>
+        {loading && farms.length === 0 ? (
+          <div className={styles.emptyState}>
+            Syncing latest data…
+            <br />
+            <small>Please wait a moment.</small>
+          </div>
         ) : farms.length === 0 ? (
           <div className={styles.emptyState}>No active farms found.</div>
         ) : (
-          farms.map((farm) => (
-            <FarmOverviewCard
-              key={farm.farmName}
-              farm={farm}
-              onClick={() => setSelectedFarmName(farm.farmName)}
-            />
-          ))
+          <>
+            {dataRefreshing && (
+              <div className={styles.emptyState}>
+                <small>Syncing latest data…</small>
+              </div>
+            )}
+            {farms.map((farm) => (
+              <FarmOverviewCard
+                key={farm.farmName}
+                farm={farm}
+                onClick={() => setSelectedFarmName(farm.farmName)}
+              />
+            ))}
+          </>
         )}
       </section>
 
