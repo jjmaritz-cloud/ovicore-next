@@ -638,7 +638,17 @@ export default function OviCoreSidebar({
             !collapsed
           }
         >
-          {collapsed ? "☰" : "×"}
+          <span className={styles.toggleIcon} aria-hidden="true">
+          {collapsed ? (
+            <>
+              <span />
+              <span />
+              <span />
+            </>
+          ) : (
+            <span className={styles.closeIcon}>×</span>
+          )}
+        </span>
         </button>
 
         <div

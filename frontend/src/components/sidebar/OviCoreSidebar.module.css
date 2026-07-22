@@ -33,14 +33,17 @@
   box-shadow: none;
 }
 
+
 .toggle {
-  position: fixed;
-  top: 18px;
-  left: 243px;
+  position: absolute;
+  top: 16px;
+  right: -17px;
+  left: auto;
   z-index: 5100;
 
   width: 34px;
   height: 34px;
+  padding: 0;
 
   display: grid;
   place-items: center;
@@ -51,24 +54,64 @@
   background: #ffffff;
   color: #0f513f;
 
-  font-size: 21px;
-  font-weight: 900;
-  line-height: 1;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.16);
 
-  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.14);
-
+  cursor: pointer;
   transition:
-    left 180ms ease,
+    right 180ms ease,
     background 180ms ease,
-    color 180ms ease;
+    color 180ms ease,
+    border-color 180ms ease,
+    transform 150ms ease;
+}
+
+.toggle:hover {
+  transform: translateY(-1px);
 }
 
 .toggleCollapsed {
-  left: 11px;
-  background: #0f513f;
+  top: 16px;
+  right: 11px;
+  left: auto;
+
+  background: rgba(255, 255, 255, 0.08);
   color: #ffffff;
-  border-color: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.24);
   box-shadow: none;
+}
+
+.toggleCollapsed:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.toggleIcon {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  line-height: 1;
+}
+
+.toggleIcon > span:not(.closeIcon) {
+  width: 14px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  display: block;
+}
+
+.closeIcon {
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 14px;
+  transform: translateY(-1px);
 }
 
 .content {
@@ -411,4 +454,48 @@
   font-family: inherit;
   font-size: 11px;
   font-weight: 850;
+}
+
+/* Shared sidebar polish: consistent collapsed rail and hatchery alignment */
+.sidebar {
+  isolation: isolate;
+}
+
+.collapsed {
+  width: 56px;
+  min-width: 56px;
+  max-width: 56px;
+}
+
+.collapsed::after {
+  content: "";
+  position: absolute;
+  top: 58px;
+  left: 50%;
+  width: 24px;
+  height: 1px;
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.content {
+  padding-top: 18px;
+}
+
+.contentHidden {
+  visibility: hidden;
+}
+
+.brand {
+  padding-right: 18px;
+}
+
+@media (max-width: 900px) {
+  .toggle {
+    top: 14px;
+  }
+
+  .toggleCollapsed {
+    right: 11px;
+  }
 }
