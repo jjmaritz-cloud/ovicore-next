@@ -450,25 +450,22 @@ export default function LoginPage() {
           display: grid;
           place-items: center;
           flex: 0 0 auto;
-          border: 1px solid rgba(255, 255, 255, 0.22);
-          border-radius: 25px;
-          background: rgba(255, 255, 255, 0.96);
-          box-shadow: 0 22px 55px rgba(0, 0, 0, 0.23);
+          background: transparent;
         }
 
         .golden-logo {
-          width: 78px;
-          height: 78px;
+          width: 88px;
+          height: 88px;
           object-fit: contain;
+          filter: drop-shadow(0 18px 24px rgba(0, 0, 0, 0.24));
         }
 
         .login-mobile-brand-icon {
           width: 54px;
           height: 54px;
           object-fit: contain;
-          border-radius: 15px;
-          background: #ffffff;
-          box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
+          background: transparent;
+          filter: drop-shadow(0 8px 14px rgba(15, 23, 42, 0.16));
         }
 
         .brand-name {
