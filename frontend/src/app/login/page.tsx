@@ -1,8 +1,8 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
-import OviCoreBrandIcon from "@/components/OviCoreBrandIcon";
 
 const API_BASE = "";
 
@@ -169,39 +169,54 @@ export default function LoginPage() {
       <section className="login-brand-panel">
         <div className="brand-overlay" />
 
+        <div className="brand-orbit brand-orbit-one" />
+        <div className="brand-orbit brand-orbit-two" />
+
         <div className="brand-content">
           <div className="brand-mark">
-            <OviCoreBrandIcon
-							variant="white"
-							size="small"
-							className="login-brand-icon"
-						/>
+            <div className="golden-logo-shell">
+              <Image
+                src="/assets/ovicore-icon.png"
+                alt="OviCore golden egg"
+                width={88}
+                height={88}
+                priority
+                className="golden-logo"
+              />
+            </div>
 
             <div>
               <div className="brand-name">OviCore</div>
               <div className="brand-tagline">
-                Integrated poultry planning
+                Integrated poultry intelligence
               </div>
             </div>
           </div>
 
           <div className="brand-message">
-            <span className="brand-eyebrow">POULTRY MANAGEMENT</span>
+            <span className="brand-eyebrow">POULTRY MANAGEMENT PLATFORM</span>
 
             <h1>
-              Forecast with precision.
+              Clearer decisions.
               <br />
-              Deliver with confidence.
+              Stronger performance.
             </h1>
 
             <p>
-              Secure access to your company&apos;s farms, flocks,
-              production records and operational planning.
+              Bring farms, flocks, production, planning and performance
+              into one secure operational system.
             </p>
+
+            <div className="brand-capabilities" aria-label="OviCore capabilities">
+              <span>Live farm visibility</span>
+              <span>Performance intelligence</span>
+              <span>Integrated planning</span>
+            </div>
           </div>
 
           <div className="brand-footer">
-            OviCore poultry management software
+            <span>OVICORE</span>
+            <small>Poultry management software</small>
           </div>
         </div>
       </section>
@@ -209,11 +224,14 @@ export default function LoginPage() {
       <section className="login-form-panel">
         <div className="login-card">
           <div className="mobile-brand">
-            <OviCoreBrandIcon
-							variant="orange"
-							size="small"
-							className="login-mobile-brand-icon"
-						/>
+            <Image
+              src="/assets/ovicore-icon.png"
+              alt="OviCore golden egg"
+              width={54}
+              height={54}
+              priority
+              className="login-mobile-brand-icon"
+            />
 
             <div>
               <div className="brand-name dark">OviCore</div>
@@ -370,92 +388,108 @@ export default function LoginPage() {
           overflow: hidden;
           min-height: 100vh;
           background:
-            radial-gradient(
-              circle at 20% 20%,
-              rgba(123, 194, 151, 0.22),
-              transparent 30%
-            ),
-            radial-gradient(
-              circle at 80% 82%,
-              rgba(24, 117, 76, 0.34),
-              transparent 36%
-            ),
-            linear-gradient(
-              145deg,
-              #082e24 0%,
-              #0c4737 48%,
-              #106044 100%
-            );
+            radial-gradient(circle at 17% 14%, rgba(255, 170, 30, 0.16), transparent 25%),
+            radial-gradient(circle at 82% 76%, rgba(55, 185, 119, 0.18), transparent 32%),
+            linear-gradient(145deg, #062a21 0%, #0a4535 48%, #0b6548 100%);
         }
 
         .brand-overlay {
           position: absolute;
           inset: 0;
           background-image:
-            linear-gradient(
-              rgba(255, 255, 255, 0.025) 1px,
-              transparent 1px
-            ),
-            linear-gradient(
-              90deg,
-              rgba(255, 255, 255, 0.025) 1px,
-              transparent 1px
-            );
-          background-size: 46px 46px;
-          mask-image: linear-gradient(
-            to bottom,
-            rgba(0, 0, 0, 0.9),
-            transparent
-          );
+            linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+          background-size: 52px 52px;
+          mask-image: linear-gradient(to bottom right, #000, transparent 86%);
+        }
+
+        .brand-orbit {
+          position: absolute;
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 50%;
+          pointer-events: none;
+        }
+
+        .brand-orbit-one {
+          width: 470px;
+          height: 470px;
+          top: -190px;
+          right: -160px;
+          box-shadow: 0 0 0 74px rgba(255, 255, 255, 0.018);
+        }
+
+        .brand-orbit-two {
+          width: 310px;
+          height: 310px;
+          bottom: -155px;
+          left: -120px;
+          border-color: rgba(255, 174, 31, 0.14);
         }
 
         .brand-content {
           position: relative;
           z-index: 1;
+          width: min(100%, 760px);
           min-height: 100vh;
-          padding: 42px 52px;
-          display: flex;
-          flex-direction: column;
-          justify-content: flex-end;
+          padding: clamp(42px, 6vh, 72px) clamp(44px, 6vw, 86px);
+          display: grid;
+          grid-template-rows: auto 1fr auto;
+          gap: 38px;
         }
 
         .brand-mark,
         .mobile-brand {
           display: flex;
           align-items: center;
-          gap: 12px;
+          gap: 18px;
         }
 
-				.login-brand-icon {
-					flex: 0 0 auto;
-					box-shadow:
-						0 9px 25px rgba(0, 0, 0, 0.18),
-						inset 0 1px 0 rgba(255, 255, 255, 0.7);
-				}
+        .golden-logo-shell {
+          width: 92px;
+          height: 92px;
+          display: grid;
+          place-items: center;
+          flex: 0 0 auto;
+          border: 1px solid rgba(255, 255, 255, 0.22);
+          border-radius: 25px;
+          background: rgba(255, 255, 255, 0.96);
+          box-shadow: 0 22px 55px rgba(0, 0, 0, 0.23);
+        }
 
-				.login-mobile-brand-icon {
-					flex: 0 0 auto;
-					box-shadow:
-						0 8px 20px rgba(15, 23, 42, 0.14),
-						inset 0 1px 0 rgba(255, 255, 255, 0.28);
-				}
+        .golden-logo {
+          width: 78px;
+          height: 78px;
+          object-fit: contain;
+        }
+
+        .login-mobile-brand-icon {
+          width: 54px;
+          height: 54px;
+          object-fit: contain;
+          border-radius: 15px;
+          background: #ffffff;
+          box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
+        }
 
         .brand-name {
           color: #ffffff;
-          font-size: 20px;
+          font-size: 32px;
           font-weight: 900;
-          letter-spacing: -0.02em;
+          line-height: 1;
+          letter-spacing: -0.055em;
         }
 
         .brand-name.dark {
           color: #0a4a36;
+          font-size: 22px;
         }
 
         .brand-tagline {
-          margin-top: 2px;
-          color: rgba(235, 255, 244, 0.73);
-          font-size: 11px;
-          font-weight: 650;
+          margin-top: 7px;
+          color: rgba(235, 255, 244, 0.7);
+          font-size: 12px;
+          font-weight: 700;
+          letter-spacing: 0.04em;
         }
 
         .brand-tagline.dark {
@@ -463,40 +497,78 @@ export default function LoginPage() {
         }
 
         .brand-message {
-          max-width: 650px;
+          align-self: center;
+          max-width: 660px;
+          padding: 34px 0 28px;
         }
 
         .brand-eyebrow {
           display: inline-flex;
-          padding: 7px 11px;
-          border: 1px solid rgba(190, 239, 209, 0.24);
+          padding: 8px 12px;
+          border: 1px solid rgba(255, 191, 73, 0.28);
           border-radius: 999px;
-          background: rgba(220, 255, 232, 0.08);
-          color: #c8f5d9;
-          font-size: 11px;
-          font-weight: 850;
-          letter-spacing: 0.11em;
+          background: rgba(255, 168, 20, 0.1);
+          color: #ffd48a;
+          font-size: 10px;
+          font-weight: 900;
+          letter-spacing: 0.14em;
         }
 
         .brand-message h1 {
-          margin: 22px 0 18px;
+          max-width: 690px;
+          margin: 24px 0 18px;
           color: #ffffff;
-          font-size: clamp(42px, 5vw, 68px);
-          line-height: 1.04;
-          letter-spacing: -0.045em;
+          font-size: clamp(46px, 5.4vw, 74px);
+          line-height: 0.98;
+          letter-spacing: -0.06em;
         }
 
         .brand-message p {
-          max-width: 590px;
+          max-width: 580px;
           margin: 0;
-          color: rgba(236, 255, 244, 0.78);
-          font-size: 17px;
+          color: rgba(236, 255, 244, 0.77);
+          font-size: 16px;
           line-height: 1.65;
         }
 
+        .brand-capabilities {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 9px;
+          margin-top: 28px;
+        }
+
+        .brand-capabilities span {
+          display: inline-flex;
+          align-items: center;
+          min-height: 34px;
+          padding: 0 12px;
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          border-radius: 999px;
+          background: rgba(255, 255, 255, 0.065);
+          color: rgba(245, 255, 250, 0.86);
+          font-size: 11px;
+          font-weight: 800;
+        }
+
         .brand-footer {
+          display: flex;
+          align-items: center;
+          gap: 10px;
           color: rgba(233, 255, 242, 0.54);
-          font-size: 12px;
+        }
+
+        .brand-footer span {
+          color: rgba(255, 255, 255, 0.78);
+          font-size: 10px;
+          font-weight: 950;
+          letter-spacing: 0.16em;
+        }
+
+        .brand-footer small {
+          padding-left: 10px;
+          border-left: 1px solid rgba(255, 255, 255, 0.16);
+          font-size: 11px;
           font-weight: 650;
         }
 
