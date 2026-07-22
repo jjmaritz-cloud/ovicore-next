@@ -960,6 +960,7 @@ async function authenticatedFetch(
 
 export default function MobileBroilerApp() {
   const [tab, setTab] = useState<MobileTab>("home");
+  const [homeResetKey, setHomeResetKey] = useState(0);
   const [entryStage, setEntryStage] =
     useState<EntryStage>("select");
   const [plans, setPlans] = useState<DemandPlan[]>([]);
@@ -2184,6 +2185,7 @@ export default function MobileBroilerApp() {
             records={records}
             managerInsights={managerInsights}
             openEntryForPlan={openEntryForPlan}
+            resetKey={homeResetKey}
           />
         )}
 
@@ -2241,7 +2243,10 @@ export default function MobileBroilerApp() {
                     }));
                     setEntryStage("form");
                   }}
-                  onHome={() => setTab("home")}
+                  onHome={() => {
+                    setHomeResetKey((current) => current + 1);
+                    setTab("home");
+                  }}
                 />
               )}
           </>
@@ -2288,7 +2293,10 @@ export default function MobileBroilerApp() {
           active={tab === "home"}
           label="Home"
           icon="⌂"
-          onClick={() => setTab("home")}
+          onClick={() => {
+            setHomeResetKey((current) => current + 1);
+            setTab("home");
+          }}
         />
         <NavButton
           active={tab === "entry"}
@@ -2325,6 +2333,7 @@ function HomeScreen({
   records,
   managerInsights,
   openEntryForPlan,
+  resetKey,
 }: {
   displayName: string;
   companyName: string;
@@ -2346,6 +2355,7 @@ function HomeScreen({
     mortalityRate: number;
   };
   openEntryForPlan: (planId?: number) => void;
+  resetKey: number;
 }) {
   const farms = useMemo(
     () => buildFarmOverviews(plans, records),
@@ -2356,6 +2366,11 @@ function HomeScreen({
     null,
   );
   const [selectedShedId, setSelectedShedId] = useState<number | null>(null);
+
+  useEffect(() => {
+    setSelectedFarmName(null);
+    setSelectedShedId(null);
+  }, [resetKey]);
 
   const selectedFarm = farms.find(
     (farm) => farm.farmName === selectedFarmName,
@@ -2379,7 +2394,10 @@ function HomeScreen({
       <FarmDetailScreen
         farm={selectedFarm}
         showDivisionBack={isDivisionalView}
-        onBack={() => setSelectedFarmName(null)}
+        onBack={() => {
+          setSelectedShedId(null);
+          setSelectedFarmName(null);
+        }}
         onSelectShed={(planId) => setSelectedShedId(planId)}
         onOpenEntry={openEntryForPlan}
       />
