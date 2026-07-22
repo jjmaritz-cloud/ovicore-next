@@ -8743,3 +8743,124 @@ a.home-module-card:hover {
     height: 24px !important;
   }
 }
+
+/* =========================================================
+   OviCore Module Selector — compact readable desktop cards v5
+   Wider cards, less vertical waste, readable at 90% browser zoom
+   ========================================================= */
+@media (min-width: 1100px) {
+  .ovicore-home-content {
+    max-width: 2380px !important;
+  }
+
+  .home-module-section {
+    padding: 9px 10px !important;
+    margin-top: 9px !important;
+  }
+
+  .home-section-heading {
+    margin-bottom: 6px !important;
+  }
+
+  .home-section-heading h2 {
+    font-size: 19px !important;
+    line-height: 1.05 !important;
+  }
+
+  .home-section-heading span,
+  .home-section-heading p {
+    font-size: 9px !important;
+  }
+
+  .home-featured-grid,
+  .home-module-grid-sorted {
+    gap: 7px !important;
+    align-items: start !important;
+  }
+
+  .home-module-card,
+  .home-module-card-compact {
+    min-height: 0 !important;
+    height: auto !important;
+    padding: 8px 10px 7px !important;
+    border-radius: 13px !important;
+  }
+
+  .home-module-card-top,
+  .home-module-card-compact .home-module-card-top {
+    gap: 8px !important;
+    margin-bottom: 3px !important;
+    align-items: center !important;
+  }
+
+  .home-module-icon {
+    width: 32px !important;
+    height: 32px !important;
+    border-radius: 9px !important;
+  }
+
+  .home-module-heading h2 {
+    margin-top: 1px !important;
+    font-size: 19px !important;
+    line-height: 1.02 !important;
+  }
+
+  .home-module-eyebrow {
+    font-size: 9px !important;
+    line-height: 1.05 !important;
+  }
+
+  .home-module-status {
+    max-width: 92px !important;
+    padding: 4px 7px !important;
+    font-size: 8px !important;
+  }
+
+  .home-module-description {
+    min-height: 0 !important;
+    margin: 4px 0 5px !important;
+    font-size: 11px !important;
+    line-height: 1.25 !important;
+  }
+
+  .home-module-tags {
+    gap: 4px !important;
+    margin: 0 0 5px !important;
+  }
+
+  .home-module-tags span {
+    padding: 3px 6px !important;
+    font-size: 8px !important;
+  }
+
+  .home-module-signal {
+    display: none !important;
+  }
+
+  .home-module-footer,
+  .home-module-card-compact .home-module-footer {
+    min-height: 22px !important;
+    margin-top: 0 !important;
+    padding-top: 4px !important;
+    font-size: 10px !important;
+  }
+
+  .home-module-arrow {
+    width: 22px !important;
+    height: 22px !important;
+    font-size: 11px !important;
+  }
+
+  .home-featured-grid .home-module-description {
+    display: none !important;
+  }
+
+  .home-featured-grid .home-module-tags {
+    display: none !important;
+  }
+
+  .home-featured-grid .home-module-card {
+    padding-top: 7px !important;
+    padding-bottom: 6px !important;
+  }
+}
