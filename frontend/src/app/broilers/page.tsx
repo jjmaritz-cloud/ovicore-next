@@ -263,6 +263,26 @@ function getCullTotal(record: PerformanceRecord) {
   return splitTotal > 0 ? splitTotal : numberOrZero(record.cull_birds);
 }
 
+
+function getInitialCompanyId() {
+  if (typeof window === "undefined") return null;
+
+  const searchParams = new URLSearchParams(window.location.search);
+  const companyFromUrl = Number(searchParams.get("company_id"));
+
+  if (Number.isInteger(companyFromUrl) && companyFromUrl > 0) {
+    return companyFromUrl;
+  }
+
+  const rememberedCompany = Number(
+    window.localStorage.getItem("ovicore_selected_company_id"),
+  );
+
+  return Number.isInteger(rememberedCompany) && rememberedCompany > 0
+    ? rememberedCompany
+    : null;
+}
+
 function getLatestRecordForPlan(
   records: PerformanceRecord[],
   placementPlanId: number,
@@ -274,7 +294,7 @@ function getLatestRecordForPlan(
 
 export default function BroilerHomePage() {
 	const [activeCompanyId, setActiveCompanyId] =
-		useState<number | null>(null);
+		useState<number | null>(() => getInitialCompanyId());
 	const [plans, setPlans] = useState<DemandPlan[]>([]);
 	const [performanceRecords, setPerformanceRecords] = useState<PerformanceRecord[]>([]);
 	const [chickSupply, setChickSupply] = useState<ChickSupplySummary | null>(null);
@@ -318,17 +338,15 @@ export default function BroilerHomePage() {
         );
 
         const resolvedCompanyId =
-          currentUser.is_global_admin
-            ? Number.isInteger(companyFromUrl) &&
-                companyFromUrl > 0
-              ? companyFromUrl
-              : Number.isInteger(rememberedCompany) &&
-                  rememberedCompany > 0
+          Number.isInteger(companyFromUrl) && companyFromUrl > 0
+            ? companyFromUrl
+            : currentUser.company_id && currentUser.company_id > 0
+              ? currentUser.company_id
+              : Number.isInteger(rememberedCompany) && rememberedCompany > 0
                 ? rememberedCompany
-                : null
-            : currentUser.company_id;
+                : null;
 
-        setActiveCompanyId(resolvedCompanyId);
+        setActiveCompanyId((current) => current ?? resolvedCompanyId);
       } catch (error) {
         console.error(error);
         setLoading(false);
@@ -342,6 +360,15 @@ export default function BroilerHomePage() {
 
     void resolveActiveCompany();
   }, []);
+
+  useEffect(() => {
+    if (!activeCompanyId) return;
+
+    window.localStorage.setItem(
+      "ovicore_selected_company_id",
+      String(activeCompanyId),
+    );
+  }, [activeCompanyId]);
 
 	async function loadData() {
 		if (!activeCompanyId) {
