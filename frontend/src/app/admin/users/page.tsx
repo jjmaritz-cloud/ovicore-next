@@ -284,6 +284,12 @@ export default function AdminUsersPage() {
 		);
 	}, [companyFilterId, rows]);
 
+	const usersGridHeight = useMemo(() => {
+		const visibleRows = Math.max(filteredRows.length, 1);
+
+		return Math.min(360, 44 + visibleRows * 38);
+	}, [filteredRows.length]);
+
   const defaultColDef = useMemo<ColDef<UserRow>>(
     () => ({
       resizable: true,
@@ -1027,7 +1033,10 @@ export default function AdminUsersPage() {
         title="Users"
         subtitle="Create users, assign company ownership, and control Global Admin / Company Admin access. Select a row to manage farm access below."
       >
-        <div className="ag-theme-quartz broiler-grid">
+        <div
+          className="ag-theme-quartz broiler-grid"
+          style={{ height: usersGridHeight, minHeight: usersGridHeight }}
+        >
           <AgGridReact<UserRow>
             ref={gridRef}
             rowData={filteredRows}
