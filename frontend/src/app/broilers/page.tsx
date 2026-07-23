@@ -294,7 +294,8 @@ function getLatestRecordForPlan(
 
 export default function BroilerHomePage() {
 	const [activeCompanyId, setActiveCompanyId] =
-		useState<number | null>(() => getInitialCompanyId());
+		useState<number | null>(null);
+	const [authResolved, setAuthResolved] = useState(false);
 	const [plans, setPlans] = useState<DemandPlan[]>([]);
 	const [performanceRecords, setPerformanceRecords] = useState<PerformanceRecord[]>([]);
 	const [chickSupply, setChickSupply] = useState<ChickSupplySummary | null>(null);
@@ -346,10 +347,12 @@ export default function BroilerHomePage() {
                 ? rememberedCompany
                 : null;
 
-        setActiveCompanyId((current) => current ?? resolvedCompanyId);
+        setActiveCompanyId(resolvedCompanyId);
+        setAuthResolved(true);
       } catch (error) {
         console.error(error);
         setLoading(false);
+        setAuthResolved(true);
         setMessage(
           error instanceof Error
             ? error.message
@@ -446,10 +449,14 @@ export default function BroilerHomePage() {
 	}
 
 	useEffect(() => {
+		if (!authResolved) return;
+
 		if (activeCompanyId) {
 			void loadData();
+		} else {
+			setLoading(false);
 		}
-	}, [activeCompanyId]);
+	}, [activeCompanyId, authResolved]);
 
   const insights = useMemo(() => {
 

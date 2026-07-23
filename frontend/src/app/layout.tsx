@@ -4,6 +4,7 @@ import "@ag-grid-community/styles/ag-theme-quartz.css";
 import "./globals.css";
 
 import IdleLogout from "@/components/auth/IdleLogout";
+import AuthGate from "@/components/auth/AuthGate";
 
 export const metadata: Metadata = {
   title: "OviCore",
@@ -23,7 +24,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <IdleLogout>{children}</IdleLogout>
+        <AuthGate>
+          <IdleLogout>{children}</IdleLogout>
+        </AuthGate>
       </body>
     </html>
   );
