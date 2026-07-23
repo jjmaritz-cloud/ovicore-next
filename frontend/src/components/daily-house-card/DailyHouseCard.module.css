@@ -1,0 +1,357 @@
+.page {
+  width: 100%;
+  min-width: 0;
+  min-height: 100vh;
+  margin: 0;
+  padding: 12px 12px 24px;
+  color: #082f2a;
+  background:
+    radial-gradient(circle at top left, rgba(217, 245, 233, 0.72), transparent 32%),
+    linear-gradient(180deg, #f4fbf8 0%, #fbfaf5 100%);
+}
+
+.header {
+  min-height: 94px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 17px;
+  border: 1px solid rgba(8, 75, 64, 0.14);
+  border-radius: 15px;
+  background: linear-gradient(100deg, #fbfffd 0%, #e1f6ee 100%);
+}
+
+.headerCopy { min-width: 0; }
+
+.eyebrow {
+  margin: 0;
+  color: #16775c;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.header h1 {
+  margin: 3px 0 5px;
+  color: #082f2a;
+  font-size: 25px;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.description {
+  margin: 0;
+  color: #375a54;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.primaryHeaderAction,
+.secondaryHeaderAction {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 13px;
+  font-size: 10px;
+  font-weight: 900;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.primaryHeaderAction { background: #063c35; color: #ffffff; }
+.secondaryHeaderAction {
+  border: 1px solid rgba(8, 75, 64, 0.16);
+  background: #ffffff;
+  color: #063c35;
+}
+
+.controls {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  gap: 9px;
+  margin: 10px 0;
+}
+
+.selector { display: grid; gap: 4px; }
+.selector > span {
+  color: #073c35;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.selector select,
+.selector input {
+  min-width: 320px;
+  height: 32px;
+  border: 1px solid rgba(8, 75, 64, 0.18);
+  border-radius: 9px;
+  background: #ffffff;
+  color: #082f2a;
+  padding: 0 9px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  outline: none;
+}
+
+.selector select:focus,
+.selector input:focus {
+  border-color: #16775c;
+  box-shadow: 0 0 0 3px rgba(22, 119, 92, 0.12);
+}
+
+.saveActions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-bottom: 1px;
+}
+
+.saveActions button {
+  height: 32px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 12px;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.saveActions button:disabled { cursor: not-allowed; opacity: 0.45; }
+.discardButton { background: #edf3f1; color: #647872; }
+.saveButton { background: #063c35; color: #ffffff; }
+
+.kpiGrid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.kpiCard {
+  min-width: 0;
+  min-height: 76px;
+  border: 1px solid rgba(8, 75, 64, 0.13);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.96);
+  padding: 12px 13px;
+}
+
+.kpiCard > span {
+  display: block;
+  color: #55716b;
+  font-size: 8.5px;
+  font-weight: 900;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.kpiCard > strong {
+  display: block;
+  margin-top: 5px;
+  color: #073c35;
+  font-size: 21px;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.kpiCard > p {
+  margin: 6px 0 0;
+  color: #627a75;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.kpi_good > strong { color: #087141; }
+.kpi_warning > strong { color: #a85c00; }
+.kpi_bad > strong { color: #b42318; }
+.kpi_neutral > strong { color: #073c35; }
+
+.tableCard {
+  margin-top: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(8, 75, 64, 0.14);
+  border-radius: 13px;
+  background: #ffffff;
+}
+
+.tableHeader {
+  min-height: 55px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 15px;
+  color: #ffffff;
+  background: linear-gradient(90deg, #063c35 0%, #08745f 100%);
+}
+
+.tableHeader h2 { margin: 0; font-size: 19px; line-height: 1; letter-spacing: -0.03em; }
+.tableHeader p {
+  margin: 4px 0 0;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.tableSummary {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 6px 10px;
+  color: #e7fff5;
+  background: rgba(255, 255, 255, 0.13);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.message {
+  padding: 7px 12px;
+  border-bottom: 1px solid rgba(8, 75, 64, 0.1);
+  background: #eefbf5;
+  color: #075142;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.tableScroll { width: 100%; max-height: 290px; overflow: auto; }
+
+.tableScroll :global(table) {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  color: #082f2a;
+  font-size: 10px;
+}
+
+.tableScroll :global(th) {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  height: 28px;
+  border-right: 1px solid rgba(8, 75, 64, 0.12);
+  border-bottom: 1px solid rgba(8, 75, 64, 0.14);
+  background: #eef8f2;
+  color: #063c35;
+  padding: 6px;
+  text-align: center;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.tableScroll :global(thead tr:first-child th) { top: 0; background: #dcefe7; }
+.tableScroll :global(thead tr:nth-child(2) th) { top: 28px; }
+
+.tableScroll :global(td) {
+  height: 33px;
+  border-right: 1px solid rgba(8, 75, 64, 0.1);
+  border-bottom: 1px solid rgba(8, 75, 64, 0.09);
+  background: #ffffff;
+  padding: 5px 6px;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.tableScroll :global(td[data-cell="editable"]) { padding: 0; background: #fff2bf; }
+.tableScroll :global(td[data-cell="editable"] input) {
+  width: 100%;
+  min-width: 58px;
+  height: 33px;
+  border: 0;
+  background: #fff2bf;
+  color: #082f2a;
+  padding: 0 5px;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 800;
+  text-align: center;
+  outline: none;
+}
+
+.tableScroll :global(td[data-cell="editable"] input:focus) {
+  background: #ffe68f;
+  box-shadow: inset 0 0 0 2px rgba(8, 75, 64, 0.22);
+}
+
+.tableScroll :global(td[data-cell="calculated"]) { background: #ffffff; color: #0b3d35; }
+.tableScroll :global(td[data-cell="good"]) { background: #e6f8ed; color: #087141; font-weight: 900; }
+.tableScroll :global(td[data-cell="warning"]) { background: #fff1cc; color: #a85c00; font-weight: 900; }
+.tableScroll :global(td[data-cell="bad"]) { background: #fde7e7; color: #9b1c1c; font-weight: 900; }
+
+.tableScroll :global(.dhc-status) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.tableScroll :global(.dhc-status-good) { background: #e4f6ec; color: #137746; }
+.tableScroll :global(.dhc-status-warning) { background: #fff3d8; color: #8a5a00; }
+.tableScroll :global(.dhc-comment) { min-width: 260px; text-align: left; white-space: normal; }
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 11px;
+  border-top: 1px solid rgba(8, 75, 64, 0.1);
+  background: #f6fbf8;
+}
+
+.footer span {
+  border-radius: 999px;
+  padding: 5px 9px;
+  background: #e8f6ef;
+  color: #075142;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.footer b { font-weight: 900; }
+
+@media (max-width: 1200px) {
+  .kpiGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 760px) {
+  .page { padding: 8px 8px 18px; }
+  .header { min-height: 0; flex-direction: column; padding: 14px; }
+  .headerActions { width: 100%; flex-wrap: wrap; }
+  .controls { align-items: stretch; flex-direction: column; }
+  .selector select, .selector input { width: 100%; min-width: 0; }
+  .saveActions { flex-wrap: wrap; }
+  .kpiGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tableHeader { align-items: flex-start; flex-direction: column; }
+  .tableSummary { white-space: normal; }
+}
+
+@media (max-width: 480px) {
+  .kpiGrid { grid-template-columns: 1fr; }
+}

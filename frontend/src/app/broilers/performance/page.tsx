@@ -9,7 +9,7 @@ import {
 } from "react";
 
 import { useSearchParams } from "next/navigation";
-import DailyHouseCardTemplate from "@/components/DailyHouseCardTemplate";
+import DailyHouseCard from "@/components/daily-house-card";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 const API_BASE = "";
@@ -739,17 +739,18 @@ function DailyPerformancePageContent() {
 	}
 
 		return (
-			<DailyHouseCardTemplate
+			<DailyHouseCard
           moduleLabel="Broiler Production"
           description="Daily broiler entry for mortality, culls, feed, water, bodyweight and shed comments."
-          homeHref="/broilers"
-          homeLabel="Broiler Home"
-          secondaryHref={
-						activeCompanyId
-							? `/broilers/performance?company_id=${activeCompanyId}`
-							: "/broilers/performance"
-					}
-          secondaryLabel="Refresh"
+          homeAction={{
+            label: "Broiler Home",
+            href: "/broilers",
+          }}
+          secondaryAction={{
+            label: "Refresh",
+            onClick: () => void loadData(),
+            variant: "secondary",
+          }}
           selectorLabel="Select Cycle"
           selector={
             <select
@@ -809,14 +810,14 @@ function DailyPerformancePageContent() {
             totals.latestClosing,
           )} · Livability: ${formatNumber(totals.latestLivability, 2)}%`}
           message={userError || message}
-          footerPills={[
+          footerItems={[
             { label: "Mortality", value: formatNumber(totals.totalMortality) },
             { label: "Culls", value: formatNumber(totals.totalCulls) },
             { label: "Total loss", value: formatNumber(totals.totalLoss) },
             { label: "Unsaved rows", value: dirtyKeys.size },
           ]}
         >
-          <table className="house-sheet-table broiler-house-sheet-table">
+          <table >
             <thead>
               <tr>
                 <th colSpan={2}>Day</th>
@@ -893,23 +894,23 @@ function DailyPerformancePageContent() {
                       }
                     />
 
-                    <td className="house-sheet-calculated">
+                    <td data-cell="calculated">
                       {formatNumber(row.mortality_birds)}
                     </td>
 
-                    <td className="house-sheet-calculated">
+                    <td data-cell="calculated">
                       {formatNumber(row.cull_birds)}
                     </td>
 
-                    <td className="house-sheet-calculated">
+                    <td data-cell="calculated">
                       {formatNumber(row.total_bird_loss)}
                     </td>
 
-                    <td className="house-sheet-calculated">
+                    <td data-cell="calculated">
                       {formatNumber(row.closing_birds)}
                     </td>
 
-                    <td className="house-sheet-calculated">
+                    <td data-cell="calculated">
                       {Number(row.opening_birds || 0) -
                         Number(row.total_bird_loss || 0) ===
                       Number(row.closing_birds || 0)
@@ -949,7 +950,7 @@ function DailyPerformancePageContent() {
                       }
                     />
 
-                    <td className="house-sheet-calculated">
+                    <td data-cell="calculated">
                       {formatNumber(row.mortality_pct, 2)}
                     </td>
 
@@ -985,7 +986,7 @@ function DailyPerformancePageContent() {
                       }
                     />
 
-                    <td className="house-sheet-calculated">
+                    <td data-cell="calculated">
                       {formatNumber(row.cull_pct, 2)}
                     </td>
 
@@ -1021,44 +1022,32 @@ function DailyPerformancePageContent() {
                       }
                     />
 
-                    <td className="house-sheet-calculated">
+                    <td data-cell="calculated">
                       {formatNumber(row.livability_pct, 2)}
                     </td>
 
-                    <td className="house-sheet-calculated">
+                    <td data-cell="calculated">
                       {formatNumber(row.kg_m2, 2)}
                     </td>
 
-                    <td className="house-sheet-calculated">
+                    <td data-cell="calculated">
                       {formatNumber(row.fcr, 2)}
                     </td>
 
                     <td
-                      className={
-                        row.review_status.includes("Mortality")
-                          ? "house-sheet-warning"
-                          : "house-sheet-calculated"
-                      }
+                      data-cell={row.review_status.includes("Mortality") ? "warning" : "calculated"}
                     >
                       {row.review_status.includes("Mortality") ? "Review" : "OK"}
                     </td>
 
                     <td
-                      className={
-                        row.review_status.includes("Cull")
-                          ? "house-sheet-warning"
-                          : "house-sheet-calculated"
-                      }
+                      data-cell={row.review_status.includes("Cull") ? "warning" : "calculated"}
                     >
                       {row.review_status.includes("Cull") ? "Review" : "OK"}
                     </td>
 
                     <td
-                      className={
-                        row.review_status === "OK"
-                          ? "house-sheet-good"
-                          : "house-sheet-warning"
-                      }
+                      data-cell={row.review_status === "OK" ? "good" : "warning"}
                     >
                       {row.review_status}
                     </td>
@@ -1067,7 +1056,7 @@ function DailyPerformancePageContent() {
               )}
             </tbody>
       </table>
-    </DailyHouseCardTemplate>
+    </DailyHouseCard>
   );
 }
 
@@ -1091,7 +1080,7 @@ function EditableCell({
   step?: string;
 }) {
   return (
-    <td className="house-sheet-editable">
+    <td data-cell="editable">
       <input
         type={type}
         step={step}

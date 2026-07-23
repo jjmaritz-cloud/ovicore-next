@@ -1,4 +1,4 @@
-import DailyHouseCardTemplate from "@/components/DailyHouseCardTemplate";
+import DailyHouseCard from "@/components/daily-house-card";
 
 type HouseCardRow = {
   entryDate: string;
@@ -163,22 +163,25 @@ const productionVariance = averageProduction - averageProductionStd;
 const reviewRows = rows.filter((row) => row.status !== "Saved").length;
 
 function statusClass(status: HouseCardRow["status"]) {
-  if (status === "Saved") return "house-sheet-status house-sheet-status-saved";
-  if (status === "Needs Review") return "house-sheet-status house-sheet-status-review";
-  if (status === "Egg Quality Review")
-    return "house-sheet-status house-sheet-status-warning";
-  return "house-sheet-status house-sheet-status-warning";
+  return status === "Saved"
+    ? "dhc-status dhc-status-good"
+    : "dhc-status dhc-status-warning";
 }
 
 export default function BreederDailyHouseCardPage() {
 	return (
-		<DailyHouseCardTemplate
+		<DailyHouseCard
       moduleLabel="Breeder Production"
       description="Dense breeder house card entry for production, egg quality, mortality, feed, water, fertility and hatchability."
-      homeHref="/breeders"
-      homeLabel="Breeder Home"
-      secondaryHref="/breeders/flocks"
-      secondaryLabel="Flock Register"
+      homeAction={{
+        label: "Breeder Home",
+        href: "/breeders",
+      }}
+      secondaryAction={{
+        label: "Flock Register",
+        href: "/breeders/flocks",
+        variant: "secondary",
+      }}
       selectorLabel="Select Flock"
       selector={
         <select defaultValue="BRD-26-001">
@@ -229,7 +232,7 @@ export default function BreederDailyHouseCardPage() {
       tableSummary={`Closing females: ${formatNumber(
         latestClosingFemales,
       )} · Closing males: ${formatNumber(latestClosingMales)}`}
-      footerPills={[
+      footerItems={[
         { label: "Floor eggs", value: formatNumber(totalFloorEggs) },
         { label: "Rejects", value: formatNumber(totalRejects) },
         { label: "Settable eggs", value: formatNumber(totalSettableEggs) },
@@ -239,7 +242,7 @@ export default function BreederDailyHouseCardPage() {
         },
       ]}
     >
-      <table className="house-sheet-table breeder-house-sheet-table">
+      <table >
         <thead>
           <tr>
             <th colSpan={2}>Day</th>
@@ -299,88 +302,78 @@ export default function BreederDailyHouseCardPage() {
                 <td>{row.entryDate}</td>
                 <td>{row.ageWeeks} wks</td>
 
-                <td className="house-sheet-editable">
+                <td data-cell="editable">
                   {formatNumber(row.females)}
                 </td>
-                <td className="house-sheet-editable">
+                <td data-cell="editable">
                   {formatNumber(row.males)}
                 </td>
 
                 <td
-                  className={
-                    femaleBalance < 0
-                      ? "house-sheet-warning"
-                      : "house-sheet-good"
-                  }
+                  data-cell={femaleBalance < 0 ? "warning" : "good"}
                 >
                   {femaleBalance >= 0 ? "+" : ""}
                   {formatNumber(femaleBalance)}
                 </td>
 
                 <td
-                  className={
-                    maleBalance < 0
-                      ? "house-sheet-warning"
-                      : "house-sheet-good"
-                  }
+                  data-cell={maleBalance < 0 ? "warning" : "good"}
                 >
                   {maleBalance >= 0 ? "+" : ""}
                   {formatNumber(maleBalance)}
                 </td>
 
-                <td className="house-sheet-editable">
+                <td data-cell="editable">
                   {formatNumber(row.dailyEggs)}
                 </td>
 
-                <td className="house-sheet-calculated">
+                <td data-cell="calculated">
                   {formatPercent(row.productionPct)}
                 </td>
 
-                <td className="house-sheet-calculated">
+                <td data-cell="calculated">
                   {formatPercent(row.productionStdPct)}
                 </td>
 
                 <td
-                  className={
-                    prodVar < 0 ? "house-sheet-warning" : "house-sheet-good"
-                  }
+                  data-cell={prodVar < 0 ? "warning" : "good"}
                 >
                   {formatSignedPercent(prodVar)}
                 </td>
 
-                <td className="house-sheet-editable">
+                <td data-cell="editable">
                   {formatNumber(row.settableEggs)}
                 </td>
-                <td className="house-sheet-editable">
+                <td data-cell="editable">
                   {formatNumber(row.floorEggs)}
                 </td>
-                <td className="house-sheet-editable">
+                <td data-cell="editable">
                   {formatNumber(row.cracks)}
                 </td>
-                <td className="house-sheet-editable">
+                <td data-cell="editable">
                   {formatNumber(row.rejects)}
                 </td>
 
-                <td className="house-sheet-calculated">
+                <td data-cell="calculated">
                   {formatPercent(rejectPct)}
                 </td>
 
-                <td className="house-sheet-editable">
+                <td data-cell="editable">
                   {formatNumber(row.femaleMortality)}
                 </td>
-                <td className="house-sheet-editable">
+                <td data-cell="editable">
                   {formatNumber(row.maleMortality)}
                 </td>
-                <td className="house-sheet-editable">
+                <td data-cell="editable">
                   {formatNumber(row.feedKg)}
                 </td>
-                <td className="house-sheet-editable">
+                <td data-cell="editable">
                   {formatNumber(row.waterLitres)}
                 </td>
-                <td className="house-sheet-editable">
+                <td data-cell="editable">
                   {formatPercent(row.fertilityPct)}
                 </td>
-                <td className="house-sheet-editable">
+                <td data-cell="editable">
                   {formatPercent(row.hatchabilityPct)}
                 </td>
 
@@ -388,12 +381,12 @@ export default function BreederDailyHouseCardPage() {
                   <span className={statusClass(row.status)}>{row.status}</span>
                 </td>
 
-                <td className="house-sheet-comment-cell">{row.comments}</td>
+                <td className="dhc-comment">{row.comments}</td>
               </tr>
             );
           })}
         </tbody>
       </table>
-    </DailyHouseCardTemplate>
+    </DailyHouseCard>
   );
 }
