@@ -163,10 +163,24 @@ export default function AdminShedRegisterPage() {
     return data;
   }, []);
 
-  const fetchShedsForCompany = useCallback(async (companyId: number) => {
-    const response = await authenticatedFetch(`${SHEDS_ENDPOINT}?company_id=${companyId}`, {
-      cache: "no-store",
+  const fetchShedsForCompany = useCallback(async (
+    companyId: number,
+    farmId?: number | null,
+  ) => {
+    const params = new URLSearchParams({
+      company_id: String(companyId),
     });
+
+    if (farmId) {
+      params.set("farm_id", String(farmId));
+    }
+
+    const response = await authenticatedFetch(
+      `${SHEDS_ENDPOINT}?${params.toString()}`,
+      {
+        cache: "no-store",
+      },
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -185,8 +199,18 @@ export default function AdminShedRegisterPage() {
       setLoading(true);
 
       try {
-        await fetchFarmsForCompany(companyId);
-        await fetchShedsForCompany(companyId);
+        const loadedFarms =
+          await fetchFarmsForCompany(companyId);
+
+        const firstActiveFarm =
+          loadedFarms.find((farm) => farm.active)
+          ?? loadedFarms[0]
+          ?? null;
+
+        await fetchShedsForCompany(
+          companyId,
+          firstActiveFarm?.id ?? null,
+        );
       } catch (error) {
         console.error(error);
         alert("Could not load sheds/farms. Check that the backend is running.");
@@ -363,6 +387,32 @@ export default function AdminShedRegisterPage() {
     [loadCompanyData]
   );
 
+  const handleFarmChange = useCallback(
+    async (nextFarmId: number) => {
+      setSelectedFarmId(nextFarmId);
+
+      if (!selectedCompanyId) {
+        setRows([]);
+        return;
+      }
+
+      setLoading(true);
+
+      try {
+        await fetchShedsForCompany(
+          selectedCompanyId,
+          nextFarmId,
+        );
+      } catch (error) {
+        console.error(error);
+        alert("Could not load sheds for the selected farm.");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [fetchShedsForCompany, selectedCompanyId],
+  );
+
   const addShed = useCallback(async () => {
     if (!selectedCompanyId) {
       alert("Select a company before creating a shed.");
@@ -370,9 +420,8 @@ export default function AdminShedRegisterPage() {
     }
 
     const targetFarm =
-      farms.find((farm) => farm.id === selectedFarmId) ??
-      farms.find((farm) => farm.active) ??
-      farms[0];
+      farms.find((farm) => farm.id === selectedFarmId)
+      ?? null;
 
     if (!targetFarm) {
       alert("Create a farm for this company before adding sheds.");
@@ -406,7 +455,10 @@ export default function AdminShedRegisterPage() {
       }
 
       await response.json();
-      await loadCompanyData(selectedCompanyId);
+      await fetchShedsForCompany(
+        selectedCompanyId,
+        targetFarm.id,
+      );
     } catch (error) {
       console.error(error);
       alert("Could not create shed.");
@@ -508,8 +560,11 @@ export default function AdminShedRegisterPage() {
 
       dirtyRowIds.current.clear();
 
-      if (selectedCompanyId) {
-        await loadCompanyData(selectedCompanyId);
+      if (selectedCompanyId && selectedFarmId) {
+        await fetchShedsForCompany(
+          selectedCompanyId,
+          selectedFarmId,
+        );
       }
 
       alert("Sheds saved.");
@@ -552,8 +607,11 @@ export default function AdminShedRegisterPage() {
         throw new Error(errorText);
       }
 
-      if (selectedCompanyId) {
-        await loadCompanyData(selectedCompanyId);
+      if (selectedCompanyId && selectedFarmId) {
+        await fetchShedsForCompany(
+          selectedCompanyId,
+          selectedFarmId,
+        );
       }
     } catch (error) {
       console.error(error);
@@ -636,13 +694,16 @@ export default function AdminShedRegisterPage() {
                 color: "var(--ovicore-green-900)",
               }}
             >
-              New shed farm
+              Selected farm
               <select
                 className="ovicore-select"
                 value={selectedFarmId ?? ""}
                 onChange={(event) => {
                   const nextFarmId = Number(event.target.value);
-                  setSelectedFarmId(Number.isNaN(nextFarmId) ? null : nextFarmId);
+
+                  if (!Number.isNaN(nextFarmId)) {
+                    handleFarmChange(nextFarmId);
+                  }
                 }}
                 disabled={saving || farms.length === 0}
               >
@@ -680,7 +741,12 @@ export default function AdminShedRegisterPage() {
               type="button"
               className="ovicore-btn"
               onClick={() => {
-                if (selectedCompanyId) loadCompanyData(selectedCompanyId);
+                if (selectedCompanyId && selectedFarmId) {
+                  fetchShedsForCompany(
+                    selectedCompanyId,
+                    selectedFarmId,
+                  ).catch(console.error);
+                }
               }}
               disabled={saving || !selectedCompanyId}
             >
@@ -701,7 +767,7 @@ export default function AdminShedRegisterPage() {
 
       <OviCoreTableCard
         title="Sheds"
-        subtitle="One shared shed register controlled through Global Admin setup. Sheds are filtered by company and linked to shared farms."
+        subtitle="One shared shed register controlled through Global Admin setup. Sheds are filtered by the selected company and selected farm."
       >
         <div className="ag-theme-quartz broiler-grid">
           <AgGridReact<ShedRow>

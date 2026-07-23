@@ -22,7 +22,6 @@ from .models import (
     BroilerShed,
     BroilerPlacementPlan,
     BroilerDailyPerformance,
-    LayerRearingFlock,
 )
 from .schemas import (
     BroilerDemandPlanCreate,
@@ -37,9 +36,6 @@ from .schemas import (
     BroilerDailyPerformanceCreate,
     BroilerDailyPerformancePatch,
     BroilerDailyPerformanceOut,
-    LayerRearingFlockCreate,
-    LayerRearingFlockPatch,
-    LayerRearingFlockOut,
 )
 from .calculations import build_plan_response
 from .seed import seed_demo_data
@@ -215,6 +211,49 @@ def build_daily_performance_response(
         last_saved_at=entry.last_saved_at,
     )
 
+
+
+def repair_shed_company_links(db: Session) -> int:
+    """
+    Align every shed's company_id with its parent farm.
+
+    Older sandbox data could contain sheds created before the
+    farm/company validation was enforced. This repair is safe because
+    the farm is the authoritative owner of the shed.
+    """
+    mismatched = (
+        db.query(BroilerShed)
+        .join(
+            BroilerFarm,
+            BroilerFarm.id == BroilerShed.farm_id,
+        )
+        .filter(
+            BroilerShed.company_id
+            != BroilerFarm.company_id
+        )
+        .all()
+    )
+
+    repaired = 0
+
+    for shed in mismatched:
+        farm = (
+            db.query(BroilerFarm)
+            .filter(BroilerFarm.id == shed.farm_id)
+            .first()
+        )
+
+        if not farm:
+            continue
+
+        shed.company_id = farm.company_id
+        repaired += 1
+
+    if repaired:
+        db.commit()
+
+    return repaired
+
 @app.on_event("startup")
 def startup():
     Base.metadata.create_all(bind=engine)
@@ -224,13 +263,15 @@ def startup():
         in {"1", "true", "yes", "on"}
     )
 
-    if should_seed_demo_data:
-        db = SessionLocal()
+    db = SessionLocal()
 
-        try:
+    try:
+        repair_shed_company_links(db)
+
+        if should_seed_demo_data:
             seed_demo_data(db)
-        finally:
-            db.close()
+    finally:
+        db.close()
 
 
 @app.get("/api/health")
@@ -928,8 +969,6 @@ def list_broiler_sheds(
             BroilerFarm.id == BroilerShed.farm_id,
         )
         .filter(
-            BroilerShed.company_id
-            == resolved_company_id,
             BroilerFarm.company_id
             == resolved_company_id,
         )
@@ -974,7 +1013,7 @@ def list_broiler_sheds(
     return [
         BroilerShedOut(
             id=shed.id,
-            company_id=shed.company_id,
+            company_id=resolved_company_id,
             farm_id=shed.farm_id,
             farm_name=farm_name,
             shed_name=shed.shed_name,
@@ -2892,585 +2931,3 @@ async def import_master_data(
             status_code=500,
             detail=f"Import failed and was rolled back: {exc}",
         )
-
-
-# ---------------------------------------------------------------------
-# Layer Rearing Flock Register
-# ---------------------------------------------------------------------
-
-def build_layer_rearing_flock_response(
-    flock: LayerRearingFlock,
-) -> LayerRearingFlockOut:
-    today = date.today()
-
-    current_age_weeks = None
-    if flock.hatch_date:
-        current_age_weeks = round(
-            (today - flock.hatch_date).days / 7,
-            2,
-        )
-    elif flock.placement_date:
-        current_age_weeks = round(
-            (today - flock.placement_date).days / 7,
-            2,
-        )
-
-    days_to_transfer = None
-    if flock.planned_transfer_date:
-        days_to_transfer = (
-            flock.planned_transfer_date - today
-        ).days
-
-    transfer_readiness = "Not assessed"
-
-    if (
-        flock.status
-        and flock.status.lower()
-        in {"transferred", "closed"}
-    ):
-        transfer_readiness = "Transferred"
-    elif (
-        flock.planned_transfer_date
-        and days_to_transfer is not None
-        and days_to_transfer <= 14
-    ):
-        transfer_readiness = "Review Required"
-    elif (
-        flock.birds_placed
-        and flock.birds_placed > 0
-        and flock.destination_farm_id
-        and flock.destination_shed_id
-        and flock.planned_transfer_date
-    ):
-        transfer_readiness = "Ready"
-
-    return LayerRearingFlockOut(
-        id=flock.id,
-        company_id=flock.company_id,
-
-        farm_id=flock.farm_id,
-        shed_id=flock.shed_id,
-        farm_name=(
-            flock.farm.farm_name
-            if flock.farm
-            else ""
-        ),
-        shed_name=(
-            flock.shed.shed_name
-            if flock.shed
-            else ""
-        ),
-
-        destination_farm_id=flock.destination_farm_id,
-        destination_shed_id=flock.destination_shed_id,
-        destination_farm_name=(
-            flock.destination_farm.farm_name
-            if flock.destination_farm
-            else None
-        ),
-        destination_shed_name=(
-            flock.destination_shed.shed_name
-            if flock.destination_shed
-            else None
-        ),
-
-        flock_code=flock.flock_code,
-        breed=flock.breed,
-
-        hatch_date=flock.hatch_date,
-        placement_date=flock.placement_date,
-        birds_placed=flock.birds_placed,
-
-        planned_transfer_date=flock.planned_transfer_date,
-
-        current_age_weeks=current_age_weeks,
-        days_to_transfer=days_to_transfer,
-        current_birds=flock.birds_placed,
-        cumulative_mortality_pct=None,
-        bodyweight_variance_pct=None,
-        transfer_readiness=transfer_readiness,
-
-        status=flock.status,
-        notes=flock.notes,
-
-        last_saved_by=flock.last_saved_by,
-        last_saved_at=flock.last_saved_at,
-    )
-
-
-def validate_layer_rearing_locations(
-    db: Session,
-    current_user: models.AppUser,
-    company_id: int,
-    farm_id: int,
-    shed_id: int,
-    destination_farm_id: int | None = None,
-    destination_shed_id: int | None = None,
-):
-    farm = require_farm_access(
-        db,
-        current_user,
-        farm_id,
-    )
-
-    if farm.company_id != company_id:
-        raise HTTPException(
-            status_code=400,
-            detail="The selected farm does not belong to the selected company.",
-        )
-
-    shed = (
-        db.query(BroilerShed)
-        .filter(
-            BroilerShed.id == shed_id,
-            BroilerShed.company_id == company_id,
-            BroilerShed.farm_id == farm_id,
-            BroilerShed.active == True,
-        )
-        .first()
-    )
-
-    if not shed:
-        raise HTTPException(
-            status_code=400,
-            detail="The selected rearing shed is invalid or inactive.",
-        )
-
-    destination_farm = None
-    destination_shed = None
-
-    if destination_farm_id is not None:
-        destination_farm = require_farm_access(
-            db,
-            current_user,
-            destination_farm_id,
-        )
-
-        if destination_farm.company_id != company_id:
-            raise HTTPException(
-                status_code=400,
-                detail="The destination farm belongs to another company.",
-            )
-
-    if destination_shed_id is not None:
-        if destination_farm_id is None:
-            raise HTTPException(
-                status_code=400,
-                detail="Select a destination farm before a destination shed.",
-            )
-
-        destination_shed = (
-            db.query(BroilerShed)
-            .filter(
-                BroilerShed.id == destination_shed_id,
-                BroilerShed.company_id == company_id,
-                BroilerShed.farm_id == destination_farm_id,
-                BroilerShed.active == True,
-            )
-            .first()
-        )
-
-        if not destination_shed:
-            raise HTTPException(
-                status_code=400,
-                detail="The selected destination shed is invalid or inactive.",
-            )
-
-    return farm, shed, destination_farm, destination_shed
-
-
-@app.get(
-    "/api/layers/rearing/flocks",
-    response_model=list[LayerRearingFlockOut],
-)
-def list_layer_rearing_flocks(
-    company_id: int | None = None,
-    current_user: models.AppUser = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    resolved_company_id = resolve_company_id(
-        current_user,
-        company_id,
-    )
-
-    query = (
-        db.query(LayerRearingFlock)
-        .options(
-            joinedload(LayerRearingFlock.farm),
-            joinedload(LayerRearingFlock.shed),
-            joinedload(LayerRearingFlock.destination_farm),
-            joinedload(LayerRearingFlock.destination_shed),
-        )
-        .filter(
-            LayerRearingFlock.company_id
-            == resolved_company_id
-        )
-    )
-
-    if not (
-        current_user.is_global_admin
-        or current_user.is_company_admin
-    ):
-        permitted_farm_ids = (
-            db.query(models.UserFarmAccess.farm_id)
-            .filter(
-                models.UserFarmAccess.user_id
-                == current_user.id
-            )
-        )
-
-        query = query.filter(
-            LayerRearingFlock.farm_id.in_(
-                permitted_farm_ids
-            )
-        )
-
-    flocks = (
-        query
-        .order_by(
-            LayerRearingFlock.placement_date.asc(),
-            LayerRearingFlock.id.asc(),
-        )
-        .all()
-    )
-
-    return [
-        build_layer_rearing_flock_response(flock)
-        for flock in flocks
-    ]
-
-
-@app.post(
-    "/api/layers/rearing/flocks",
-    response_model=LayerRearingFlockOut,
-)
-def create_layer_rearing_flock(
-    payload: LayerRearingFlockCreate,
-    current_user: models.AppUser = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    resolved_company_id = resolve_company_id(
-        current_user,
-        payload.company_id,
-    )
-
-    validate_layer_rearing_locations(
-        db,
-        current_user,
-        resolved_company_id,
-        payload.farm_id,
-        payload.shed_id,
-        payload.destination_farm_id,
-        payload.destination_shed_id,
-    )
-
-    duplicate = (
-        db.query(LayerRearingFlock)
-        .filter(
-            LayerRearingFlock.company_id
-            == resolved_company_id,
-            LayerRearingFlock.flock_code
-            == payload.flock_code.strip(),
-        )
-        .first()
-    )
-
-    if duplicate:
-        raise HTTPException(
-            status_code=400,
-            detail="A layer rearing flock with this code already exists.",
-        )
-
-    flock = LayerRearingFlock(
-        company_id=resolved_company_id,
-        farm_id=payload.farm_id,
-        shed_id=payload.shed_id,
-        destination_farm_id=payload.destination_farm_id,
-        destination_shed_id=payload.destination_shed_id,
-        flock_code=payload.flock_code.strip(),
-        breed=payload.breed.strip() if payload.breed else None,
-        hatch_date=payload.hatch_date,
-        placement_date=payload.placement_date,
-        birds_placed=payload.birds_placed,
-        planned_transfer_date=payload.planned_transfer_date,
-        status=payload.status,
-        notes=payload.notes,
-        last_saved_by=current_user.full_name,
-        last_saved_at=datetime.utcnow(),
-    )
-
-    db.add(flock)
-    db.commit()
-    db.refresh(flock)
-
-    flock = (
-        db.query(LayerRearingFlock)
-        .options(
-            joinedload(LayerRearingFlock.farm),
-            joinedload(LayerRearingFlock.shed),
-            joinedload(LayerRearingFlock.destination_farm),
-            joinedload(LayerRearingFlock.destination_shed),
-        )
-        .filter(
-            LayerRearingFlock.id == flock.id
-        )
-        .first()
-    )
-
-    return build_layer_rearing_flock_response(flock)
-
-
-@app.post(
-    "/api/layers/rearing/flocks/new-row",
-    response_model=LayerRearingFlockOut,
-)
-def create_layer_rearing_flock_new_row(
-    company_id: int | None = None,
-    current_user: models.AppUser = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    resolved_company_id = resolve_company_id(
-        current_user,
-        company_id,
-    )
-
-    query = (
-        db.query(BroilerShed)
-        .join(
-            BroilerFarm,
-            BroilerFarm.id == BroilerShed.farm_id,
-        )
-        .filter(
-            BroilerShed.active == True,
-            BroilerShed.company_id == resolved_company_id,
-            BroilerFarm.company_id == resolved_company_id,
-        )
-    )
-
-    if not (
-        current_user.is_global_admin
-        or current_user.is_company_admin
-    ):
-        permitted_farm_ids = (
-            db.query(models.UserFarmAccess.farm_id)
-            .filter(
-                models.UserFarmAccess.user_id
-                == current_user.id
-            )
-        )
-
-        query = query.filter(
-            BroilerShed.farm_id.in_(permitted_farm_ids)
-        )
-
-    shed = query.order_by(BroilerShed.id.asc()).first()
-
-    if not shed:
-        raise HTTPException(
-            status_code=400,
-            detail="No active sheds are available for this company and user.",
-        )
-
-    existing_count = (
-        db.query(LayerRearingFlock)
-        .filter(
-            LayerRearingFlock.company_id
-            == resolved_company_id
-        )
-        .count()
-    )
-
-    flock = LayerRearingFlock(
-        company_id=resolved_company_id,
-        farm_id=shed.farm_id,
-        shed_id=shed.id,
-        flock_code=f"LR-NEW-{existing_count + 1:03d}",
-        status="Draft",
-        notes="",
-        last_saved_by=current_user.full_name,
-        last_saved_at=datetime.utcnow(),
-    )
-
-    db.add(flock)
-    db.commit()
-    db.refresh(flock)
-
-    flock = (
-        db.query(LayerRearingFlock)
-        .options(
-            joinedload(LayerRearingFlock.farm),
-            joinedload(LayerRearingFlock.shed),
-            joinedload(LayerRearingFlock.destination_farm),
-            joinedload(LayerRearingFlock.destination_shed),
-        )
-        .filter(
-            LayerRearingFlock.id == flock.id
-        )
-        .first()
-    )
-
-    return build_layer_rearing_flock_response(flock)
-
-
-@app.patch(
-    "/api/layers/rearing/flocks/{flock_id}",
-    response_model=LayerRearingFlockOut,
-)
-def update_layer_rearing_flock(
-    flock_id: int,
-    payload: LayerRearingFlockPatch,
-    current_user: models.AppUser = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    flock = (
-        db.query(LayerRearingFlock)
-        .options(
-            joinedload(LayerRearingFlock.farm),
-            joinedload(LayerRearingFlock.shed),
-            joinedload(LayerRearingFlock.destination_farm),
-            joinedload(LayerRearingFlock.destination_shed),
-        )
-        .filter(
-            LayerRearingFlock.id == flock_id
-        )
-        .first()
-    )
-
-    if not flock:
-        raise HTTPException(
-            status_code=404,
-            detail="Layer rearing flock not found.",
-        )
-
-    require_farm_access(
-        db,
-        current_user,
-        flock.farm_id,
-    )
-
-    if (
-        not current_user.is_global_admin
-        and flock.company_id != current_user.company_id
-    ):
-        raise HTTPException(
-            status_code=403,
-            detail="You do not have access to this company.",
-        )
-
-    data = payload.model_dump(exclude_unset=True)
-
-    target_farm_id = data.get("farm_id", flock.farm_id)
-    target_shed_id = data.get("shed_id", flock.shed_id)
-    target_destination_farm_id = data.get(
-        "destination_farm_id",
-        flock.destination_farm_id,
-    )
-    target_destination_shed_id = data.get(
-        "destination_shed_id",
-        flock.destination_shed_id,
-    )
-
-    validate_layer_rearing_locations(
-        db,
-        current_user,
-        flock.company_id,
-        target_farm_id,
-        target_shed_id,
-        target_destination_farm_id,
-        target_destination_shed_id,
-    )
-
-    if "flock_code" in data and data["flock_code"]:
-        flock_code = data["flock_code"].strip()
-
-        duplicate = (
-            db.query(LayerRearingFlock)
-            .filter(
-                LayerRearingFlock.company_id
-                == flock.company_id,
-                LayerRearingFlock.flock_code
-                == flock_code,
-                LayerRearingFlock.id != flock.id,
-            )
-            .first()
-        )
-
-        if duplicate:
-            raise HTTPException(
-                status_code=400,
-                detail="Another layer rearing flock already uses this code.",
-            )
-
-        data["flock_code"] = flock_code
-
-    if "breed" in data and data["breed"]:
-        data["breed"] = data["breed"].strip()
-
-    for field, value in data.items():
-        setattr(flock, field, value)
-
-    flock.last_saved_by = current_user.full_name
-    flock.last_saved_at = datetime.utcnow()
-
-    db.commit()
-    db.refresh(flock)
-
-    flock = (
-        db.query(LayerRearingFlock)
-        .options(
-            joinedload(LayerRearingFlock.farm),
-            joinedload(LayerRearingFlock.shed),
-            joinedload(LayerRearingFlock.destination_farm),
-            joinedload(LayerRearingFlock.destination_shed),
-        )
-        .filter(
-            LayerRearingFlock.id == flock.id
-        )
-        .first()
-    )
-
-    return build_layer_rearing_flock_response(flock)
-
-
-@app.delete("/api/layers/rearing/flocks/{flock_id}")
-def delete_layer_rearing_flock(
-    flock_id: int,
-    current_user: models.AppUser = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    if not (
-        current_user.is_global_admin
-        or current_user.is_company_admin
-    ):
-        raise HTTPException(
-            status_code=403,
-            detail="Admin access required.",
-        )
-
-    flock = (
-        db.query(LayerRearingFlock)
-        .filter(
-            LayerRearingFlock.id == flock_id
-        )
-        .first()
-    )
-
-    if not flock:
-        raise HTTPException(
-            status_code=404,
-            detail="Layer rearing flock not found.",
-        )
-
-    require_farm_access(
-        db,
-        current_user,
-        flock.farm_id,
-    )
-
-    db.delete(flock)
-    db.commit()
-
-    return {
-        "deleted": True,
-        "id": flock_id,
-    }
