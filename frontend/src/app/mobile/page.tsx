@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import {
   FormEvent,
   PointerEvent,
@@ -2302,7 +2303,7 @@ export default function MobileBroilerApp() {
                   <div>
                     <strong>Breeders</strong>
                     <small>
-                      Breeder rearing and breeder layer operations
+                      Breeder Rearing and Breeder Production operations
                     </small>
                   </div>
                   <b>›</b>
@@ -2380,50 +2381,46 @@ export default function MobileBroilerApp() {
           </div>
         </header>
 
-        <section className={styles.screen}>
+        <section className={`${styles.screen} ${styles.breederScreen}`}>
           <ScreenTitle
             eyebrow="BREEDERS"
             title="Breeder workspace"
-            detail="Breeder farms are separated from broiler farms. Breeder Rearing and Breeder Layers will use their own daily-entry and performance screens."
+            detail="Select the breeder operation you want to open."
           />
 
-          <div className={styles.moduleNotice}>
-            <span>✓</span>
-            <div>
-              <strong>Breeder access is active</strong>
-              <small>
-                This user can open the Breeders module without seeing any
-                broiler farms or broiler daily-entry screens.
-              </small>
-            </div>
-          </div>
-
           <div className={styles.moduleGrid}>
-            <article className={styles.moduleCardStatic}>
+            <Link
+              href="/mobile/breeders/rearing"
+              className={styles.moduleCard}
+            >
               <span className={styles.moduleIcon}>🐣</span>
               <div>
                 <strong>Breeder Rearing</strong>
-                <small>Rearing farms, flock development and transfers</small>
+                <small>
+                  Flock development, bodyweight, mortality and transfers
+                </small>
               </div>
-            </article>
+              <b>›</b>
+            </Link>
 
-            <article className={styles.moduleCardStatic}>
+            <Link
+              href="/mobile/breeders/production"
+              className={styles.moduleCard}
+            >
               <span className={styles.moduleIcon}>🥚</span>
               <div>
-                <strong>Breeder Layers</strong>
-                <small>Production, fertility, hatchability and mortality</small>
+                <strong>Breeder Production</strong>
+                <small>
+                  Egg production, fertility, hatchability and flock performance
+                </small>
               </div>
-            </article>
-          </div>
-
-          <div className={styles.moduleComingSoon}>
-            The access separation is now active. The breeder-specific mobile
-            daily-entry screens are the next build step.
+              <b>›</b>
+            </Link>
           </div>
 
           <button
             type="button"
-            className={styles.secondaryButton}
+            className={`${styles.secondaryButton} ${styles.compactSecondaryButton}`}
             onClick={changeModule}
           >
             Change module
