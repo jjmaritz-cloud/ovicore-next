@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 const AUTH_CHECK_TIMEOUT_MS = 8000;
 
@@ -11,7 +11,6 @@ export default function AuthGate({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const router = useRouter();
   const [authorised, setAuthorised] = useState(pathname === "/login");
 
@@ -23,10 +22,10 @@ export default function AuthGate({
 
     let cancelled = false;
     const controller = new AbortController();
-    const timeoutId = window.setTimeout(
-      () => controller.abort(),
-      AUTH_CHECK_TIMEOUT_MS,
-    );
+
+    const timeoutId = window.setTimeout(() => {
+      controller.abort();
+    }, AUTH_CHECK_TIMEOUT_MS);
 
     async function checkSession() {
       setAuthorised(false);
@@ -48,12 +47,16 @@ export default function AuthGate({
       } catch {
         if (cancelled) return;
 
-        const query = searchParams.toString();
-        const nextPath = `${pathname}${query ? `?${query}` : ""}`;
+        const query = window.location.search;
+        const nextPath = `${pathname}${query}`;
 
-        window.localStorage.removeItem("ovicore_selected_company_id");
+        window.localStorage.removeItem(
+          "ovicore_selected_company_id",
+        );
 
-        router.replace(`/login?next=${encodeURIComponent(nextPath)}`);
+        router.replace(
+          `/login?next=${encodeURIComponent(nextPath)}`,
+        );
       } finally {
         window.clearTimeout(timeoutId);
       }
@@ -66,7 +69,7 @@ export default function AuthGate({
       window.clearTimeout(timeoutId);
       controller.abort();
     };
-  }, [pathname, router, searchParams]);
+  }, [pathname, router]);
 
   if (!authorised) {
     return (
@@ -82,10 +85,22 @@ export default function AuthGate({
         }}
       >
         <div style={{ textAlign: "center" }}>
-          <strong style={{ display: "block", fontSize: 18 }}>
+          <strong
+            style={{
+              display: "block",
+              fontSize: 18,
+            }}
+          >
             Checking your OviCore session…
           </strong>
-          <span style={{ display: "block", marginTop: 7, fontSize: 13 }}>
+
+          <span
+            style={{
+              display: "block",
+              marginTop: 7,
+              fontSize: 13,
+            }}
+          >
             Please wait a moment.
           </span>
         </div>
