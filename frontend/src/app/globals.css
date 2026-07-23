@@ -8866,39 +8866,46 @@ a.home-module-card:hover {
 }
 
 /* =========================================================
-   FINAL: House Sheet flush against permanent sidebar rail
-   Keep this as the final block in globals.css
+   FINAL DAILY HOUSE CARD LAYOUT
+   One positioning rule for every Daily House Card page
    ========================================================= */
 
-body:has(.house-sheet-panel) .ovicore-app-main {
+/*
+  The shared OviCore application shell already reserves
+  the permanent 56px sidebar rail.
+*/
+body:has(.daily-house-card) .ovicore-app-main {
   margin-left: 56px !important;
   width: calc(100% - 56px) !important;
+  min-width: 0 !important;
   padding: 0 !important;
 }
 
-body:has(.house-sheet-panel) .ovicore-app-main .page-shell,
-body:has(.house-sheet-panel) .ovicore-app-main .main-panel,
-body:has(.house-sheet-panel) .ovicore-app-main .main-panel.house-sheet-main {
+/*
+  Daily House Card pages may still contain legacy wrappers.
+  They must not add another sidebar margin or page padding.
+*/
+body:has(.daily-house-card) .ovicore-app-main .page-shell,
+body:has(.daily-house-card) .ovicore-app-main .main-panel,
+body:has(.daily-house-card)
+  .ovicore-app-main
+  .main-panel.house-sheet-main {
   margin: 0 !important;
   width: 100% !important;
+  min-width: 0 !important;
   max-width: none !important;
   padding: 0 !important;
 }
 
-body:has(.house-sheet-panel) .house-sheet-panel,
-body:has(.house-sheet-panel) .house-sheet-main .house-sheet-panel {
+/*
+  The shared Daily House Card component owns the visible
+  12px breathing space beside the sidebar and page edges.
+*/
+body:has(.daily-house-card)
+  .house-sheet-panel.daily-house-card {
   margin: 0 !important;
   width: 100% !important;
+  min-width: 0 !important;
   max-width: none !important;
-
-  /* No space against sidebar; retain spacing elsewhere */
-  padding: 12px 12px 24px 0 !important;
-}
-
-/* Header, controls, KPIs and table align directly with sidebar */
-body:has(.house-sheet-panel) .house-sheet-header,
-body:has(.house-sheet-panel) .house-sheet-control-row,
-body:has(.house-sheet-panel) .house-sheet-kpi-strip,
-body:has(.house-sheet-panel) .house-sheet-table-card {
-  margin-left: 0 !important;
+  padding: 12px 12px 24px !important;
 }
