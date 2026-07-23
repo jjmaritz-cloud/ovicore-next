@@ -76,6 +76,7 @@ export default function AdminFarmRegisterPage() {
   const [saving, setSaving] = useState(false);
 
   const dirtyRowIds = useRef<Set<number>>(new Set());
+  const farmRequestId = useRef(0);
 
   const selectedCompany = useMemo(() => {
     return companies.find((company) => company.id === selectedCompanyId) ?? null;
@@ -109,10 +110,10 @@ export default function AdminFarmRegisterPage() {
     return data;
   }, []);
 
-  const fetchRows = useCallback(async (companyId?: number | null) => {
-    const resolvedCompanyId = companyId ?? selectedCompanyId;
+  const fetchRows = useCallback(async (companyId: number | null) => {
+    const requestId = ++farmRequestId.current;
 
-    if (!resolvedCompanyId) {
+    if (!companyId) {
       setRows([]);
       setLoading(false);
       return;
@@ -121,74 +122,67 @@ export default function AdminFarmRegisterPage() {
     setLoading(true);
 
     try {
-      const response = await authenticatedFetch(`${FARMS_ENDPOINT}?company_id=${resolvedCompanyId}`, {
-        cache: "no-store",
-      });
+      const response = await authenticatedFetch(
+        `${FARMS_ENDPOINT}?company_id=${companyId}`,
+        {
+          cache: "no-store",
+        }
+      );
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Could not load farms. ${response.status}: ${errorText}`);
+        throw new Error(
+          `Could not load farms. ${response.status}: ${errorText}`
+        );
       }
 
       const data: FarmRow[] = await response.json();
 
-      // Defensive tenant guard: never display farms belonging to another company,
-      // even if the backend accidentally returns an unfiltered result set.
-      const matchingRows = data.filter(
-        (row) => Number(row.company_id) === Number(resolvedCompanyId)
-      );
-
-      if (matchingRows.length !== data.length) {
-        console.error(
-          "Tenant filtering error: farms from another company were returned.",
-          {
-            requestedCompanyId: resolvedCompanyId,
-            returnedCompanyIds: Array.from(
-              new Set(data.map((row) => Number(row.company_id)))
-            ),
-          }
-        );
+      // Ignore any older request that finishes after a newer company
+      // selection has already started loading.
+      if (requestId !== farmRequestId.current) {
+        return;
       }
 
-      setRows(matchingRows);
+      setRows(
+        data.filter(
+          (row) => Number(row.company_id) === Number(companyId)
+        )
+      );
+
       dirtyRowIds.current.clear();
     } catch (error) {
+      if (requestId !== farmRequestId.current) {
+        return;
+      }
+
       console.error(error);
       alert("Could not load farms. Check that the backend is running.");
     } finally {
-      setLoading(false);
+      if (requestId === farmRequestId.current) {
+        setLoading(false);
+      }
     }
-  }, [selectedCompanyId]);
+  }, []);
 
   useEffect(() => {
-    async function loadInitialData() {
+    async function loadCompanies() {
       setLoading(true);
 
       try {
-        const loadedCompanies = await fetchCompanies();
-        const firstActiveCompany =
-          loadedCompanies.find((company) => company.active) ?? loadedCompanies[0];
-
-        if (firstActiveCompany) {
-          await fetchRows(firstActiveCompany.id);
-        } else {
-          setRows([]);
-        }
+        await fetchCompanies();
       } catch (error) {
         console.error(error);
-        alert("Could not load companies/farms. Check that the backend is running.");
-      } finally {
+        alert("Could not load companies. Check that the backend is running.");
         setLoading(false);
       }
     }
 
-    loadInitialData();
-  }, [fetchCompanies, fetchRows]);
+    loadCompanies();
+  }, [fetchCompanies]);
 
   useEffect(() => {
-    if (selectedCompanyId) {
-      fetchRows(selectedCompanyId);
-    }
+    fetchRows(selectedCompanyId);
   }, [selectedCompanyId, fetchRows]);
 
   const activeFarmCount = useMemo(
