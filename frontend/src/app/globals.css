@@ -8907,5 +8907,7 @@ body:has(.daily-house-card)
   width: 100% !important;
   min-width: 0 !important;
   max-width: none !important;
-  padding: 12px 12px 24px !important;
+
+  /* Smaller edge beside sidebar; normal spacing elsewhere */
+  padding: 12px 12px 24px 6px !important;
 }
