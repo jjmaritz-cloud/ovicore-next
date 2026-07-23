@@ -104,6 +104,37 @@ class AppUser(Base):
         cascade="all, delete-orphan",
     )
 
+    module_access = relationship(
+        "UserModuleAccess",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+
+class UserModuleAccess(Base):
+    __tablename__ = "user_module_access"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(
+        Integer,
+        ForeignKey("app_users.id"),
+        nullable=False,
+        index=True,
+    )
+    module = Column(String(50), nullable=False, index=True)
+    active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+    user = relationship("AppUser", back_populates="module_access")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "module",
+            name="uq_user_module_access",
+        ),
+    )
+
 
 class UserFarmAccess(Base):
     __tablename__ = "user_farm_access"
@@ -131,6 +162,13 @@ class BroilerFarm(Base):
 
     farm_name = Column(Text, nullable=False)
     farm_code = Column(Text)
+    farm_type = Column(
+        String(50),
+        nullable=False,
+        default="broiler",
+        server_default="broiler",
+        index=True,
+    )
     active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime, server_default=func.now())
 

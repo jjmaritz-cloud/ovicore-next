@@ -10,6 +10,17 @@ from datetime import datetime
 
 router = APIRouter(prefix="/api/access", tags=["Access"])
 
+ALLOWED_MODULES = {
+    "broilers",
+    "breeders",
+    "hatchery",
+    "processing",
+    "rearing",
+    "layers",
+    "grading",
+    "feed_mill",
+}
+
 
 # ---------------------------------------------------------------------
 # Permission helpers
@@ -422,6 +433,207 @@ def update_user(
     db.refresh(target_user)
 
     return target_user
+
+
+# ---------------------------------------------------------------------
+# User module access
+# ---------------------------------------------------------------------
+
+
+def _company_enabled_modules(company: models.Company | None) -> set[str]:
+    if company is None:
+        return set()
+
+    enabled: set[str] = set()
+
+    if company.enable_broilers:
+        enabled.add("broilers")
+    if company.enable_breeders:
+        enabled.add("breeders")
+    if company.enable_hatchery:
+        enabled.add("hatchery")
+    if company.enable_processing:
+        enabled.add("processing")
+    if company.enable_layers:
+        enabled.update({"rearing", "layers"})
+
+    return enabled
+
+
+@router.get(
+    "/users/{target_user_id}/modules",
+    response_model=list[schemas.UserModuleAccessOut],
+)
+def list_user_modules(
+    target_user_id: int,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    target_user = (
+        db.query(models.AppUser)
+        .filter(models.AppUser.id == target_user_id)
+        .first()
+    )
+
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Target user not found")
+
+    if not (
+        current_user.is_global_admin
+        or (
+            current_user.is_company_admin
+            and current_user.company_id == target_user.company_id
+            and not target_user.is_global_admin
+        )
+        or current_user.id == target_user.id
+    ):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    return (
+        db.query(models.UserModuleAccess)
+        .filter(
+            models.UserModuleAccess.user_id == target_user_id,
+            models.UserModuleAccess.active == True,
+        )
+        .order_by(models.UserModuleAccess.module.asc())
+        .all()
+    )
+
+
+@router.put(
+    "/users/{target_user_id}/modules",
+    response_model=list[schemas.UserModuleAccessOut],
+)
+def replace_user_modules(
+    target_user_id: int,
+    payload: schemas.UserModuleAccessReplace,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    target_user = (
+        db.query(models.AppUser)
+        .filter(models.AppUser.id == target_user_id)
+        .first()
+    )
+
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Target user not found")
+
+    if current_user.is_global_admin:
+        pass
+    elif (
+        current_user.is_company_admin
+        and current_user.company_id == target_user.company_id
+        and not target_user.is_global_admin
+    ):
+        pass
+    else:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    requested_modules = {
+        module.strip().lower()
+        for module in payload.modules
+        if module and module.strip()
+    }
+
+    invalid_modules = requested_modules - ALLOWED_MODULES
+    if invalid_modules:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Invalid module values: "
+                + ", ".join(sorted(invalid_modules))
+            ),
+        )
+
+    company = None
+    if target_user.company_id is not None:
+        company = (
+            db.query(models.Company)
+            .filter(models.Company.id == target_user.company_id)
+            .first()
+        )
+
+    enabled_modules = _company_enabled_modules(company)
+
+    unavailable = requested_modules - enabled_modules
+    if unavailable:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "These modules are not enabled for the company: "
+                + ", ".join(sorted(unavailable))
+            ),
+        )
+
+    existing = (
+        db.query(models.UserModuleAccess)
+        .filter(models.UserModuleAccess.user_id == target_user_id)
+        .all()
+    )
+    existing_by_module = {row.module: row for row in existing}
+
+    for row in existing:
+        row.active = row.module in requested_modules
+
+    for module in requested_modules:
+        if module not in existing_by_module:
+            db.add(
+                models.UserModuleAccess(
+                    user_id=target_user_id,
+                    module=module,
+                    active=True,
+                )
+            )
+
+    db.commit()
+
+    return (
+        db.query(models.UserModuleAccess)
+        .filter(
+            models.UserModuleAccess.user_id == target_user_id,
+            models.UserModuleAccess.active == True,
+        )
+        .order_by(models.UserModuleAccess.module.asc())
+        .all()
+    )
+
+
+@router.get("/my-modules")
+def list_my_modules(
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if current_user.is_global_admin:
+        return sorted(ALLOWED_MODULES)
+
+    company = None
+    if current_user.company_id is not None:
+        company = (
+            db.query(models.Company)
+            .filter(models.Company.id == current_user.company_id)
+            .first()
+        )
+
+    enabled_modules = _company_enabled_modules(company)
+
+    assigned = {
+        row.module
+        for row in (
+            db.query(models.UserModuleAccess)
+            .filter(
+                models.UserModuleAccess.user_id == current_user.id,
+                models.UserModuleAccess.active == True,
+            )
+            .all()
+        )
+    }
+
+    # Company admins can operate every module enabled for their company.
+    if current_user.is_company_admin:
+        return sorted(enabled_modules)
+
+    return sorted(assigned & enabled_modules)
 
 
 # ---------------------------------------------------------------------

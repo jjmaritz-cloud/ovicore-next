@@ -3,6 +3,7 @@ from datetime import date, datetime
 from io import BytesIO
 from fastapi import Body, Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session, joinedload
 from openpyxl import load_workbook
 from app.routers import broiler_processing
@@ -213,6 +214,56 @@ def build_daily_performance_response(
 
 
 
+def ensure_module_access_schema() -> None:
+    """
+    Add the farm classification column to existing databases.
+
+    Base.metadata.create_all() creates the new user_module_access table,
+    but it does not add columns to an existing broiler_farms table.
+    """
+    inspector = inspect(engine)
+    table_names = set(inspector.get_table_names())
+
+    if "broiler_farms" not in table_names:
+        return
+
+    farm_columns = {
+        column["name"]
+        for column in inspector.get_columns("broiler_farms")
+    }
+
+    if "farm_type" not in farm_columns:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "ALTER TABLE broiler_farms "
+                    "ADD COLUMN farm_type VARCHAR(50) "
+                    "NOT NULL DEFAULT 'broiler'"
+                )
+            )
+
+    # Classify existing demonstration/master-data farms using their names.
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                UPDATE broiler_farms
+                SET farm_type = CASE
+                    WHEN LOWER(farm_name) LIKE '%breeder rearing%'
+                        THEN 'breeder_rearing'
+                    WHEN LOWER(farm_name) LIKE '%breeder layer%'
+                        THEN 'breeder_layers'
+                    WHEN LOWER(farm_name) LIKE '%rearing%'
+                        THEN 'layer_rearing'
+                    WHEN LOWER(farm_name) LIKE '%layer%'
+                        THEN 'commercial_layers'
+                    ELSE COALESCE(NULLIF(farm_type, ''), 'broiler')
+                END
+                """
+            )
+        )
+
+
 def repair_shed_company_links(db: Session) -> int:
     """
     Align every shed's company_id with its parent farm.
@@ -257,6 +308,7 @@ def repair_shed_company_links(db: Session) -> int:
 @app.on_event("startup")
 def startup():
     Base.metadata.create_all(bind=engine)
+    ensure_module_access_schema()
 
     should_seed_demo_data = (
         os.getenv("SEED_DEMO_DATA", "false").strip().lower()
@@ -817,9 +869,30 @@ def create_broiler_farm(
             ),
         )
 
+    allowed_farm_types = {
+        "broiler",
+        "breeder_rearing",
+        "breeder_layers",
+        "layer_rearing",
+        "commercial_layers",
+        "hatchery",
+        "feed_mill",
+        "grading",
+        "processing",
+    }
+
+    farm_type = payload.farm_type.strip().lower()
+
+    if farm_type not in allowed_farm_types:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid farm type",
+        )
+
     farm = BroilerFarm(
         company_id=resolved_company_id,
         farm_name=payload.farm_name.strip(),
+        farm_type=farm_type,
         farm_code=(
             payload.farm_code.strip()
             if payload.farm_code
@@ -890,6 +963,29 @@ def update_broiler_farm(
 
     if "farm_code" in data and data["farm_code"]:
         data["farm_code"] = data["farm_code"].strip()
+
+    if "farm_type" in data and data["farm_type"]:
+        allowed_farm_types = {
+            "broiler",
+            "breeder_rearing",
+            "breeder_layers",
+            "layer_rearing",
+            "commercial_layers",
+            "hatchery",
+            "feed_mill",
+            "grading",
+            "processing",
+        }
+
+        farm_type = data["farm_type"].strip().lower()
+
+        if farm_type not in allowed_farm_types:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid farm type",
+            )
+
+        data["farm_type"] = farm_type
 
     for field, value in data.items():
         setattr(farm, field, value)

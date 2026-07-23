@@ -187,6 +187,20 @@ class AppUserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class UserModuleAccessReplace(BaseModel):
+    modules: list[str]
+
+
+class UserModuleAccessOut(BaseModel):
+    id: int
+    user_id: int
+    module: str
+    active: bool
+    created_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class UserFarmAccessCreate(BaseModel):
     user_id: int
     farm_id: int
@@ -301,12 +315,14 @@ class BroilerFarmCreate(BaseModel):
     company_id: int = 1
     farm_name: str
     farm_code: Optional[str] = None
+    farm_type: str = "broiler"
     active: bool = True
 
 
 class BroilerFarmPatch(BaseModel):
     farm_name: Optional[str] = None
     farm_code: Optional[str] = None
+    farm_type: Optional[str] = None
     active: Optional[bool] = None
 
 
@@ -315,6 +331,7 @@ class BroilerFarmOut(BaseModel):
     company_id: int
     farm_name: str
     farm_code: Optional[str] = None
+    farm_type: str = "broiler"
     active: bool
 
     class Config:
