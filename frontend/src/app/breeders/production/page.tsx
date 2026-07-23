@@ -1,5 +1,4 @@
 import DailyHouseCardTemplate from "@/components/DailyHouseCardTemplate";
-import BroilerSidebar from "@/components/BroilerSidebar";
 
 type HouseCardRow = {
   entryDate: string;
@@ -172,12 +171,8 @@ function statusClass(status: HouseCardRow["status"]) {
 }
 
 export default function BreederDailyHouseCardPage() {
-  return (
-    <div className="page-shell">
-      <BroilerSidebar />
-
-      <div className="main-panel house-sheet-main">
-        <DailyHouseCardTemplate
+	return (
+		<DailyHouseCardTemplate
       moduleLabel="Breeder Production"
       description="Dense breeder house card entry for production, egg quality, mortality, feed, water, fertility and hatchability."
       homeHref="/breeders"
@@ -399,8 +394,5 @@ export default function BreederDailyHouseCardPage() {
           })}
         </tbody>
       </table>
-        </DailyHouseCardTemplate>
-      </div>
-    </div>
-  );
-}
+  </DailyHouseCardTemplate>
+);

@@ -9,7 +9,6 @@ import {
 } from "react";
 
 import { useSearchParams } from "next/navigation";
-import BroilerSidebar from "@/components/BroilerSidebar";
 import DailyHouseCardTemplate from "@/components/DailyHouseCardTemplate";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
@@ -739,12 +738,8 @@ function DailyPerformancePageContent() {
 		setMessage("Unsaved changes discarded.");
 	}
 
-    return (
-    <div className="page-shell">
-      <BroilerSidebar />
-
-			<div className="main-panel house-sheet-main">
-				<DailyHouseCardTemplate
+		return (
+			<DailyHouseCardTemplate
           moduleLabel="Broiler Production"
           description="Daily broiler entry for mortality, culls, feed, water, bodyweight and shed comments."
           homeHref="/broilers"
@@ -1072,11 +1067,8 @@ function DailyPerformancePageContent() {
               )}
             </tbody>
           </table>
-        </DailyHouseCardTemplate>
-      </div>
-    </div>
-  );
-}
+  </DailyHouseCardTemplate>
+);
 
 export default function DailyPerformancePage() {
   return (
