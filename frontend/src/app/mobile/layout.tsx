@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 
 export const metadata: Metadata = {
   title: "OviCore Mobile",
-  description: "Offline broiler daily house-sheet entry and operations insights.",
+  description: "Offline poultry daily entry, module access and operations insights.",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,

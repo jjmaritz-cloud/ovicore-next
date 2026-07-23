@@ -33,6 +33,8 @@ const MOBILE_STANDARDS_CACHE_KEY =
 
 const MOBILE_SELECTED_PLAN_KEY =
   "ovicore_mobile_selected_plan_id";
+const MOBILE_SELECTED_MODULE_KEY =
+  "ovicore_mobile_selected_module";
 
 const MOBILE_REMEMBER_DAYS = 14;
 const MOBILE_KEEP_SIGNED_IN_KEY =
@@ -122,7 +124,10 @@ type CompanyOption = {
   name?: string;
   company_name?: string;
   enable_broilers?: boolean;
+  enable_breeders?: boolean;
 };
+
+type MobileModule = "broilers" | "breeders";
 
 type DemandPlan = {
   id: number;
@@ -1000,6 +1005,22 @@ export default function MobileBroilerApp() {
         : null;
     });
 
+  const [availableModules, setAvailableModules] =
+    useState<MobileModule[]>([]);
+  const [selectedModule, setSelectedModule] =
+    useState<MobileModule | null>(() => {
+      if (typeof window === "undefined") return null;
+
+      const stored = window.localStorage.getItem(
+        MOBILE_SELECTED_MODULE_KEY,
+      );
+
+      return stored === "broilers" || stored === "breeders"
+        ? stored
+        : null;
+    });
+  const [loadingModules, setLoadingModules] = useState(false);
+
   const loadedEntryKeyRef = useRef<string>("");
   const wasOnlineRef = useRef<boolean>(true);
 	
@@ -1173,16 +1194,17 @@ export default function MobileBroilerApp() {
       const companyData: CompanyOption[] =
         await response.json();
 
-      const broilerCompanies = companyData.filter(
+      const operatingCompanies = companyData.filter(
         (company) =>
-          company.enable_broilers !== false,
+          company.enable_broilers !== false ||
+          company.enable_breeders === true,
       );
 
-      setCompanies(broilerCompanies);
+      setCompanies(operatingCompanies);
 
       if (
         selectedCompanyId &&
-        !broilerCompanies.some(
+        !operatingCompanies.some(
           (company) =>
             company.id === selectedCompanyId,
         )
@@ -1203,8 +1225,85 @@ export default function MobileBroilerApp() {
     }
   }, [currentUser, selectedCompanyId]);
 
-  const loadData = useCallback(async () => {
+  const loadModules = useCallback(async () => {
     if (!currentUser) return;
+
+    setLoadingModules(true);
+
+    try {
+      let modules: MobileModule[] = [];
+
+      if (currentUser.is_global_admin) {
+        const selectedCompany = companies.find(
+          (company) => company.id === companyId,
+        );
+
+        if (selectedCompany?.enable_broilers !== false) {
+          modules.push("broilers");
+        }
+
+        if (selectedCompany?.enable_breeders === true) {
+          modules.push("breeders");
+        }
+      } else {
+        const response = await authenticatedFetch(
+          `${API_BASE}/api/access/my-modules`,
+        );
+
+        if (!response.ok) {
+          throw new Error(
+            `Could not load mobile module access (${response.status}).`,
+          );
+        }
+
+        const data: string[] = await response.json();
+
+        modules = data.filter(
+          (module): module is MobileModule =>
+            module === "broilers" || module === "breeders",
+        );
+      }
+
+      setAvailableModules(modules);
+
+      if (
+        selectedModule &&
+        !modules.includes(selectedModule)
+      ) {
+        setSelectedModule(null);
+        window.localStorage.removeItem(
+          MOBILE_SELECTED_MODULE_KEY,
+        );
+      }
+
+      if (!selectedModule && modules.length === 1) {
+        setSelectedModule(modules[0]);
+        window.localStorage.setItem(
+          MOBILE_SELECTED_MODULE_KEY,
+          modules[0],
+        );
+      }
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not load module access.",
+      );
+    } finally {
+      setLoadingModules(false);
+    }
+  }, [
+    companies,
+    companyId,
+    currentUser,
+    selectedModule,
+  ]);
+
+  const loadData = useCallback(async () => {
+    if (!currentUser || selectedModule !== "broilers") {
+      setLoading(false);
+      return;
+    }
 
     if (!companyId) {
       setLoading(false);
@@ -1319,7 +1418,7 @@ export default function MobileBroilerApp() {
       setLoading(false);
       setDataRefreshing(false);
     }
-  }, [companyId, currentUser]);
+  }, [companyId, currentUser, selectedModule]);
 
   const checkApiConnection = useCallback(async () => {
     if (!navigator.onLine) {
@@ -1593,10 +1692,16 @@ export default function MobileBroilerApp() {
   }, [currentUser, loadCompanies]);
 
   useEffect(() => {
-    if (currentUser) {
+    if (currentUser && companyId) {
+      void loadModules();
+    }
+  }, [companyId, currentUser, loadModules]);
+
+  useEffect(() => {
+    if (currentUser && selectedModule === "broilers") {
       void loadData();
     }
-  }, [companyId, currentUser, loadData]);
+  }, [companyId, currentUser, loadData, selectedModule]);
 
   useEffect(() => {
     const cameBackOnline =
@@ -2037,8 +2142,37 @@ export default function MobileBroilerApp() {
     );
     setPlans([]);
     setRecords([]);
+    setSelectedModule(null);
+    setAvailableModules([]);
+    window.localStorage.removeItem(
+      MOBILE_SELECTED_MODULE_KEY,
+    );
     setMessage("");
     setLoading(true);
+    setTab("home");
+  }
+
+  function selectModule(module: MobileModule) {
+    setSelectedModule(module);
+    window.localStorage.setItem(
+      MOBILE_SELECTED_MODULE_KEY,
+      module,
+    );
+    setPlans([]);
+    setRecords([]);
+    setMessage("");
+    setLoading(module === "broilers");
+    setTab("home");
+  }
+
+  function changeModule() {
+    setSelectedModule(null);
+    window.localStorage.removeItem(
+      MOBILE_SELECTED_MODULE_KEY,
+    );
+    setPlans([]);
+    setRecords([]);
+    setMessage("");
     setTab("home");
   }
 
@@ -2069,7 +2203,7 @@ export default function MobileBroilerApp() {
           {loadingCompanies ? (
             <div className={styles.emptyState}>Loading companies…</div>
           ) : companies.length === 0 ? (
-            <div className={styles.emptyState}>No broiler companies are available.</div>
+            <div className={styles.emptyState}>No mobile-enabled companies are available.</div>
           ) : (
             <div className={styles.shedList}>
               {companies.map((company) => (
@@ -2077,7 +2211,7 @@ export default function MobileBroilerApp() {
                   <div className={styles.shedIcon}>◉</div>
                   <div className={styles.shedMain}>
                     <strong>{company.name ?? company.company_name ?? `Company ${company.id}`}</strong>
-                    <span>Open mobile broiler workspace</span>
+                    <span>Open company mobile workspace</span>
                   </div>
                   <b>›</b>
                 </button>
@@ -2085,6 +2219,121 @@ export default function MobileBroilerApp() {
             </div>
           )}
           <button type="button" className={styles.secondaryButton} onClick={() => void logout()}>Log out</button>
+        </section>
+      </main>
+    );
+  }
+
+  if (currentUser && companyId && !selectedModule) {
+    const selectedCompany = companies.find(
+      (company) => company.id === companyId,
+    );
+    const moduleCompanyName =
+      selectedCompany?.name?.trim() ||
+      selectedCompany?.company_name?.trim() ||
+      currentUser.company_name?.trim() ||
+      "OviCore Operations";
+
+    return (
+      <main className={styles.app}>
+        <header className={styles.appHeader}>
+          <div className={styles.brand}>
+            <Image
+              src="/assets/ovicore-icon.png"
+              alt="OviCore"
+              width={42}
+              height={42}
+              priority
+            />
+            <div>
+              <strong>OviCore</strong>
+              <small>{moduleCompanyName}</small>
+            </div>
+          </div>
+        </header>
+
+        <section className={styles.screen}>
+          <ScreenTitle
+            eyebrow="WORKSPACE"
+            title="Choose a module"
+            detail="Only modules assigned to your user account are shown."
+          />
+
+          {message && (
+            <div className={styles.message}>
+              <span>{message}</span>
+            </div>
+          )}
+
+          {loadingModules ? (
+            <div className={styles.emptyState}>
+              Loading module access…
+            </div>
+          ) : availableModules.length === 0 ? (
+            <div className={styles.emptyState}>
+              No mobile modules are assigned to this user.
+            </div>
+          ) : (
+            <div className={styles.moduleGrid}>
+              {availableModules.includes("broilers") && (
+                <button
+                  type="button"
+                  className={styles.moduleCard}
+                  onClick={() => selectModule("broilers")}
+                >
+                  <span className={styles.moduleIcon}>🐔</span>
+                  <div>
+                    <strong>Broilers</strong>
+                    <small>
+                      Grow-out farms, daily house sheets and performance
+                    </small>
+                  </div>
+                  <b>›</b>
+                </button>
+              )}
+
+              {availableModules.includes("breeders") && (
+                <button
+                  type="button"
+                  className={styles.moduleCard}
+                  onClick={() => selectModule("breeders")}
+                >
+                  <span className={styles.moduleIcon}>🥚</span>
+                  <div>
+                    <strong>Breeders</strong>
+                    <small>
+                      Breeder rearing and breeder layer operations
+                    </small>
+                  </div>
+                  <b>›</b>
+                </button>
+              )}
+            </div>
+          )}
+
+          {currentUser.is_global_admin && (
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => {
+                setSelectedCompanyId(null);
+                setAvailableModules([]);
+                window.localStorage.removeItem(
+                  "ovicore_selected_company_id",
+                );
+              }}
+            >
+              Change company
+            </button>
+          )}
+
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={() => void logout()}
+          >
+            Log out
+          </button>
         </section>
       </main>
     );
@@ -2099,7 +2348,90 @@ export default function MobileBroilerApp() {
     selectedCompany?.name?.trim() ||
     selectedCompany?.company_name?.trim() ||
     currentUser?.company_name?.trim() ||
-    "Broiler Operations";
+    "OviCore Operations";
+
+  if (selectedModule === "breeders") {
+    return (
+      <main className={styles.app}>
+        <header className={styles.appHeader}>
+          <div className={styles.brand}>
+            <Image
+              src="/assets/ovicore-icon.png"
+              alt="OviCore"
+              width={42}
+              height={42}
+              priority
+            />
+            <div>
+              <strong>OviCore</strong>
+              <small>{companyName} · Breeders</small>
+            </div>
+          </div>
+
+          <div className={styles.headerActions}>
+            <button
+              type="button"
+              className={styles.notificationButton}
+              aria-label="Change module"
+              onClick={changeModule}
+            >
+              ⇄
+            </button>
+          </div>
+        </header>
+
+        <section className={styles.screen}>
+          <ScreenTitle
+            eyebrow="BREEDERS"
+            title="Breeder workspace"
+            detail="Breeder farms are separated from broiler farms. Breeder Rearing and Breeder Layers will use their own daily-entry and performance screens."
+          />
+
+          <div className={styles.moduleNotice}>
+            <span>✓</span>
+            <div>
+              <strong>Breeder access is active</strong>
+              <small>
+                This user can open the Breeders module without seeing any
+                broiler farms or broiler daily-entry screens.
+              </small>
+            </div>
+          </div>
+
+          <div className={styles.moduleGrid}>
+            <article className={styles.moduleCardStatic}>
+              <span className={styles.moduleIcon}>🐣</span>
+              <div>
+                <strong>Breeder Rearing</strong>
+                <small>Rearing farms, flock development and transfers</small>
+              </div>
+            </article>
+
+            <article className={styles.moduleCardStatic}>
+              <span className={styles.moduleIcon}>🥚</span>
+              <div>
+                <strong>Breeder Layers</strong>
+                <small>Production, fertility, hatchability and mortality</small>
+              </div>
+            </article>
+          </div>
+
+          <div className={styles.moduleComingSoon}>
+            The access separation is now active. The breeder-specific mobile
+            daily-entry screens are the next build step.
+          </div>
+
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={changeModule}
+          >
+            Change module
+          </button>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className={styles.app}>
@@ -2119,6 +2451,16 @@ export default function MobileBroilerApp() {
         </div>
 
         <div className={styles.headerActions}>
+          {availableModules.length > 1 && (
+            <button
+              type="button"
+              className={styles.notificationButton}
+              aria-label="Change module"
+              onClick={changeModule}
+            >
+              ⇄
+            </button>
+          )}
           {currentUser?.is_global_admin && (
             <button
               type="button"

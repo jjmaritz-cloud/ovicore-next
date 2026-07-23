@@ -27,6 +27,11 @@ type CompanyRow = {
   company_name: string;
   trading_name: string | null;
   active: boolean;
+  enable_broilers?: boolean;
+  enable_breeders?: boolean;
+  enable_layers?: boolean;
+  enable_hatchery?: boolean;
+  enable_processing?: boolean;
   created_at: string | null;
 };
 
@@ -57,12 +62,30 @@ type UserFarmAccessRow = {
   created_at: string | null;
 };
 
+type UserModuleAccessRow = {
+  id: number;
+  user_id: number;
+  module: string;
+  active: boolean;
+  created_at: string | null;
+};
+
+const MODULE_OPTIONS = [
+  { value: "broilers", label: "Broilers" },
+  { value: "breeders", label: "Breeders" },
+  { value: "rearing", label: "Layer Rearing" },
+  { value: "layers", label: "Commercial Layers" },
+  { value: "hatchery", label: "Hatchery" },
+  { value: "processing", label: "Processing" },
+] as const;
+
 const API_BASE = '';
 
 const COMPANIES_ENDPOINT = `${API_BASE}/api/access/companies`;
 const USERS_ENDPOINT = `${API_BASE}/api/access/users`;
 const FARMS_ENDPOINT = `${API_BASE}/api/broilers/farms`;
 const USER_FARMS_ENDPOINT = `${API_BASE}/api/access/user-farms`;
+const USER_MODULES_ENDPOINT = `${API_BASE}/api/access/users`;
 
 async function authenticatedFetch(
   input: RequestInfo | URL,
@@ -111,6 +134,12 @@ export default function AdminUsersPage() {
 	);
   const [assignedFarmAccess, setAssignedFarmAccess] = useState<UserFarmAccessRow[]>(
     []
+  );
+  const [assignedModuleAccess, setAssignedModuleAccess] = useState<UserModuleAccessRow[]>(
+    []
+  );
+  const [selectedModules, setSelectedModules] = useState<Set<string>>(
+    new Set()
   );
 
   const [loading, setLoading] = useState(true);
@@ -199,6 +228,8 @@ export default function AdminUsersPage() {
   const loadFarmAccessForUser = useCallback(async (user: UserRow | null) => {
     setSelectedUser(user);
     setAssignedFarmAccess([]);
+    setAssignedModuleAccess([]);
+    setSelectedModules(new Set());
     setFarmsForSelectedUser([]);
     setSelectedFarmIds(new Set());
 
@@ -226,12 +257,16 @@ export default function AdminUsersPage() {
 				setSelectedFarmIds(new Set());
       }
 
-			const accessResponse = await authenticatedFetch(
-				`${USER_FARMS_ENDPOINT}/${user.id}`,
-				{
-					cache: "no-store",
-				}
-			);
+      const [accessResponse, modulesResponse] = await Promise.all([
+        authenticatedFetch(
+          `${USER_FARMS_ENDPOINT}/${user.id}`,
+          { cache: "no-store" }
+        ),
+        authenticatedFetch(
+          `${USER_MODULES_ENDPOINT}/${user.id}/modules`,
+          { cache: "no-store" }
+        ),
+      ]);
 
       if (!accessResponse.ok) {
         const errorText = await accessResponse.text();
@@ -240,13 +275,28 @@ export default function AdminUsersPage() {
         );
       }
 
-			const accessData: UserFarmAccessRow[] = await accessResponse.json();
+      if (!modulesResponse.ok) {
+        const errorText = await modulesResponse.text();
+        throw new Error(
+          `Could not load module access. ${modulesResponse.status}: ${errorText}`
+        );
+      }
 
-			setAssignedFarmAccess(accessData);
+      const accessData: UserFarmAccessRow[] = await accessResponse.json();
+      const moduleData: UserModuleAccessRow[] = await modulesResponse.json();
 
-			setSelectedFarmIds(
-				new Set(accessData.map((access) => access.farm_id))
-			);
+      setAssignedFarmAccess(accessData);
+      setAssignedModuleAccess(moduleData);
+      setSelectedFarmIds(
+        new Set(accessData.map((access) => access.farm_id))
+      );
+      setSelectedModules(
+        new Set(
+          moduleData
+            .filter((access) => access.active)
+            .map((access) => access.module)
+        )
+      );
     } catch (error) {
       console.error(error);
       alert("Could not load farm access for selected user.");
@@ -409,6 +459,8 @@ export default function AdminUsersPage() {
 
 				setSelectedUser(null);
 				setAssignedFarmAccess([]);
+				setAssignedModuleAccess([]);
+				setSelectedModules(new Set());
 				setFarmsForSelectedUser([]);
 				setSelectedFarmIds(new Set());
 
@@ -738,6 +790,108 @@ export default function AdminUsersPage() {
     }
   }, [companies, fetchRows]);
 
+  const selectedUserCompany = useMemo(
+    () =>
+      companies.find(
+        (company) => company.id === selectedUser?.company_id
+      ) ?? null,
+    [companies, selectedUser?.company_id]
+  );
+
+  const enabledModuleOptions = useMemo(() => {
+    if (!selectedUserCompany) return [];
+
+    return MODULE_OPTIONS.filter((option) => {
+      switch (option.value) {
+        case "broilers":
+          return selectedUserCompany.enable_broilers !== false;
+        case "breeders":
+          return selectedUserCompany.enable_breeders === true;
+        case "rearing":
+        case "layers":
+          return selectedUserCompany.enable_layers === true;
+        case "hatchery":
+          return selectedUserCompany.enable_hatchery === true;
+        case "processing":
+          return selectedUserCompany.enable_processing === true;
+        default:
+          return false;
+      }
+    });
+  }, [selectedUserCompany]);
+
+  const toggleModuleSelection = useCallback((module: string) => {
+    setSelectedModules((current) => {
+      const next = new Set(current);
+
+      if (next.has(module)) {
+        next.delete(module);
+      } else {
+        next.add(module);
+      }
+
+      return next;
+    });
+  }, []);
+
+  const saveModuleAccess = useCallback(async () => {
+    if (!selectedUser) {
+      alert("Select a user first.");
+      return;
+    }
+
+    if (selectedUser.is_global_admin) {
+      alert("Global Admin users already have access to all modules.");
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const response = await authenticatedFetch(
+        `${USER_MODULES_ENDPOINT}/${selectedUser.id}/modules`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            modules: Array.from(selectedModules),
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(
+          errorData?.detail ??
+            `Could not save module access. ${response.status}`
+        );
+      }
+
+      const moduleData: UserModuleAccessRow[] = await response.json();
+      setAssignedModuleAccess(moduleData);
+      setSelectedModules(
+        new Set(
+          moduleData
+            .filter((access) => access.active)
+            .map((access) => access.module)
+        )
+      );
+
+      alert(`Module access saved for ${selectedUser.full_name}.`);
+    } catch (error) {
+      console.error(error);
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Could not save module access."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }, [selectedModules, selectedUser]);
+
 	const toggleFarmSelection = useCallback((farmId: number) => {
 		setSelectedFarmIds((current) => {
 			const next = new Set(current);
@@ -973,6 +1127,8 @@ export default function AdminUsersPage() {
 
 									setSelectedUser(null);
 									setAssignedFarmAccess([]);
+									setAssignedModuleAccess([]);
+									setSelectedModules(new Set());
 									setFarmsForSelectedUser([]);
 									setSelectedFarmIds(new Set());
 
@@ -1063,6 +1219,136 @@ export default function AdminUsersPage() {
           />
         </div>
       </OviCoreTableCard>
+
+      <div style={{ marginTop: 12 }}>
+        <OviCoreTableCard
+          title="Module Access Assignment"
+          subtitle="Choose which OviCore business modules this user may open in the mobile and web applications."
+        >
+          {!selectedUser ? (
+            <div
+              style={{
+                padding: 18,
+                border: "1px dashed var(--ovicore-border)",
+                borderRadius: 10,
+                color: "var(--ovicore-muted)",
+                textAlign: "center",
+                fontSize: 13,
+              }}
+            >
+              Select a user from the table above.
+            </div>
+          ) : selectedUser.is_global_admin ? (
+            <span className="ovicore-pill ovicore-pill-amber">
+              Global Admin users can access every module
+            </span>
+          ) : (
+            <>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 12,
+                  flexWrap: "wrap",
+                  marginBottom: 12,
+                }}
+              >
+                <div>
+                  <strong style={{ color: "var(--ovicore-green-900)" }}>
+                    {selectedUser.full_name}
+                  </strong>
+                  <div
+                    style={{
+                      marginTop: 3,
+                      color: "var(--ovicore-muted)",
+                      fontSize: 12,
+                    }}
+                  >
+                    {selectedUser.company_name || "No company assigned"}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="ovicore-btn ovicore-btn-primary"
+                  onClick={saveModuleAccess}
+                  disabled={saving || loadingAccess}
+                >
+                  {saving ? "Saving..." : "Save module access"}
+                </button>
+              </div>
+
+              {enabledModuleOptions.length === 0 ? (
+                <div
+                  style={{
+                    padding: 18,
+                    border: "1px dashed var(--ovicore-border)",
+                    borderRadius: 10,
+                    color: "var(--ovicore-muted)",
+                    textAlign: "center",
+                  }}
+                >
+                  No operating modules are enabled for this company.
+                </div>
+              ) : (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns:
+                      "repeat(auto-fit, minmax(210px, 1fr))",
+                    gap: 10,
+                  }}
+                >
+                  {enabledModuleOptions.map((option) => {
+                    const checked = selectedModules.has(option.value);
+
+                    return (
+                      <label
+                        key={option.value}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                          minHeight: 48,
+                          padding: "10px 12px",
+                          border: checked
+                            ? "1px solid #16845b"
+                            : "1px solid var(--ovicore-border)",
+                          borderRadius: 10,
+                          background: checked ? "#eef9f3" : "#ffffff",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() =>
+                            toggleModuleSelection(option.value)
+                          }
+                          style={{
+                            width: 17,
+                            height: 17,
+                            accentColor: "#0c7650",
+                          }}
+                        />
+                        <strong
+                          style={{
+                            fontSize: 13,
+                            color: "var(--ovicore-green-900)",
+                          }}
+                        >
+                          {option.label}
+                        </strong>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </OviCoreTableCard>
+      </div>
 
       <div style={{ marginTop: 12 }}>
 				<OviCoreTableCard
