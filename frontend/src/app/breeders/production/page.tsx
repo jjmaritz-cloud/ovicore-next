@@ -394,5 +394,6 @@ export default function BreederDailyHouseCardPage() {
           })}
         </tbody>
       </table>
-  </DailyHouseCardTemplate>
-);
+    </DailyHouseCardTemplate>
+  );
+}

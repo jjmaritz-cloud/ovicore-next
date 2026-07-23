@@ -1066,9 +1066,10 @@ function DailyPerformancePageContent() {
                 ))
               )}
             </tbody>
-          </table>
-  </DailyHouseCardTemplate>
-);
+      </table>
+    </DailyHouseCardTemplate>
+  );
+}
 
 export default function DailyPerformancePage() {
   return (
