@@ -130,8 +130,27 @@ export default function AdminFarmRegisterPage() {
         throw new Error(`Could not load farms. ${response.status}: ${errorText}`);
       }
 
-      const data = await response.json();
-      setRows(data);
+      const data: FarmRow[] = await response.json();
+
+      // Defensive tenant guard: never display farms belonging to another company,
+      // even if the backend accidentally returns an unfiltered result set.
+      const matchingRows = data.filter(
+        (row) => Number(row.company_id) === Number(resolvedCompanyId)
+      );
+
+      if (matchingRows.length !== data.length) {
+        console.error(
+          "Tenant filtering error: farms from another company were returned.",
+          {
+            requestedCompanyId: resolvedCompanyId,
+            returnedCompanyIds: Array.from(
+              new Set(data.map((row) => Number(row.company_id)))
+            ),
+          }
+        );
+      }
+
+      setRows(matchingRows);
       dirtyRowIds.current.clear();
     } catch (error) {
       console.error(error);
