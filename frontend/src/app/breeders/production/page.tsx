@@ -1,4 +1,4 @@
-import OviCoreHouseSheetTemplate from "@/components/OviCoreHouseSheetTemplate";
+import DailyHouseCardTemplate from "@/components/DailyHouseCardTemplate";
 import BroilerSidebar from "@/components/BroilerSidebar";
 
 type HouseCardRow = {
@@ -177,9 +177,8 @@ export default function BreederDailyHouseCardPage() {
       <BroilerSidebar />
 
       <div className="main-panel house-sheet-main">
-        <OviCoreHouseSheetTemplate
+        <DailyHouseCardTemplate
       moduleLabel="Breeder Production"
-      title="Daily House Card"
       description="Dense breeder house card entry for production, egg quality, mortality, feed, water, fertility and hatchability."
       homeHref="/breeders"
       homeLabel="Breeder Home"
@@ -231,7 +230,6 @@ export default function BreederDailyHouseCardPage() {
           helper: "Rows needing attention.",
         },
       ]}
-      tableTitle="Daily House Card Entry"
       tableDescription="Yellow cells represent editable daily values. Calculated review columns are shown beside entry fields."
       tableSummary={`Closing females: ${formatNumber(
         latestClosingFemales,
@@ -401,7 +399,7 @@ export default function BreederDailyHouseCardPage() {
           })}
         </tbody>
       </table>
-        </OviCoreHouseSheetTemplate>
+        </DailyHouseCardTemplate>
       </div>
     </div>
   );
