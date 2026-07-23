@@ -10,7 +10,7 @@ import {
 
 import { useSearchParams } from "next/navigation";
 import BroilerSidebar from "@/components/BroilerSidebar";
-import OviCoreHouseSheetTemplate from "@/components/OviCoreHouseSheetTemplate";
+import DailyHouseCardTemplate from "@/components/DailyHouseCardTemplate";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 const API_BASE = "";
@@ -376,7 +376,7 @@ function DailyPerformancePageContent() {
 
 			setMessage(
 				currentUser?.is_global_admin
-					? "Select a company before loading Daily House Sheet data."
+					? "Select a company before loading Daily House Card data."
 					: "Your user account is not assigned to a company."
 			);
 
@@ -744,10 +744,9 @@ function DailyPerformancePageContent() {
       <BroilerSidebar />
 
 			<div className="main-panel house-sheet-main">
-				<OviCoreHouseSheetTemplate
+				<DailyHouseCardTemplate
           moduleLabel="Broiler Production"
-          title="Daily House Sheet"
-          description="Dense broiler house entry for mortality, culls, feed, water, bodyweight and daily shed comments."
+          description="Daily broiler entry for mortality, culls, feed, water, bodyweight and shed comments."
           homeHref="/broilers"
           homeLabel="Broiler Home"
           secondaryHref={
@@ -810,7 +809,6 @@ function DailyPerformancePageContent() {
               tone: dirtyKeys.size > 0 ? "warning" : "good",
             },
           ]}
-          tableTitle="Daily House Sheet Entry"
           tableDescription="Yellow cells are editable. Calculated review columns are shown beside entry fields."
           tableSummary={`Closing birds: ${formatNumber(
             totals.latestClosing,
@@ -878,7 +876,7 @@ function DailyPerformancePageContent() {
             <tbody>
               {loading || loadingUser ? (
                 <tr>
-                  <td colSpan={28}>Loading daily performance...</td>
+                  <td colSpan={28}>Loading Daily House Card...</td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
@@ -1074,7 +1072,7 @@ function DailyPerformancePageContent() {
               )}
             </tbody>
           </table>
-        </OviCoreHouseSheetTemplate>
+        </DailyHouseCardTemplate>
       </div>
     </div>
   );
