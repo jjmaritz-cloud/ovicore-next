@@ -8911,3 +8911,37 @@ body:has(.daily-house-card)
   /* Smaller edge beside sidebar; normal spacing elsewhere */
   padding: 12px 12px 24px 6px !important;
 }
+
+/* =========================================================
+   FINAL DAILY HOUSE CARD LAYOUT
+   Sidebar spacing is owned by the application shell.
+   Daily House Card must not reserve another sidebar width.
+   ========================================================= */
+
+body:has(.daily-house-card) .ovicore-app-main {
+  margin-left: 0 !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  padding: 0 !important;
+}
+
+body:has(.daily-house-card) .ovicore-app-main .page-shell,
+body:has(.daily-house-card) .ovicore-app-main .main-panel,
+body:has(.daily-house-card)
+  .ovicore-app-main
+  .main-panel.house-sheet-main {
+  margin: 0 !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  padding: 0 !important;
+}
+
+body:has(.daily-house-card)
+  .house-sheet-panel.daily-house-card {
+  margin: 0 !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  padding: 12px 12px 24px !important;
+}
