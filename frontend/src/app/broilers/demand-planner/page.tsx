@@ -25,11 +25,8 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-quartz.css";
-import OviCoreActionBar from "@/components/ovicore/OviCoreActionBar";
-import OviCoreKpiStrip from "@/components/ovicore/OviCoreKpiStrip";
-import OviCorePageHeader from "@/components/ovicore/OviCorePageHeader";
+import OviCoreModuleHeader from "@/components/OviCoreModuleHeader";
 import OviCoreShell from "@/components/ovicore/OviCoreShell";
-import OviCoreTableCard from "@/components/ovicore/OviCoreTableCard";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 type BroilerPlanRow = {
@@ -1099,50 +1096,89 @@ function BroilerDemandPlannerPageContent() {
 
 return (
   <OviCoreShell module="broilers">
-    <OviCorePageHeader
+    <OviCoreModuleHeader
+      eyebrow="OviCore Broiler Planning"
       title="Placement Demand Planner"
-      subtitle="Plan broiler placements by farm, shed, cycle, floor capacity and required chicks."
-    >
-      <div className="top-actions">
-        <input
-          className="search-box"
-          value={searchText}
-          onChange={(event) => setSearchText(event.target.value)}
-          placeholder="Search farm, shed, cycle or note"
-        />
-        <div className="avatar">JJ</div>
-      </div>
-    </OviCorePageHeader>
-
-    <OviCoreKpiStrip
-      items={[
+      description="Plan broiler placements by farm, shed, cycle, floor capacity and required chicks."
+      actions={[
         {
-          label: "Total Planned Birds",
-          value: kpis.totalPlannedBirds.toLocaleString(),
-        },
-        {
-          label: "Required Chicks",
-          value: Math.round(kpis.requiredChicks).toLocaleString(),
-        },
-        {
-          label: "Rows Needing Review",
-          value: kpis.rowsNeedingReview,
-        },
-        {
-          label: "Avg Planned kg/m²",
-          value: kpis.avgKgM2.toFixed(2),
+          label: "Broiler Home",
+          href: "/broilers",
+          type: "home",
         },
       ]}
     />
 
-    <OviCoreActionBar
-      left={
-        <>
+    <section className="planner-toolbar-card">
+      <div>
+        <p className="planner-eyebrow">Broiler Placement Planning</p>
+        <h2>Placement demand register</h2>
+        <p>
+          Create, review and maintain broiler placement demand while retaining
+          the existing shed capacity, density and chick requirement calculations.
+        </p>
+      </div>
+
+      <div className="planner-toolbar-actions">
+        <input
+          value={searchText}
+          onChange={(event) => setSearchText(event.target.value)}
+          placeholder="Search farm, shed, cycle or note"
+        />
+
+        <button
+          type="button"
+          className="planner-btn planner-btn-primary"
+          onClick={addNewPlacementRow}
+          disabled={saving}
+        >
+          New placement row
+        </button>
+      </div>
+    </section>
+
+    <section className="planner-kpi-grid">
+      <div>
+        <span>Total Planned Birds</span>
+        <strong>{kpis.totalPlannedBirds.toLocaleString()}</strong>
+        <p>Birds planned across all placement rows.</p>
+      </div>
+
+      <div>
+        <span>Required Chicks</span>
+        <strong>{Math.round(kpis.requiredChicks).toLocaleString()}</strong>
+        <p>Includes the configured chick allowance.</p>
+      </div>
+
+      <div>
+        <span>Rows Needing Review</span>
+        <strong>{kpis.rowsNeedingReview}</strong>
+        <p>Rows with missing information or density pressure.</p>
+      </div>
+
+      <div>
+        <span>Average Planned kg/m²</span>
+        <strong>{kpis.avgKgM2.toFixed(2)}</strong>
+        <p>Average planned stocking density.</p>
+      </div>
+    </section>
+
+    <section className="planner-register-card">
+      <div className="planner-register-head">
+        <div>
+          <h3>Broiler Placement Demand</h3>
+          <p>
+            Farm, shed, cycle, placement, capacity, required chicks and review
+            calculations.
+          </p>
+        </div>
+
+        <div className="planner-register-actions">
           <span
             className={
               dirtyCount > 0
-                ? "ovicore-pill ovicore-pill-amber"
-                : "ovicore-pill ovicore-pill-green"
+                ? "planner-save-pill planner-save-pill-amber"
+                : "planner-save-pill planner-save-pill-green"
             }
           >
             {dirtyCount > 0
@@ -1150,27 +1186,9 @@ return (
               : "All rows saved"}
           </span>
 
-					{userError || lastError ? (
-						<span className="ovicore-pill ovicore-pill-red">
-							{userError || lastError}
-						</span>
-					) : null}
-        </>
-      }
-      right={
-        <>
           <button
             type="button"
-            className="ovicore-btn ovicore-btn-primary"
-            onClick={addNewPlacementRow}
-            disabled={saving}
-          >
-            New placement row
-          </button>
-
-          <button
-            type="button"
-            className="ovicore-btn"
+            className="planner-btn"
             onClick={duplicateSelectedRow}
             disabled={saving}
           >
@@ -1179,7 +1197,7 @@ return (
 
           <button
             type="button"
-            className="ovicore-btn ovicore-btn-danger"
+            className="planner-btn planner-btn-danger"
             onClick={deleteSelectedRow}
             disabled={saving}
           >
@@ -1188,7 +1206,7 @@ return (
 
           <button
             type="button"
-            className="ovicore-btn"
+            className="planner-btn"
             onClick={autosizeColumns}
           >
             Autosize
@@ -1196,42 +1214,39 @@ return (
 
           <button
             type="button"
-            className="ovicore-btn"
+            className="planner-btn"
             onClick={() =>
-              Promise.all([
-                fetchSheds(),
-                fetchRows(),
-              ]).catch(console.error)
+              Promise.all([fetchSheds(), fetchRows()]).catch(console.error)
             }
+            disabled={saving}
           >
             Reload
           </button>
 
           <button
             type="button"
-            className="ovicore-btn ovicore-btn-primary"
+            className="planner-btn planner-btn-primary"
             onClick={saveDirtyRows}
             disabled={saving}
           >
             {saving ? "Saving..." : "Save dirty rows"}
           </button>
-        </>
-      }
-    />
-
-    <OviCoreTableCard
-      title="Broiler Demand Entry"
-      subtitle="Excel-style planner with selectable sheds, calendar placement dates, editable yellow cells and calculated review columns."
-    >
-      <div className="formula-bar">
-        <div className="formula-name">Capacity</div>
-        <div className="formula-text">
-          Floor area m² × target kg/m² ÷ target liveweight kg = calculated
-          shed bird capacity
         </div>
       </div>
 
-      <div className="ag-theme-quartz broiler-grid demand-planner-grid">
+      {userError || lastError ? (
+        <div className="planner-error">{userError || lastError}</div>
+      ) : null}
+
+      <div className="planner-formula">
+        <strong>Capacity</strong>
+        <span>
+          Floor area m² × target kg/m² ÷ target liveweight kg = calculated
+          shed bird capacity
+        </span>
+      </div>
+
+      <div className="ag-theme-quartz planner-grid">
         <AgGridReact<BroilerPlanRow>
           ref={gridRef}
           rowData={rows}
@@ -1254,14 +1269,279 @@ return (
             if (!event.data?.id) return;
 
             const recalculated = recalculateRow(event.data);
-
-            console.log("Cell changed:", recalculated);
             markRowDirty(recalculated);
             refreshGridRow(recalculated);
           }}
         />
       </div>
-    </OviCoreTableCard>
+    </section>
+
+    <style jsx>{`
+      .planner-toolbar-card {
+        margin: 14px 0;
+        padding: 17px 18px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 20px;
+        border: 1px solid #d8e8df;
+        border-radius: 15px;
+        background: #ffffff;
+        box-shadow: 0 9px 22px rgba(19, 70, 51, 0.07);
+      }
+
+      .planner-eyebrow {
+        margin: 0 0 5px;
+        color: #19744e;
+        font-size: 9px;
+        font-weight: 950;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      .planner-toolbar-card h2 {
+        margin: 0;
+        color: #123e2f;
+        font-size: 23px;
+        letter-spacing: -0.035em;
+      }
+
+      .planner-toolbar-card p:last-child {
+        max-width: 820px;
+        margin: 5px 0 0;
+        color: #687e74;
+        font-size: 10px;
+        line-height: 1.45;
+      }
+
+      .planner-toolbar-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex: 0 0 auto;
+      }
+
+      .planner-toolbar-actions input {
+        width: min(310px, 28vw);
+        height: 38px;
+        padding: 0 12px;
+        border: 1px solid #ceded5;
+        border-radius: 9px;
+        outline: none;
+        background: #fbfdfc;
+        color: #173f31;
+        font-size: 11px;
+      }
+
+      .planner-kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 9px;
+        margin-bottom: 13px;
+      }
+
+      .planner-kpi-grid > div {
+        padding: 14px;
+        border: 1px solid #dce9e2;
+        border-radius: 12px;
+        background: #ffffff;
+        box-shadow: 0 7px 18px rgba(22, 71, 54, 0.05);
+      }
+
+      .planner-kpi-grid span {
+        color: #60756c;
+        font-size: 8px;
+        font-weight: 900;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .planner-kpi-grid strong {
+        display: block;
+        margin-top: 4px;
+        color: #0c573d;
+        font-size: 22px;
+      }
+
+      .planner-kpi-grid p {
+        margin: 3px 0 0;
+        color: #71847c;
+        font-size: 9px;
+        line-height: 1.35;
+      }
+
+      .planner-register-card {
+        overflow: hidden;
+        border: 1px solid #d9e8e0;
+        border-radius: 15px;
+        background: #ffffff;
+        box-shadow: 0 10px 24px rgba(19, 70, 51, 0.07);
+      }
+
+      .planner-register-head {
+        padding: 14px 16px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 18px;
+        border-bottom: 1px solid #e5eee9;
+      }
+
+      .planner-register-head h3 {
+        margin: 0;
+        color: #123e2f;
+        font-size: 17px;
+      }
+
+      .planner-register-head p {
+        margin: 3px 0 0;
+        color: #6a8076;
+        font-size: 9px;
+      }
+
+      .planner-register-actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 6px;
+      }
+
+      .planner-btn {
+        min-height: 32px;
+        padding: 0 10px;
+        border: 1px solid #ccdcd4;
+        border-radius: 8px;
+        background: #ffffff;
+        color: #254b3c;
+        font-size: 9px;
+        font-weight: 850;
+        cursor: pointer;
+      }
+
+      .planner-btn:hover:not(:disabled) {
+        background: #f1f7f3;
+      }
+
+      .planner-btn:disabled {
+        cursor: not-allowed;
+        opacity: 0.55;
+      }
+
+      .planner-btn-primary {
+        border-color: #0b6747;
+        background: #0b6747;
+        color: #ffffff;
+      }
+
+      .planner-btn-primary:hover:not(:disabled) {
+        background: #084f38;
+      }
+
+      .planner-btn-danger {
+        border-color: #ecc9c5;
+        color: #a73730;
+      }
+
+      .planner-save-pill {
+        padding: 6px 8px;
+        border-radius: 999px;
+        font-size: 8px;
+        font-weight: 900;
+        text-transform: uppercase;
+      }
+
+      .planner-save-pill-green {
+        background: #e8f7ed;
+        color: #147044;
+      }
+
+      .planner-save-pill-amber {
+        background: #fff3d8;
+        color: #9a6300;
+      }
+
+      .planner-error {
+        margin: 10px 14px 0;
+        padding: 9px 10px;
+        border: 1px solid #f2c6c3;
+        border-radius: 8px;
+        background: #fff0ef;
+        color: #9c322c;
+        font-size: 10px;
+        font-weight: 700;
+      }
+
+      .planner-formula {
+        margin: 10px 14px;
+        min-height: 34px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 7px 10px;
+        border: 1px solid #e3ece7;
+        border-radius: 8px;
+        background: #fafcfb;
+      }
+
+      .planner-formula strong {
+        color: #0d6244;
+        font-size: 8px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .planner-formula span {
+        color: #677d73;
+        font-size: 9px;
+      }
+
+      .planner-grid {
+        width: 100%;
+        min-height: 500px;
+        height: calc(100vh - 390px);
+        border-top: 1px solid #e6eee9;
+      }
+
+      @media (max-width: 1050px) {
+        .planner-toolbar-card {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .planner-toolbar-actions {
+          width: 100%;
+        }
+
+        .planner-toolbar-actions input {
+          width: 100%;
+        }
+
+        .planner-kpi-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .planner-register-head {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .planner-register-actions {
+          justify-content: flex-start;
+        }
+      }
+
+      @media (max-width: 620px) {
+        .planner-kpi-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .planner-toolbar-actions {
+          align-items: stretch;
+          flex-direction: column;
+        }
+      }
+    `}</style>
   </OviCoreShell>
   );
 }
