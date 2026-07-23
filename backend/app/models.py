@@ -323,3 +323,85 @@ class AppNoteComment(Base):
     comment = Column(Text, nullable=False)
 
     created_at = Column(DateTime, server_default=func.now())
+
+class LayerRearingFlock(Base):
+    __tablename__ = "layer_rearing_flocks"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    company_id = Column(
+        Integer,
+        ForeignKey("companies.id"),
+        nullable=False,
+        index=True,
+    )
+    farm_id = Column(
+        Integer,
+        ForeignKey("broiler_farms.id"),
+        nullable=False,
+        index=True,
+    )
+    shed_id = Column(
+        Integer,
+        ForeignKey("broiler_sheds.id"),
+        nullable=False,
+        index=True,
+    )
+
+    destination_farm_id = Column(
+        Integer,
+        ForeignKey("broiler_farms.id"),
+        nullable=True,
+        index=True,
+    )
+    destination_shed_id = Column(
+        Integer,
+        ForeignKey("broiler_sheds.id"),
+        nullable=True,
+        index=True,
+    )
+
+    flock_code = Column(String(120), nullable=False)
+    breed = Column(String(120), nullable=True)
+
+    hatch_date = Column(Date, nullable=True)
+    placement_date = Column(Date, nullable=True)
+    birds_placed = Column(Integer, nullable=True)
+
+    planned_transfer_date = Column(Date, nullable=True)
+
+    status = Column(String(40), nullable=False, default="Draft")
+    notes = Column(Text, nullable=True)
+
+    last_saved_by = Column(String(255), nullable=True)
+    last_saved_at = Column(
+        DateTime,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+    created_at = Column(DateTime, server_default=func.now())
+
+    farm = relationship(
+        "BroilerFarm",
+        foreign_keys=[farm_id],
+    )
+    shed = relationship(
+        "BroilerShed",
+        foreign_keys=[shed_id],
+    )
+    destination_farm = relationship(
+        "BroilerFarm",
+        foreign_keys=[destination_farm_id],
+    )
+    destination_shed = relationship(
+        "BroilerShed",
+        foreign_keys=[destination_shed_id],
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "company_id",
+            "flock_code",
+            name="uq_company_layer_rearing_flock_code",
+        ),
+    )

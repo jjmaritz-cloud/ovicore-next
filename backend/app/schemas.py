@@ -520,3 +520,86 @@ class AppNoteCommentOut(AppNoteCommentBase):
 
     class Config:
         from_attributes = True
+
+# ---------------------------------------------------------------------
+# Layer Rearing Flock Register
+# ---------------------------------------------------------------------
+
+class LayerRearingFlockCreate(BaseModel):
+    company_id: int
+    farm_id: int
+    shed_id: int
+
+    destination_farm_id: Optional[int] = None
+    destination_shed_id: Optional[int] = None
+
+    flock_code: str
+    breed: Optional[str] = None
+
+    hatch_date: Optional[date] = None
+    placement_date: Optional[date] = None
+    birds_placed: Optional[int] = None
+
+    planned_transfer_date: Optional[date] = None
+
+    status: str = "Draft"
+    notes: Optional[str] = None
+
+
+class LayerRearingFlockPatch(BaseModel):
+    farm_id: Optional[int] = None
+    shed_id: Optional[int] = None
+
+    destination_farm_id: Optional[int] = None
+    destination_shed_id: Optional[int] = None
+
+    flock_code: Optional[str] = None
+    breed: Optional[str] = None
+
+    hatch_date: Optional[date] = None
+    placement_date: Optional[date] = None
+    birds_placed: Optional[int] = None
+
+    planned_transfer_date: Optional[date] = None
+
+    status: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class LayerRearingFlockOut(BaseModel):
+    id: int
+    company_id: int
+
+    farm_id: int
+    shed_id: int
+    farm_name: str
+    shed_name: str
+
+    destination_farm_id: Optional[int] = None
+    destination_shed_id: Optional[int] = None
+    destination_farm_name: Optional[str] = None
+    destination_shed_name: Optional[str] = None
+
+    flock_code: str
+    breed: Optional[str] = None
+
+    hatch_date: Optional[date] = None
+    placement_date: Optional[date] = None
+    birds_placed: Optional[int] = None
+
+    planned_transfer_date: Optional[date] = None
+
+    current_age_weeks: Optional[float] = None
+    days_to_transfer: Optional[int] = None
+    current_birds: Optional[int] = None
+    cumulative_mortality_pct: Optional[float] = None
+    bodyweight_variance_pct: Optional[float] = None
+    transfer_readiness: str = "Not assessed"
+
+    status: str
+    notes: Optional[str] = None
+
+    last_saved_by: Optional[str] = None
+    last_saved_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
