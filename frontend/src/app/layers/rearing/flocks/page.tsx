@@ -1,398 +1,627 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import Link from "next/link";
+import {
+  Suspense,
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { AgGridReact } from "ag-grid-react";
+import {
+  AllCommunityModule,
+  ModuleRegistry,
+  type ColDef,
+  type ColGroupDef,
+  type GridReadyEvent,
+  type ICellRendererParams,
+  type ValueFormatterParams,
+} from "ag-grid-community";
 
-import OviCoreModuleHeader from "@/components/OviCoreModuleHeader";
-import OviCoreSidebar from "@/components/sidebar/OviCoreSidebar";
-import { getSidebarMenu } from "@/components/sidebar/menuRegistry";
+ModuleRegistry.registerModules([AllCommunityModule]);
 
-type RearingFlockRow = {
+import "ag-grid-community/styles/ag-grid.css";
+import "ag-grid-community/styles/ag-theme-quartz.css";
+
+import OviCoreActionBar from "@/components/ovicore/OviCoreActionBar";
+import OviCoreKpiStrip from "@/components/ovicore/OviCoreKpiStrip";
+import OviCorePageHeader from "@/components/ovicore/OviCorePageHeader";
+import OviCoreShell from "@/components/ovicore/OviCoreShell";
+import OviCoreTableCard from "@/components/ovicore/OviCoreTableCard";
+
+type LayerRearingFlockRow = {
   id: number;
-  farm: string;
-  shed: string;
+  companyId?: number;
+  farmId?: number;
+  shedId?: number;
+  destinationFarmId?: number;
+  destinationShedId?: number;
+
+  farmName: string;
+  shedName: string;
   flockCode: string;
   breed: string;
-  placementDate: string;
-  birdsPlaced: number;
-  plannedTransferDate: string;
-  destination: string;
+
+  hatchDate: string | null;
+  placementDate: string | null;
+  birdsPlaced: number | null;
+
+  plannedTransferDate: string | null;
+  destinationFarmName: string;
+  destinationShedName: string;
+
+  currentAgeWeeks: number | null;
+  daysToTransfer: number | null;
+  currentBirds: number | null;
+  cumulativeMortalityPct: number | null;
+  bodyweightVariancePct: number | null;
+  transferReadiness: string;
+
   status: string;
+  notes: string | null;
 };
 
-const initialRows: RearingFlockRow[] = [];
+const initialRows: LayerRearingFlockRow[] = [];
 
-export default function LayerRearingFlocksPage() {
-  const [rows] = useState<RearingFlockRow[]>(initialRows);
+function numberFormatter(params: ValueFormatterParams) {
+  if (
+    params.value === null ||
+    params.value === undefined ||
+    params.value === ""
+  ) {
+    return "";
+  }
+
+  const value = Number(params.value);
+  return Number.isNaN(value)
+    ? params.value
+    : value.toLocaleString();
+}
+
+function decimalFormatter(params: ValueFormatterParams) {
+  if (
+    params.value === null ||
+    params.value === undefined ||
+    params.value === ""
+  ) {
+    return "";
+  }
+
+  const value = Number(params.value);
+  return Number.isNaN(value)
+    ? params.value
+    : value.toFixed(2);
+}
+
+function pctFormatter(params: ValueFormatterParams) {
+  if (
+    params.value === null ||
+    params.value === undefined ||
+    params.value === ""
+  ) {
+    return "";
+  }
+
+  const value = Number(params.value);
+  return Number.isNaN(value)
+    ? params.value
+    : `${value.toFixed(2)}%`;
+}
+
+function formatDate(params: ValueFormatterParams) {
+  const value = String(params.value ?? "");
+  if (!value) return "";
+
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return value;
+
+  return `${match[3]}-${match[2]}-${match[1]}`;
+}
+
+function StatusPill(params: ICellRendererParams) {
+  const value = String(params.value ?? "Draft");
+  const normalised = value.toLowerCase();
+
+  let className = "status-pill status-draft";
+
+  if (
+    normalised.includes("planned") ||
+    normalised.includes("placed") ||
+    normalised.includes("growing")
+  ) {
+    className = "status-pill status-ready";
+  }
+
+  if (
+    normalised.includes("review") ||
+    normalised.includes("transfer due")
+  ) {
+    className = "status-pill status-review";
+  }
+
+  if (
+    normalised.includes("transferred") ||
+    normalised.includes("closed")
+  ) {
+    className = "status-pill status-ready";
+  }
+
+  return <span className={className}>{value}</span>;
+}
+
+function ReadinessPill(params: ICellRendererParams) {
+  const value = String(params.value ?? "Not assessed");
+  const normalised = value.toLowerCase();
+
+  let className = "review-pill review-missing";
+
+  if (normalised.includes("ready")) {
+    className = "review-pill review-ready";
+  }
+
+  if (normalised.includes("review")) {
+    className = "review-pill review-warning";
+  }
+
+  return <span className={className}>{value}</span>;
+}
+
+function LayerRearingFlockRegisterContent() {
+  const gridRef =
+    useRef<AgGridReact<LayerRearingFlockRow>>(null);
+
+  const [rows] =
+    useState<LayerRearingFlockRow[]>(initialRows);
   const [searchText, setSearchText] = useState("");
+  const [dirtyCount] = useState(0);
+  const [saving] = useState(false);
 
-  const visibleRows = useMemo(() => {
-    const search = searchText.trim().toLowerCase();
-    if (!search) return rows;
+  const defaultColDef = useMemo<
+    ColDef<LayerRearingFlockRow>
+  >(
+    () => ({
+      resizable: true,
+      sortable: true,
+      filter: true,
+      minWidth: 120,
+      cellClass: "center-cell",
+      headerClass: "center-header",
+    }),
+    [],
+  );
 
-    return rows.filter((row) =>
-      [
-        row.farm,
-        row.shed,
-        row.flockCode,
-        row.breed,
-        row.destination,
-        row.status,
-      ].some((value) => value.toLowerCase().includes(search)),
-    );
-  }, [rows, searchText]);
+  const columnDefs = useMemo<
+    (
+      | ColDef<LayerRearingFlockRow>
+      | ColGroupDef<LayerRearingFlockRow>
+    )[]
+  >(
+    () => [
+      {
+        headerName: "Flock Identity",
+        marryChildren: true,
+        headerClass: "group-header group-planning",
+        children: [
+          {
+            field: "farmName",
+            headerName: "Farm",
+            pinned: "left",
+            minWidth: 170,
+            editable: true,
+            cellClass: "editable-cell identity-cell",
+          },
+          {
+            field: "shedName",
+            headerName: "Shed",
+            pinned: "left",
+            minWidth: 150,
+            editable: true,
+            cellClass: "editable-cell identity-cell",
+          },
+          {
+            field: "flockCode",
+            headerName: "Flock Code",
+            pinned: "left",
+            minWidth: 160,
+            editable: true,
+            cellClass: "editable-cell identity-cell",
+          },
+          {
+            field: "breed",
+            headerName: "Breed",
+            minWidth: 150,
+            editable: true,
+            cellClass: "editable-cell",
+          },
+        ],
+      },
+      {
+        headerName: "Placement",
+        marryChildren: true,
+        headerClass: "group-header group-capacity",
+        children: [
+          {
+            field: "hatchDate",
+            headerName: "Hatch Date",
+            minWidth: 145,
+            editable: true,
+            cellDataType: "dateString",
+            cellEditor: "agDateStringCellEditor",
+            valueFormatter: formatDate,
+            cellClass: "editable-cell",
+          },
+          {
+            field: "placementDate",
+            headerName: "Placement Date",
+            minWidth: 155,
+            editable: true,
+            cellDataType: "dateString",
+            cellEditor: "agDateStringCellEditor",
+            valueFormatter: formatDate,
+            cellClass: "editable-cell",
+          },
+          {
+            field: "birdsPlaced",
+            headerName: "Birds Placed",
+            minWidth: 145,
+            editable: true,
+            valueFormatter: numberFormatter,
+            cellClass: "editable-cell",
+          },
+        ],
+      },
+      {
+        headerName: "Transfer Planning",
+        marryChildren: true,
+        headerClass: "group-header group-demand",
+        children: [
+          {
+            field: "plannedTransferDate",
+            headerName: "Planned Transfer",
+            minWidth: 165,
+            editable: true,
+            cellDataType: "dateString",
+            cellEditor: "agDateStringCellEditor",
+            valueFormatter: formatDate,
+            cellClass: "editable-cell",
+          },
+          {
+            field: "destinationFarmName",
+            headerName: "Destination Farm",
+            minWidth: 185,
+            editable: true,
+            cellClass: "editable-cell",
+          },
+          {
+            field: "destinationShedName",
+            headerName: "Destination Shed",
+            minWidth: 175,
+            editable: true,
+            cellClass: "editable-cell",
+          },
+          {
+            field: "notes",
+            headerName: "Notes",
+            minWidth: 260,
+            flex: 1,
+            editable: true,
+            cellClass: "editable-cell notes-cell",
+          },
+        ],
+      },
+      {
+        headerName: "Calculated Review",
+        marryChildren: true,
+        headerClass: "group-header group-review",
+        children: [
+          {
+            field: "currentAgeWeeks",
+            headerName: "Age Weeks",
+            minWidth: 130,
+            editable: false,
+            valueFormatter: decimalFormatter,
+            cellClass: "calculated-cell",
+          },
+          {
+            field: "daysToTransfer",
+            headerName: "Days to Transfer",
+            minWidth: 150,
+            editable: false,
+            valueFormatter: numberFormatter,
+            cellClass: "calculated-cell",
+          },
+          {
+            field: "currentBirds",
+            headerName: "Current Birds",
+            minWidth: 145,
+            editable: false,
+            valueFormatter: numberFormatter,
+            cellClass: "calculated-cell",
+          },
+          {
+            field: "cumulativeMortalityPct",
+            headerName: "Cum Mortality %",
+            minWidth: 160,
+            editable: false,
+            valueFormatter: pctFormatter,
+            cellClass: "calculated-cell",
+          },
+          {
+            field: "bodyweightVariancePct",
+            headerName: "BW Variance %",
+            minWidth: 150,
+            editable: false,
+            valueFormatter: pctFormatter,
+            cellClass: "calculated-cell",
+          },
+          {
+            field: "transferReadiness",
+            headerName: "Transfer Readiness",
+            minWidth: 190,
+            editable: false,
+            cellRenderer: ReadinessPill,
+            cellClass: "center-cell",
+          },
+        ],
+      },
+      {
+        headerName: "Workflow",
+        marryChildren: true,
+        headerClass: "group-header group-workflow",
+        children: [
+          {
+            field: "status",
+            headerName: "Status",
+            minWidth: 145,
+            editable: true,
+            cellEditor: "agSelectCellEditor",
+            cellEditorParams: {
+              values: [
+                "Draft",
+                "Planned",
+                "Placed",
+                "Growing",
+                "Transfer Due",
+                "Transferred",
+                "Closed",
+              ],
+            },
+            cellRenderer: StatusPill,
+            cellClass: "editable-cell",
+          },
+        ],
+      },
+    ],
+    [],
+  );
+
+  const onGridReady = useCallback(
+    (params: GridReadyEvent) => {
+      setTimeout(() => {
+        params.api.sizeColumnsToFit();
+
+        const allColumnIds: string[] = [];
+        params.api
+          .getColumns()
+          ?.forEach((column) =>
+            allColumnIds.push(column.getId()),
+          );
+
+        params.api.autoSizeColumns(
+          allColumnIds,
+          false,
+        );
+      }, 100);
+    },
+    [],
+  );
+
+  const autosizeColumns = useCallback(() => {
+    const api = gridRef.current?.api;
+    if (!api) return;
+
+    const allColumnIds: string[] = [];
+
+    api
+      .getColumns()
+      ?.forEach((column) =>
+        allColumnIds.push(column.getId()),
+      );
+
+    api.autoSizeColumns(allColumnIds, false);
+  }, []);
 
   const kpis = useMemo(() => {
+    const active = rows.filter((row) =>
+      ["planned", "placed", "growing"].includes(
+        row.status.toLowerCase(),
+      ),
+    ).length;
+
+    const birdsPlaced = rows.reduce(
+      (sum, row) =>
+        sum + Number(row.birdsPlaced ?? 0),
+      0,
+    );
+
+    const transferDue = rows.filter((row) =>
+      row.status
+        .toLowerCase()
+        .includes("transfer due"),
+    ).length;
+
+    const reviewRequired = rows.filter((row) =>
+      row.transferReadiness
+        .toLowerCase()
+        .includes("review"),
+    ).length;
+
     return {
-      total: rows.length,
-      active: rows.filter((row) =>
-        ["planned", "placed", "growing"].includes(row.status.toLowerCase()),
-      ).length,
-      birds: rows.reduce((sum, row) => sum + row.birdsPlaced, 0),
-      transfers: rows.filter((row) =>
-        row.status.toLowerCase().includes("transfer"),
-      ).length,
+      active,
+      birdsPlaced,
+      transferDue,
+      reviewRequired,
     };
   }, [rows]);
 
   return (
-    <div className="page-shell">
-      <OviCoreSidebar menu={getSidebarMenu("layers")} />
+    <OviCoreShell module="layers">
+      <OviCorePageHeader
+        title="Rearing Flock Register"
+        subtitle="Manage commercial pullet flocks by farm, shed, breed, placement and transfer destination."
+      >
+        <div className="top-actions">
+          <input
+            className="search-box"
+            value={searchText}
+            onChange={(event) =>
+              setSearchText(event.target.value)
+            }
+            placeholder="Search farm, shed, flock or breed"
+          />
+          <div className="avatar">JJ</div>
+        </div>
+      </OviCorePageHeader>
 
-      <main className="main-panel">
-        <OviCoreModuleHeader
-          eyebrow="OviCore Layer Rearing"
-          title="Rearing Flock Register"
-          description="Create and manage commercial pullet flocks, placement details and planned transfers."
-          actions={[
-            {
-              label: "Rearing Overview",
-              href: "/layers/rearing",
-              type: "home",
-            },
-          ]}
-        />
+      <OviCoreKpiStrip
+        items={[
+          {
+            label: "Planned / Active Flocks",
+            value: kpis.active,
+          },
+          {
+            label: "Birds Placed",
+            value: kpis.birdsPlaced.toLocaleString(),
+          },
+          {
+            label: "Transfers Due",
+            value: kpis.transferDue,
+          },
+          {
+            label: "Review Required",
+            value: kpis.reviewRequired,
+          },
+        ]}
+      />
 
-        <section className="flock-toolbar">
-          <div>
-            <p className="eyebrow">Commercial Pullet Flocks</p>
-            <h2>Rearing flock register</h2>
-            <p>
-              The backend connection and add-flock form are the next development
-              step. This page establishes the final register structure first.
-            </p>
-          </div>
-
-          <div className="toolbar-actions">
-            <input
-              value={searchText}
-              onChange={(event) => setSearchText(event.target.value)}
-              placeholder="Search farm, shed, flock or breed"
-            />
-            <button type="button" disabled>
-              Add rearing flock
+      <OviCoreActionBar
+        left={
+          <span
+            className={
+              dirtyCount > 0
+                ? "ovicore-pill ovicore-pill-amber"
+                : "ovicore-pill ovicore-pill-green"
+            }
+          >
+            {dirtyCount > 0
+              ? `${dirtyCount} unsaved row${
+                  dirtyCount === 1 ? "" : "s"
+                }`
+              : "All rows saved"}
+          </span>
+        }
+        right={
+          <>
+            <button
+              type="button"
+              className="ovicore-btn ovicore-btn-primary"
+              disabled
+              title="Enabled when the Layer Rearing backend is connected."
+            >
+              New rearing flock
             </button>
+
+            <button
+              type="button"
+              className="ovicore-btn"
+              disabled
+            >
+              Duplicate selected
+            </button>
+
+            <button
+              type="button"
+              className="ovicore-btn ovicore-btn-danger"
+              disabled
+            >
+              Delete selected
+            </button>
+
+            <button
+              type="button"
+              className="ovicore-btn"
+              onClick={autosizeColumns}
+            >
+              Autosize
+            </button>
+
+            <button
+              type="button"
+              className="ovicore-btn"
+              disabled
+            >
+              Reload
+            </button>
+
+            <button
+              type="button"
+              className="ovicore-btn ovicore-btn-primary"
+              disabled={saving || dirtyCount === 0}
+            >
+              Save dirty rows
+            </button>
+          </>
+        }
+      />
+
+      <OviCoreTableCard
+        title="Layer Rearing Flock Entry"
+        subtitle="Excel-style flock register with editable yellow cells, calculated review fields and transfer planning."
+      >
+        <div className="formula-bar">
+          <div className="formula-name">
+            Flock lifecycle
           </div>
-        </section>
 
-        <section className="flock-kpis">
-          <div>
-            <span>Total Flocks</span>
-            <strong>{kpis.total}</strong>
-            <p>All commercial rearing flocks.</p>
+          <div className="formula-text">
+            Placement and breed details establish the
+            rearing flock. Daily performance will then
+            calculate current birds, mortality, weight
+            variance and transfer readiness.
           </div>
-          <div>
-            <span>Planned / Active</span>
-            <strong>{kpis.active}</strong>
-            <p>Flocks planned, placed or growing.</p>
-          </div>
-          <div>
-            <span>Birds Placed</span>
-            <strong>{kpis.birds.toLocaleString()}</strong>
-            <p>Total initial placements.</p>
-          </div>
-          <div>
-            <span>Transfers Due</span>
-            <strong>{kpis.transfers}</strong>
-            <p>Flocks approaching transfer.</p>
-          </div>
-        </section>
+        </div>
 
-        <section className="register-card">
-          <div className="register-head">
-            <div>
-              <h3>Layer Rearing Flocks</h3>
-              <p>
-                Farm, shed, breed, placement and destination transfer details.
-              </p>
-            </div>
-
-            <Link href="/layers/rearing">Back to overview</Link>
-          </div>
-
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Farm</th>
-                  <th>Shed</th>
-                  <th>Flock Code</th>
-                  <th>Breed</th>
-                  <th>Placement Date</th>
-                  <th>Birds Placed</th>
-                  <th>Planned Transfer</th>
-                  <th>Destination</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {visibleRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={9}>
-                      <div className="empty-state">
-                        <strong>No rearing flocks loaded yet</strong>
-                        <span>
-                          Next we will add the database model, API endpoints and
-                          create-flock form.
-                        </span>
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  visibleRows.map((row) => (
-                    <tr key={row.id}>
-                      <td>{row.farm}</td>
-                      <td>{row.shed}</td>
-                      <td>{row.flockCode}</td>
-                      <td>{row.breed}</td>
-                      <td>{row.placementDate}</td>
-                      <td>{row.birdsPlaced.toLocaleString()}</td>
-                      <td>{row.plannedTransferDate}</td>
-                      <td>{row.destination}</td>
-                      <td>
-                        <span className="status-pill">{row.status}</span>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <style jsx>{`
-          .flock-toolbar {
-            margin: 14px 0;
-            padding: 18px 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 20px;
-            border: 1px solid #d8e8df;
-            border-radius: 16px;
-            background: #fff;
-            box-shadow: 0 10px 24px rgba(19, 70, 51, 0.07);
-          }
-
-          .eyebrow {
-            margin: 0 0 5px;
-            color: #19744e;
-            font-size: 9px;
-            font-weight: 950;
-            letter-spacing: 0.12em;
-            text-transform: uppercase;
-          }
-
-          .flock-toolbar h2 {
-            margin: 0;
-            color: #123e2f;
-            font-size: 24px;
-            letter-spacing: -0.035em;
-          }
-
-          .flock-toolbar p:last-child {
-            margin: 6px 0 0;
-            color: #687e74;
-            font-size: 11px;
-          }
-
-          .toolbar-actions {
-            display: flex;
-            gap: 8px;
-          }
-
-          .toolbar-actions input {
-            width: min(330px, 32vw);
-            height: 40px;
-            padding: 0 12px;
-            border: 1px solid #ceded5;
-            border-radius: 9px;
-            background: #fbfdfc;
-          }
-
-          .toolbar-actions button {
-            height: 40px;
-            padding: 0 14px;
-            border: 0;
-            border-radius: 9px;
-            background: #0d704b;
-            color: #fff;
-            font-size: 11px;
-            font-weight: 900;
-            opacity: 0.55;
-          }
-
-          .flock-kpis {
-            display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
-            gap: 10px;
-            margin-bottom: 14px;
-          }
-
-          .flock-kpis > div {
-            padding: 15px;
-            border: 1px solid #dce9e2;
-            border-radius: 13px;
-            background: #fff;
-          }
-
-          .flock-kpis span {
-            color: #60756c;
-            font-size: 9px;
-            font-weight: 900;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-          }
-
-          .flock-kpis strong {
-            display: block;
-            margin-top: 5px;
-            color: #0c573d;
-            font-size: 24px;
-          }
-
-          .flock-kpis p {
-            margin: 4px 0 0;
-            color: #71847c;
-            font-size: 10px;
-          }
-
-          .register-card {
-            overflow: hidden;
-            border: 1px solid #d9e8e0;
-            border-radius: 16px;
-            background: #fff;
-            box-shadow: 0 10px 24px rgba(19, 70, 51, 0.07);
-          }
-
-          .register-head {
-            padding: 16px 18px;
-            display: flex;
-            justify-content: space-between;
-            gap: 20px;
-            border-bottom: 1px solid #e5eee9;
-          }
-
-          .register-head h3 {
-            margin: 0;
-            color: #123e2f;
-            font-size: 18px;
-          }
-
-          .register-head p {
-            margin: 4px 0 0;
-            color: #6a8076;
-            font-size: 10px;
-          }
-
-          .register-head a {
-            color: #0d704b;
-            font-size: 11px;
-            font-weight: 900;
-          }
-
-          .table-scroll {
-            overflow-x: auto;
-          }
-
-          table {
-            width: 100%;
-            min-width: 1040px;
-            border-collapse: collapse;
-          }
-
-          th {
-            padding: 11px 12px;
-            background: #0b4b38;
-            color: #fff;
-            font-size: 9px;
-            font-weight: 900;
-            letter-spacing: 0.06em;
-            text-align: left;
-            text-transform: uppercase;
-          }
-
-          td {
-            padding: 12px;
-            border-bottom: 1px solid #e8efeb;
-            color: #315447;
-            font-size: 11px;
-          }
-
-          .empty-state {
-            min-height: 210px;
-            display: grid;
-            place-content: center;
-            gap: 6px;
-            text-align: center;
-          }
-
-          .empty-state strong {
-            color: #174734;
-            font-size: 16px;
-          }
-
-          .empty-state span {
-            color: #71847c;
-            font-size: 11px;
-          }
-
-          .status-pill {
-            padding: 5px 8px;
-            border-radius: 999px;
-            background: #eaf7ef;
-            color: #24734f;
-            font-size: 9px;
-            font-weight: 900;
-          }
-
-          @media (max-width: 950px) {
-            .flock-toolbar {
-              align-items: flex-start;
-              flex-direction: column;
+        <div className="ag-theme-quartz broiler-grid demand-planner-grid">
+          <AgGridReact<LayerRearingFlockRow>
+            ref={gridRef}
+            rowData={rows}
+            columnDefs={columnDefs}
+            defaultColDef={defaultColDef}
+            getRowId={(params) =>
+              String(params.data.id)
             }
+            quickFilterText={searchText}
+            animateRows
+            suppressDragLeaveHidesColumns
+            stopEditingWhenCellsLoseFocus
+            rowSelection="single"
+            suppressRowClickSelection={false}
+            rowHeight={38}
+            headerHeight={38}
+            groupHeaderHeight={34}
+            onGridReady={onGridReady}
+            onFirstDataRendered={autosizeColumns}
+          />
+        </div>
+      </OviCoreTableCard>
+    </OviCoreShell>
+  );
+}
 
-            .toolbar-actions {
-              width: 100%;
-            }
-
-            .toolbar-actions input {
-              width: 100%;
-            }
-
-            .flock-kpis {
-              grid-template-columns: repeat(2, minmax(0, 1fr));
-            }
-          }
-
-          @media (max-width: 620px) {
-            .flock-kpis {
-              grid-template-columns: 1fr;
-            }
-          }
-        `}</style>
-      </main>
-    </div>
+export default function LayerRearingFlockRegisterPage() {
+  return (
+    <Suspense fallback={null}>
+      <LayerRearingFlockRegisterContent />
+    </Suspense>
   );
 }
