@@ -34,6 +34,7 @@ type FarmRow = {
   company_id: number;
   farm_name: string;
   farm_code: string | null;
+  farm_type: string;
   active: boolean;
 };
 
@@ -105,6 +106,26 @@ function activeFormatter(params: ValueFormatterParams) {
   return params.value ? "Active" : "Inactive";
 }
 
+function isBroilerFarm(farm: FarmRow | null | undefined) {
+  return farm?.farm_type === "broiler";
+}
+
+function farmTypeLabel(value?: string | null) {
+  const labels: Record<string, string> = {
+    broiler: "Broiler",
+    breeder_rearing: "Breeder Rearing",
+    breeder_layers: "Breeder Production",
+    layer_rearing: "Commercial Rearing",
+    commercial_layers: "Commercial Layers",
+    hatchery: "Hatchery",
+    feed_mill: "Feed Mill",
+    grading: "Grading",
+    processing: "Processing",
+  };
+
+  return value ? labels[value] ?? value : "Not classified";
+}
+
 export default function AdminShedRegisterPage() {
   const gridRef = useRef<AgGridReact<ShedRow>>(null);
 
@@ -127,6 +148,8 @@ export default function AdminShedRegisterPage() {
   const selectedFarm = useMemo(() => {
     return farms.find((farm) => farm.id === selectedFarmId) ?? null;
   }, [farms, selectedFarmId]);
+
+  const showBroilerFields = isBroilerFarm(selectedFarm);
 
   const fetchCompanies = useCallback(async () => {
     const response = await authenticatedFetch(COMPANIES_ENDPOINT, {
@@ -267,13 +290,13 @@ export default function AdminShedRegisterPage() {
   );
 
   const averageDefaultDensity = useMemo(() => {
-    if (rows.length === 0) return "0.00";
+    if (!showBroilerFields || rows.length === 0) return "Not applicable";
 
     return (
       rows.reduce((sum, row) => sum + Number(row.default_density_kg_m2 ?? 0), 0) /
       rows.length
     ).toFixed(2);
-  }, [rows]);
+  }, [rows, showBroilerFields]);
 
   const defaultColDef = useMemo<ColDef<ShedRow>>(
     () => ({
@@ -292,84 +315,96 @@ export default function AdminShedRegisterPage() {
   }, [farms]);
 
   const columnDefs = useMemo<ColDef<ShedRow>[]>(
-    () => [
-      {
-        field: "farm_name",
-        headerName: "Farm",
-        editable: true,
-        minWidth: 220,
-        cellEditor: "agSelectCellEditor",
-        cellEditorParams: {
-          values: farmNameOptions,
+    () => {
+      const columns: ColDef<ShedRow>[] = [
+        {
+          field: "farm_name",
+          headerName: "Farm",
+          editable: true,
+          minWidth: 220,
+          cellEditor: "agSelectCellEditor",
+          cellEditorParams: {
+            values: farmNameOptions,
+          },
+          cellClass: "editable-cell",
         },
-        cellClass: "editable-cell",
-      },
-      {
-        field: "shed_name",
-        headerName: "Shed Name",
-        editable: true,
-        minWidth: 190,
-        cellClass: "editable-cell",
-      },
-      {
-        field: "shed_code",
-        headerName: "Shed Code",
-        editable: true,
-        minWidth: 145,
-        cellClass: "editable-cell",
-      },
-      {
-        field: "floor_area_m2",
-        headerName: "Floor Area m²",
-        editable: true,
-        minWidth: 155,
-        valueFormatter: numberFormatter,
-        cellClass: "editable-cell",
-      },
-      {
-        field: "default_density_kg_m2",
-        headerName: "Default kg/m²",
-        editable: true,
-        minWidth: 155,
-        valueFormatter: decimalFormatter,
-        cellClass: "editable-cell",
-      },
-      {
-        field: "default_target_lw_kg",
-        headerName: "Target LW kg",
-        editable: true,
-        minWidth: 155,
-        valueFormatter: decimalFormatter,
-        cellClass: "editable-cell",
-      },
-      {
-        field: "default_growout_days",
-        headerName: "Growout Days",
-        editable: true,
-        minWidth: 150,
-        valueFormatter: numberFormatter,
-        cellClass: "editable-cell",
-      },
-      {
-        field: "company_id",
-        headerName: "Company ID",
-        editable: false,
-        minWidth: 135,
-      },
-      {
-        field: "active",
-        headerName: "Status",
-        editable: true,
-        minWidth: 135,
-        valueFormatter: activeFormatter,
-        cellEditor: "agSelectCellEditor",
-        cellEditorParams: {
-          values: [true, false],
+        {
+          field: "shed_name",
+          headerName: "Shed Name",
+          editable: true,
+          minWidth: 190,
+          cellClass: "editable-cell",
         },
-        cellClass: "editable-cell",
-      },
-    ],
-    [farmNameOptions]
+        {
+          field: "shed_code",
+          headerName: "Shed Code",
+          editable: true,
+          minWidth: 145,
+          cellClass: "editable-cell",
+        },
+        {
+          field: "floor_area_m2",
+          headerName: "Floor Area m²",
+          editable: true,
+          minWidth: 155,
+          valueFormatter: numberFormatter,
+          cellClass: "editable-cell",
+        },
+      ];
+
+      if (showBroilerFields) {
+        columns.push(
+          {
+            field: "default_density_kg_m2",
+            headerName: "Default kg/m²",
+            editable: true,
+            minWidth: 155,
+            valueFormatter: decimalFormatter,
+            cellClass: "editable-cell",
+          },
+          {
+            field: "default_target_lw_kg",
+            headerName: "Target LW kg",
+            editable: true,
+            minWidth: 155,
+            valueFormatter: decimalFormatter,
+            cellClass: "editable-cell",
+          },
+          {
+            field: "default_growout_days",
+            headerName: "Growout Days",
+            editable: true,
+            minWidth: 150,
+            valueFormatter: numberFormatter,
+            cellClass: "editable-cell",
+          },
+        );
+      }
+
+      columns.push(
+        {
+          field: "company_id",
+          headerName: "Company ID",
+          editable: false,
+          minWidth: 135,
+        },
+        {
+          field: "active",
+          headerName: "Status",
+          editable: true,
+          minWidth: 135,
+          valueFormatter: activeFormatter,
+          cellEditor: "agSelectCellEditor",
+          cellEditorParams: {
+            values: [true, false],
+          },
+          cellClass: "editable-cell",
+        },
+      );
+
+      return columns;
+    },
+    [farmNameOptions, showBroilerFields]
   );
 
   const onGridReady = useCallback((params: GridReadyEvent) => {
@@ -442,9 +477,17 @@ export default function AdminShedRegisterPage() {
           shed_name: "New Shed",
           shed_code: "",
           floor_area_m2: 2000,
-          default_density_kg_m2: 38,
-          default_target_lw_kg: 2.4,
-          default_growout_days: 42,
+
+          // These fields remain required by the shared shed table.
+          // They are operational only for Broiler farms and are hidden
+          // elsewhere until module-specific shed settings are added.
+          default_density_kg_m2:
+            targetFarm.farm_type === "broiler" ? 38 : 1,
+          default_target_lw_kg:
+            targetFarm.farm_type === "broiler" ? 2.4 : 1,
+          default_growout_days:
+            targetFarm.farm_type === "broiler" ? 42 : 1,
+
           active: true,
         }),
       });
@@ -461,7 +504,11 @@ export default function AdminShedRegisterPage() {
       );
     } catch (error) {
       console.error(error);
-      alert("Could not create shed.");
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Could not create shed."
+      );
     } finally {
       setSaving(false);
     }
@@ -515,22 +562,33 @@ export default function AdminShedRegisterPage() {
           return;
         }
 
-        if (!row.default_density_kg_m2 || Number(row.default_density_kg_m2) <= 0) {
-          alert(`Default density must be greater than 0 for ${row.shed_name}.`);
-          setSaving(false);
-          return;
-        }
+        if (selectedRowFarm.farm_type === "broiler") {
+          if (
+            !row.default_density_kg_m2 ||
+            Number(row.default_density_kg_m2) <= 0
+          ) {
+            alert(`Default density must be greater than 0 for ${row.shed_name}.`);
+            setSaving(false);
+            return;
+          }
 
-        if (!row.default_target_lw_kg || Number(row.default_target_lw_kg) <= 0) {
-          alert(`Target liveweight must be greater than 0 for ${row.shed_name}.`);
-          setSaving(false);
-          return;
-        }
+          if (
+            !row.default_target_lw_kg ||
+            Number(row.default_target_lw_kg) <= 0
+          ) {
+            alert(`Target liveweight must be greater than 0 for ${row.shed_name}.`);
+            setSaving(false);
+            return;
+          }
 
-        if (!row.default_growout_days || Number(row.default_growout_days) <= 0) {
-          alert(`Growout days must be greater than 0 for ${row.shed_name}.`);
-          setSaving(false);
-          return;
+          if (
+            !row.default_growout_days ||
+            Number(row.default_growout_days) <= 0
+          ) {
+            alert(`Growout days must be greater than 0 for ${row.shed_name}.`);
+            setSaving(false);
+            return;
+          }
         }
 
         const response = await authenticatedFetch(`${SHEDS_ENDPOINT}/${id}`, {
@@ -543,9 +601,18 @@ export default function AdminShedRegisterPage() {
             shed_name: row.shed_name,
             shed_code: row.shed_code ?? "",
             floor_area_m2: Number(row.floor_area_m2),
-            default_density_kg_m2: Number(row.default_density_kg_m2),
-            default_target_lw_kg: Number(row.default_target_lw_kg),
-            default_growout_days: Number(row.default_growout_days),
+            default_density_kg_m2:
+              selectedRowFarm.farm_type === "broiler"
+                ? Number(row.default_density_kg_m2)
+                : 1,
+            default_target_lw_kg:
+              selectedRowFarm.farm_type === "broiler"
+                ? Number(row.default_target_lw_kg)
+                : 1,
+            default_growout_days:
+              selectedRowFarm.farm_type === "broiler"
+                ? Number(row.default_growout_days)
+                : 1,
             active: row.active,
           }),
         });
@@ -570,7 +637,11 @@ export default function AdminShedRegisterPage() {
       alert("Sheds saved.");
     } catch (error) {
       console.error(error);
-      alert("Could not save sheds.");
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Could not save sheds."
+      );
     } finally {
       setSaving(false);
     }
@@ -641,12 +712,18 @@ export default function AdminShedRegisterPage() {
           {
             label: "Selected Farm",
             value: selectedFarm?.farm_name ?? "Auto",
+            helper: farmTypeLabel(selectedFarm?.farm_type),
           },
           { label: "Total Sheds", value: rows.length },
           { label: "Active", value: activeShedCount },
           { label: "Inactive", value: inactiveShedCount },
           { label: "Total Floor Area", value: totalFloorArea.toLocaleString() },
-          { label: "Avg Density", value: averageDefaultDensity },
+          {
+            label: showBroilerFields ? "Avg Density" : "Farm Type",
+            value: showBroilerFields
+              ? averageDefaultDensity
+              : farmTypeLabel(selectedFarm?.farm_type),
+          },
         ]}
       />
 
@@ -767,7 +844,11 @@ export default function AdminShedRegisterPage() {
 
       <OviCoreTableCard
         title="Sheds"
-        subtitle="One shared shed register controlled through Global Admin setup. Sheds are filtered by the selected company and selected farm."
+        subtitle={
+          showBroilerFields
+            ? "Broiler sheds include density, target liveweight and growout defaults."
+            : "This farm uses module-specific flock settings. Broiler density, target liveweight and growout fields are hidden."
+        }
       >
         <div className="ag-theme-quartz broiler-grid">
           <AgGridReact<ShedRow>
