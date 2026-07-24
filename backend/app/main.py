@@ -268,38 +268,6 @@ def ensure_module_access_schema() -> None:
         )
 
 
-
-def cleanup_invalid_layer_rearing_placeholders(db: Session) -> int:
-    """
-    Remove only automatically generated Draft placeholders that were
-    accidentally created against a non-Commercial-Rearing farm.
-
-    User-created flock codes and operational records are never touched.
-    """
-    invalid_rows = (
-        db.query(models.LayerRearingFlock)
-        .join(
-            BroilerFarm,
-            BroilerFarm.id == models.LayerRearingFlock.farm_id,
-        )
-        .filter(
-            models.LayerRearingFlock.status == "Draft",
-            models.LayerRearingFlock.flock_code.like("LR-NEW-%"),
-            BroilerFarm.farm_type != "layer_rearing",
-        )
-        .all()
-    )
-
-    removed = len(invalid_rows)
-
-    for row in invalid_rows:
-        db.delete(row)
-
-    if removed:
-        db.commit()
-
-    return removed
-
 def repair_shed_company_links(db: Session) -> int:
     """
     Align every shed's company_id with its parent farm.
@@ -355,7 +323,6 @@ def startup():
 
     try:
         repair_shed_company_links(db)
-        cleanup_invalid_layer_rearing_placeholders(db)
 
         if should_seed_demo_data:
             seed_demo_data(db)
@@ -1084,7 +1051,6 @@ def delete_broiler_farm(
 def list_broiler_sheds(
     company_id: int | None = None,
     farm_id: int | None = None,
-    farm_type: str | None = None,
     current_user: models.AppUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -1107,31 +1073,6 @@ def list_broiler_sheds(
             == resolved_company_id,
         )
     )
-
-    if farm_type is not None:
-        normalised_farm_type = farm_type.strip().lower()
-
-        allowed_farm_types = {
-            "broiler",
-            "breeder_rearing",
-            "breeder_layers",
-            "layer_rearing",
-            "commercial_layers",
-            "hatchery",
-            "feed_mill",
-            "grading",
-            "processing",
-        }
-
-        if normalised_farm_type not in allowed_farm_types:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid farm_type filter",
-            )
-
-        query = query.filter(
-            BroilerFarm.farm_type == normalised_farm_type
-        )
 
     if farm_id is not None:
         require_farm_access(
@@ -3242,7 +3183,6 @@ def _validate_layer_rearing_location(
     *,
     require_user_farm_access: bool,
     location_label: str,
-    required_farm_type: str,
 ) -> tuple[BroilerFarm, BroilerShed]:
     farm = (
         db.query(BroilerFarm)
@@ -3250,7 +3190,6 @@ def _validate_layer_rearing_location(
             BroilerFarm.id == farm_id,
             BroilerFarm.company_id == company_id,
             BroilerFarm.active == True,
-            BroilerFarm.farm_type == required_farm_type,
         )
         .first()
     )
@@ -3258,10 +3197,7 @@ def _validate_layer_rearing_location(
     if farm is None:
         raise HTTPException(
             status_code=404,
-            detail=(
-                f"{location_label} farm was not found, is inactive, "
-                f"or is not classified as '{required_farm_type}'."
-            ),
+            detail=f"{location_label} farm was not found or is inactive",
         )
 
     if (
@@ -3327,7 +3263,6 @@ def _validate_layer_rearing_destination(
         destination_shed_id,
         require_user_farm_access=False,
         location_label="Destination",
-        required_farm_type="commercial_layers",
     )
 
     return destination_farm_id, destination_shed_id
@@ -3349,10 +3284,6 @@ def list_layer_rearing_flocks(
 
     query = (
         db.query(models.LayerRearingFlock)
-        .join(
-            BroilerFarm,
-            BroilerFarm.id == models.LayerRearingFlock.farm_id,
-        )
         .options(
             joinedload(models.LayerRearingFlock.farm),
             joinedload(models.LayerRearingFlock.shed),
@@ -3361,9 +3292,7 @@ def list_layer_rearing_flocks(
         )
         .filter(
             models.LayerRearingFlock.company_id
-            == resolved_company_id,
-            BroilerFarm.company_id == resolved_company_id,
-            BroilerFarm.farm_type == "layer_rearing",
+            == resolved_company_id
         )
     )
 
@@ -3430,7 +3359,6 @@ def create_layer_rearing_flock(
         payload.shed_id,
         require_user_farm_access=True,
         location_label="Rearing",
-        required_farm_type="layer_rearing",
     )
 
     destination_farm_id, destination_shed_id = (
@@ -3654,7 +3582,6 @@ def update_layer_rearing_flock(
         target_shed_id,
         require_user_farm_access=True,
         location_label="Rearing",
-        required_farm_type="layer_rearing",
     )
 
     destination_farm_id = data.get(

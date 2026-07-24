@@ -620,3 +620,112 @@ class LayerRearingFlockOut(BaseModel):
     last_saved_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# ---------------------------------------------------------------------
+# Commercial Rearing Daily House Card
+# ---------------------------------------------------------------------
+
+class LayerRearingDailyPerformanceCreate(BaseModel):
+    company_id: int
+    flock_id: int
+    entry_date: date
+    age_days: Optional[int] = None
+
+    opening_birds: Optional[int] = None
+
+    mortality_front: Optional[int] = 0
+    mortality_middle: Optional[int] = 0
+    mortality_back: Optional[int] = 0
+    mortality_other: Optional[int] = 0
+    mortality_birds: Optional[int] = 0
+
+    cull_legs: Optional[int] = 0
+    cull_runts: Optional[int] = 0
+    cull_beak: Optional[int] = 0
+    cull_other: Optional[int] = 0
+    cull_birds: Optional[int] = 0
+
+    closing_birds: Optional[int] = None
+
+    feed_kg: Optional[float] = None
+    water_litres: Optional[float] = None
+    avg_weight_kg: Optional[float] = None
+    body_weight_kg: Optional[float] = None
+
+    notes: Optional[str] = None
+
+
+class LayerRearingDailyPerformancePatch(BaseModel):
+    entry_date: Optional[date] = None
+    age_days: Optional[int] = None
+
+    opening_birds: Optional[int] = None
+
+    mortality_front: Optional[int] = None
+    mortality_middle: Optional[int] = None
+    mortality_back: Optional[int] = None
+    mortality_other: Optional[int] = None
+    mortality_birds: Optional[int] = None
+
+    cull_legs: Optional[int] = None
+    cull_runts: Optional[int] = None
+    cull_beak: Optional[int] = None
+    cull_other: Optional[int] = None
+    cull_birds: Optional[int] = None
+
+    closing_birds: Optional[int] = None
+
+    feed_kg: Optional[float] = None
+    water_litres: Optional[float] = None
+    avg_weight_kg: Optional[float] = None
+    body_weight_kg: Optional[float] = None
+
+    notes: Optional[str] = None
+
+
+class LayerRearingDailyPerformanceOut(BaseModel):
+    id: int
+    company_id: int
+    flock_id: int
+
+    farm_name: Optional[str] = None
+    shed_name: Optional[str] = None
+    flock_code: Optional[str] = None
+    breed: Optional[str] = None
+
+    entry_date: date
+    age_days: Optional[int] = None
+
+    opening_birds: Optional[int] = None
+
+    mortality_front: int = 0
+    mortality_middle: int = 0
+    mortality_back: int = 0
+    mortality_other: int = 0
+    mortality_birds: int = 0
+
+    cull_legs: int = 0
+    cull_runts: int = 0
+    cull_beak: int = 0
+    cull_other: int = 0
+    cull_birds: int = 0
+
+    closing_birds: Optional[int] = None
+
+    feed_kg: Optional[float] = None
+    water_litres: Optional[float] = None
+    avg_weight_kg: Optional[float] = None
+    body_weight_kg: Optional[float] = None
+
+    daily_mortality_pct: Optional[float] = None
+    cumulative_mortality_birds: Optional[int] = None
+    cumulative_mortality_pct: Optional[float] = None
+    feed_per_bird_g: Optional[float] = None
+    average_daily_gain_g: Optional[float] = None
+
+    notes: Optional[str] = None
+    last_saved_by: Optional[str] = None
+    last_saved_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)

@@ -436,10 +436,81 @@ class LayerRearingFlock(Base):
         foreign_keys=[destination_shed_id],
     )
 
+    daily_performance = relationship(
+        "LayerRearingDailyPerformance",
+        back_populates="flock",
+        cascade="all, delete-orphan",
+    )
+
     __table_args__ = (
         UniqueConstraint(
             "company_id",
             "flock_code",
             name="uq_company_layer_rearing_flock_code",
+        ),
+    )
+
+
+class LayerRearingDailyPerformance(Base):
+    __tablename__ = "layer_rearing_daily_performance"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    company_id = Column(
+        Integer,
+        ForeignKey("companies.id"),
+        nullable=False,
+        index=True,
+    )
+    flock_id = Column(
+        Integer,
+        ForeignKey("layer_rearing_flocks.id"),
+        nullable=False,
+        index=True,
+    )
+
+    entry_date = Column(Date, nullable=False)
+    age_days = Column(Integer, nullable=True)
+
+    opening_birds = Column(Integer, nullable=True)
+
+    mortality_front = Column(Integer, nullable=False, default=0)
+    mortality_middle = Column(Integer, nullable=False, default=0)
+    mortality_back = Column(Integer, nullable=False, default=0)
+    mortality_other = Column(Integer, nullable=False, default=0)
+    mortality_birds = Column(Integer, nullable=False, default=0)
+
+    cull_legs = Column(Integer, nullable=False, default=0)
+    cull_runts = Column(Integer, nullable=False, default=0)
+    cull_beak = Column(Integer, nullable=False, default=0)
+    cull_other = Column(Integer, nullable=False, default=0)
+    cull_birds = Column(Integer, nullable=False, default=0)
+
+    closing_birds = Column(Integer, nullable=True)
+
+    feed_kg = Column(Numeric(12, 2), nullable=True)
+    water_litres = Column(Numeric(12, 2), nullable=True)
+    avg_weight_kg = Column(Numeric(8, 3), nullable=True)
+
+    notes = Column(Text, nullable=True)
+
+    last_saved_by = Column(String(255), nullable=True)
+    last_saved_at = Column(
+        DateTime,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+    created_at = Column(DateTime, server_default=func.now())
+
+    flock = relationship(
+        "LayerRearingFlock",
+        back_populates="daily_performance",
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "flock_id",
+            "entry_date",
+            name="uq_layer_rearing_flock_entry_date",
         ),
     )
