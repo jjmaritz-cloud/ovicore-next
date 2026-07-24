@@ -105,30 +105,35 @@ function isSectionVisible(
   );
 }
 
-function isActiveRoute(
+function normaliseRoute(
+  value: string
+) {
+  const cleanValue =
+    value.split("?")[0].split("#")[0];
+
+  if (
+    cleanValue.length > 1 &&
+    cleanValue.endsWith("/")
+  ) {
+    return cleanValue.slice(0, -1);
+  }
+
+  return cleanValue;
+}
+
+function isRouteMatch(
   pathname: string,
   href: string
 ) {
-  const cleanHref = href.split("?")[0];
+  const cleanPathname =
+    normaliseRoute(pathname);
 
-  if (cleanHref === "/home") {
-    return pathname === "/home";
-  }
-
-  if (
-    cleanHref === "/breeders" ||
-    cleanHref === "/broilers" ||
-    cleanHref === "/hatchery" ||
-    cleanHref === "/layers" ||
-    cleanHref === "/processing" ||
-    cleanHref === "/admin"
-  ) {
-    return pathname === cleanHref;
-  }
+  const cleanHref =
+    normaliseRoute(href);
 
   return (
-    pathname === cleanHref ||
-    pathname.startsWith(
+    cleanPathname === cleanHref ||
+    cleanPathname.startsWith(
       `${cleanHref}/`
     )
   );
@@ -212,6 +217,35 @@ export default function OviCoreSidebar({
   }, [
     menu.sections,
     role,
+  ]);
+
+  const activeMenuHref = useMemo(() => {
+    const matchingItems =
+      visibleSections
+        .flatMap(
+          (section) =>
+            section.items
+        )
+        .filter((item) =>
+          isRouteMatch(
+            pathname,
+            item.href
+          )
+        )
+        .sort(
+          (left, right) =>
+            normaliseRoute(
+              right.href
+            ).length -
+            normaliseRoute(
+              left.href
+            ).length
+        );
+
+    return matchingItems[0]?.href ?? null;
+  }, [
+    pathname,
+    visibleSections,
   ]);
 
   const loadCurrentUser =
@@ -829,10 +863,8 @@ export default function OviCoreSidebar({
                         );
 
                       const active =
-                        isActiveRoute(
-                          pathname,
-                          item.href
-                        );
+                        activeMenuHref ===
+                        item.href;
 
                       return (
                         <Link
