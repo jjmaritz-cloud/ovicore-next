@@ -40,7 +40,7 @@ type RearingFlock = {
   id: number;
   farm_name?: string;
   shed_name?: string;
-  cycle_code?: string;
+  flock_code?: string;
   placement_date?: string;
   hatch_date?: string;
   planned_transfer_date?: string;
