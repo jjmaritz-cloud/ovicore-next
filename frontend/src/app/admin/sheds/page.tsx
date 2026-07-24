@@ -712,7 +712,6 @@ export default function AdminShedRegisterPage() {
           {
             label: "Selected Farm",
             value: selectedFarm?.farm_name ?? "Auto",
-            helper: farmTypeLabel(selectedFarm?.farm_type),
           },
           { label: "Total Sheds", value: rows.length },
           { label: "Active", value: activeShedCount },
