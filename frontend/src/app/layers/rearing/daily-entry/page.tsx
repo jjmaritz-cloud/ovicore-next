@@ -1065,7 +1065,7 @@ function LayerRearingDailyHouseCardContent() {
 export default function LayerRearingDailyHouseCardPage() {
   return (
     <Suspense fallback={null}>
-      <LayerRearingDailyHouseCardPageContent />
+      <LayerRearingDailyHouseCardContent />
     </Suspense>
   );
 }
