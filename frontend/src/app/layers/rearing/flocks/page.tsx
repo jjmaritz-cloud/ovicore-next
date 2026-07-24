@@ -239,7 +239,8 @@ function LayerRearingFlockRegisterContent() {
   ]);
 
   const [rows, setRows] = useState<LayerRearingFlockRow[]>([]);
-  const [shedOptions, setShedOptions] = useState<ShedOption[]>([]);
+  const [rearingShedOptions, setRearingShedOptions] = useState<ShedOption[]>([]);
+  const [destinationShedOptions, setDestinationShedOptions] = useState<ShedOption[]>([]);
   const [searchText, setSearchText] = useState("");
   const [dirtyCount, setDirtyCount] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -248,46 +249,74 @@ function LayerRearingFlockRegisterContent() {
 
   const dirtyRowIds = useRef<Set<number>>(new Set());
 
-  const farmOptions = useMemo(() => {
+  const rearingFarmOptions = useMemo(() => {
     const farms = new Map<number, string>();
 
-    for (const shed of shedOptions) {
+    for (const shed of rearingShedOptions) {
       farms.set(shed.farm_id, shed.farm_name);
     }
 
     return [...farms.entries()]
       .map(([id, name]) => ({ id, name }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [shedOptions]);
+  }, [rearingShedOptions]);
+
+  const destinationFarmOptions = useMemo(() => {
+    const farms = new Map<number, string>();
+
+    for (const shed of destinationShedOptions) {
+      farms.set(shed.farm_id, shed.farm_name);
+    }
+
+    return [...farms.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [destinationShedOptions]);
 
   const fetchSheds = useCallback(async () => {
     if (loadingUser || !activeCompanyId) {
-      setShedOptions([]);
+      setRearingShedOptions([]);
+      setDestinationShedOptions([]);
       return;
     }
 
-    const response = await authenticatedFetch(
-      `${API_BASE}/api/broilers/sheds?company_id=${activeCompanyId}`,
-      { cache: "no-store" },
-    );
+    const [rearingResponse, destinationResponse] = await Promise.all([
+      authenticatedFetch(
+        `${API_BASE}/api/broilers/sheds?company_id=${activeCompanyId}&farm_type=layer_rearing`,
+        { cache: "no-store" },
+      ),
+      authenticatedFetch(
+        `${API_BASE}/api/broilers/sheds?company_id=${activeCompanyId}&farm_type=commercial_layers`,
+        { cache: "no-store" },
+      ),
+    ]);
 
-    if (!response.ok) {
+    if (!rearingResponse.ok) {
       throw new Error(
-        `Could not load farms and sheds. Backend returned ${response.status}.`,
+        `Could not load Commercial Rearing farms and sheds. Backend returned ${rearingResponse.status}.`,
       );
     }
 
-    const data: ShedOption[] = await response.json();
+    if (!destinationResponse.ok) {
+      throw new Error(
+        `Could not load Layer destination farms and sheds. Backend returned ${destinationResponse.status}.`,
+      );
+    }
 
-    setShedOptions(
+    const rearingData: ShedOption[] = await rearingResponse.json();
+    const destinationData: ShedOption[] = await destinationResponse.json();
+
+    const sortSheds = (data: ShedOption[]) =>
       data
         .filter((shed) => shed.active)
         .sort((a, b) =>
           `${a.farm_name} ${a.shed_name}`.localeCompare(
             `${b.farm_name} ${b.shed_name}`,
           ),
-        ),
-    );
+        );
+
+    setRearingShedOptions(sortSheds(rearingData));
+    setDestinationShedOptions(sortSheds(destinationData));
   }, [activeCompanyId, loadingUser]);
 
   const fetchRows = useCallback(async () => {
@@ -415,12 +444,12 @@ function LayerRearingFlockRegisterContent() {
             editable: true,
             cellEditor: "agSelectCellEditor",
             cellEditorParams: {
-              values: farmOptions.map((farm) => farm.name),
+              values: rearingFarmOptions.map((farm) => farm.name),
             },
             valueSetter: (params) => {
               if (!params.data) return false;
 
-              const selected = farmOptions.find(
+              const selected = rearingFarmOptions.find(
                 (farm) => farm.name === params.newValue,
               );
 
@@ -449,7 +478,7 @@ function LayerRearingFlockRegisterContent() {
             editable: (params) => Boolean(params.data?.farmId),
             cellEditor: "agSelectCellEditor",
             cellEditorParams: (params: { data?: LayerRearingFlockRow }) => ({
-              values: shedOptions
+              values: rearingShedOptions
                 .filter(
                   (shed) =>
                     shed.farm_id === params.data?.farmId,
@@ -459,7 +488,7 @@ function LayerRearingFlockRegisterContent() {
             valueSetter: (params) => {
               if (!params.data) return false;
 
-              const selected = shedOptions.find(
+              const selected = rearingShedOptions.find(
                 (shed) =>
                   shed.farm_id === params.data?.farmId &&
                   shed.shed_name === params.newValue,
@@ -487,6 +516,7 @@ function LayerRearingFlockRegisterContent() {
           {
             field: "breed",
             headerName: "Breed",
+            pinned: "left",
             minWidth: 150,
             editable: true,
             cellClass: "editable-cell",
@@ -553,12 +583,12 @@ function LayerRearingFlockRegisterContent() {
             editable: true,
             cellEditor: "agSelectCellEditor",
             cellEditorParams: {
-              values: farmOptions.map((farm) => farm.name),
+              values: destinationFarmOptions.map((farm) => farm.name),
             },
             valueSetter: (params) => {
               if (!params.data) return false;
 
-              const selected = farmOptions.find(
+              const selected = destinationFarmOptions.find(
                 (farm) => farm.name === params.newValue,
               );
 
@@ -587,7 +617,7 @@ function LayerRearingFlockRegisterContent() {
               Boolean(params.data?.destinationFarmId),
             cellEditor: "agSelectCellEditor",
             cellEditorParams: (params: { data?: LayerRearingFlockRow }) => ({
-              values: shedOptions
+              values: destinationShedOptions
                 .filter(
                   (shed) =>
                     shed.farm_id
@@ -598,7 +628,7 @@ function LayerRearingFlockRegisterContent() {
             valueSetter: (params) => {
               if (!params.data) return false;
 
-              const selected = shedOptions.find(
+              const selected = destinationShedOptions.find(
                 (shed) =>
                   shed.farm_id
                     === params.data?.destinationFarmId
@@ -708,7 +738,7 @@ function LayerRearingFlockRegisterContent() {
         ],
       },
     ],
-    [farmOptions, shedOptions],
+    [destinationFarmOptions, destinationShedOptions, rearingFarmOptions, rearingShedOptions],
   );
 
   const onGridReady = useCallback(
@@ -981,8 +1011,8 @@ function LayerRearingFlockRegisterContent() {
   return (
     <OviCoreShell module="layers">
       <OviCorePageHeader
-        title="Rearing Flock Register"
-        subtitle="Manage commercial pullet flocks by farm, shed, breed, placement and transfer destination."
+        title="Commercial Rearing Flock Register"
+        subtitle="Manage commercial pullet flocks from placement through transfer into the Layers module."
       >
         <div className="top-actions">
           <input
@@ -1106,7 +1136,7 @@ function LayerRearingFlockRegisterContent() {
       />
 
       <OviCoreTableCard
-        title="Layer Rearing Flock Entry"
+        title="Commercial Rearing Flock Entry"
         subtitle="Excel-style flock register with selectable farms and sheds, editable yellow cells and calculated transfer review fields."
       >
         <div className="formula-bar">
