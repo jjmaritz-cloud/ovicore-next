@@ -34,6 +34,7 @@ type FarmRow = {
   company_id: number;
   farm_name: string;
   farm_code: string | null;
+  farm_type: string;
   active: boolean;
 };
 
@@ -63,6 +64,26 @@ async function authenticatedFetch(
 
 function activeFormatter(params: ValueFormatterParams) {
   return params.value ? "Active" : "Inactive";
+}
+
+const FARM_TYPE_OPTIONS = [
+  { value: "broiler", label: "Broiler" },
+  { value: "breeder_rearing", label: "Breeder Rearing" },
+  { value: "breeder_layers", label: "Breeder Production" },
+  { value: "layer_rearing", label: "Commercial Rearing" },
+  { value: "commercial_layers", label: "Commercial Layers" },
+  { value: "hatchery", label: "Hatchery" },
+  { value: "feed_mill", label: "Feed Mill" },
+  { value: "grading", label: "Grading" },
+  { value: "processing", label: "Processing" },
+];
+
+function farmTypeFormatter(params: ValueFormatterParams) {
+  const match = FARM_TYPE_OPTIONS.find(
+    (option) => option.value === params.value
+  );
+
+  return match?.label ?? String(params.value ?? "");
 }
 
 export default function AdminFarmRegisterPage() {
@@ -225,6 +246,18 @@ export default function AdminFarmRegisterPage() {
         cellClass: "editable-cell",
       },
       {
+        field: "farm_type",
+        headerName: "Farm Type",
+        editable: true,
+        minWidth: 190,
+        valueFormatter: farmTypeFormatter,
+        cellEditor: "agSelectCellEditor",
+        cellEditorParams: {
+          values: FARM_TYPE_OPTIONS.map((option) => option.value),
+        },
+        cellClass: "editable-cell",
+      },
+      {
         field: "company_id",
         headerName: "Company ID",
         editable: false,
@@ -270,6 +303,7 @@ export default function AdminFarmRegisterPage() {
           company_id: selectedCompanyId,
           farm_name: "New Farm",
           farm_code: "",
+          farm_type: "broiler",
           active: true,
         }),
       });
@@ -283,7 +317,11 @@ export default function AdminFarmRegisterPage() {
       await fetchRows(selectedCompanyId);
     } catch (error) {
       console.error(error);
-      alert("Could not create farm.");
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Could not create farm."
+      );
     } finally {
       setSaving(false);
     }
@@ -329,6 +367,7 @@ export default function AdminFarmRegisterPage() {
           body: JSON.stringify({
             farm_name: row.farm_name,
             farm_code: row.farm_code ?? "",
+            farm_type: row.farm_type,
             active: row.active,
           }),
         });
@@ -346,7 +385,11 @@ export default function AdminFarmRegisterPage() {
       alert("Farms saved.");
     } catch (error) {
       console.error(error);
-      alert("Could not save farms.");
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Could not save farms."
+      );
     } finally {
       setSaving(false);
     }
