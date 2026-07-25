@@ -1,564 +1,1315 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { useSearchParams } from "next/navigation";
+import { AgGridReact } from "ag-grid-react";
+import {
+  AllCommunityModule,
+  ModuleRegistry,
+  type ColDef,
+  type ColGroupDef,
+  type GridReadyEvent,
+  type ICellRendererParams,
+  type ValueFormatterParams,
+} from "ag-grid-community";
+
+ModuleRegistry.registerModules([AllCommunityModule]);
+
+import "ag-grid-community/styles/ag-grid.css";
+import "ag-grid-community/styles/ag-theme-quartz.css";
+
+import OviCoreActionBar from "@/components/ovicore/OviCoreActionBar";
+import OviCoreKpiStrip from "@/components/ovicore/OviCoreKpiStrip";
+import OviCorePageHeader from "@/components/ovicore/OviCorePageHeader";
+import OviCoreShell from "@/components/ovicore/OviCoreShell";
+import OviCoreTableCard from "@/components/ovicore/OviCoreTableCard";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 const API_BASE = "";
 
-type Farm = { id: number; farm_name: string; farm_type: string; active: boolean };
-type Shed = { id: number; farm_id: number; farm_name: string; shed_name: string; active: boolean };
-type Row = {
-  id: number; company_id: number; farm_id: number; shed_id: number;
-  destination_farm_id: number | null; destination_shed_id: number | null;
-  flock_code: string; breed: string | null; hatch_date: string | null;
-  placement_date: string | null; female_birds: number | null; male_birds: number | null;
-  planned_transfer_date: string | null; status: string; notes: string | null; dirty?: boolean;
+type FarmOption = {
+  id: number;
+  company_id: number;
+  farm_name: string;
+  farm_type: string;
+  active: boolean;
 };
 
-async function api(input: RequestInfo | URL, init?: RequestInit) {
-  return fetch(input, {
+type ShedOption = {
+  id: number;
+  company_id: number;
+  farm_id: number;
+  farm_name: string;
+  shed_name: string;
+  active: boolean;
+};
+
+type BreederRearingFlockRow = {
+  id: number;
+  companyId: number;
+  farmId: number;
+  shedId: number;
+  destinationFarmId?: number;
+  destinationShedId?: number;
+
+  farmName: string;
+  shedName: string;
+  flockCode: string;
+  breed: string;
+
+  hatchDate: string | null;
+  placementDate: string | null;
+  femaleBirds: number | null;
+  maleBirds: number | null;
+
+  plannedTransferDate: string | null;
+  destinationFarmName: string;
+  destinationShedName: string;
+
+  totalBirds: number | null;
+  maleRatioPct: number | null;
+  currentAgeWeeks: number | null;
+  daysToTransfer: number | null;
+
+  status: string;
+  notes: string | null;
+};
+
+async function authenticatedFetch(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+) {
+  const response = await fetch(input, {
     ...init,
     credentials: "include",
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
   });
+
+  if (response.status === 401) {
+    const nextPath =
+      `${window.location.pathname}${window.location.search}`;
+
+    window.location.href =
+      `/login?next=${encodeURIComponent(nextPath)}`;
+
+    throw new Error("Your login session has expired.");
+  }
+
+  return response;
 }
 
-async function errorText(response: Response) {
-  try { return (await response.json())?.detail ?? `Request failed (${response.status})`; }
-  catch { return `Request failed (${response.status})`; }
+async function readApiError(
+  response: Response,
+  fallback: string,
+) {
+  try {
+    const payload = await response.json();
+
+    if (
+      payload &&
+      typeof payload === "object" &&
+      "detail" in payload
+    ) {
+      const detail = (payload as { detail?: unknown }).detail;
+
+      if (typeof detail === "string" && detail.trim()) {
+        return detail;
+      }
+    }
+  } catch {
+    // Use fallback.
+  }
+
+  return fallback;
+}
+
+function isoToDisplayDate(value: string | null | undefined) {
+  if (!value) return "";
+
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return value;
+
+  return `${match[3]}-${match[2]}-${match[1]}`;
+}
+
+function displayDateToIso(value: string | null | undefined) {
+  if (!value) return null;
+
+  const clean = value.trim();
+  const display = clean.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+
+  if (display) {
+    return `${display[3]}-${display[2]}-${display[1]}`;
+  }
+
+  return clean;
+}
+
+function numberFormatter(params: ValueFormatterParams) {
+  if (
+    params.value === null ||
+    params.value === undefined ||
+    params.value === ""
+  ) {
+    return "";
+  }
+
+  const value = Number(params.value);
+
+  return Number.isNaN(value)
+    ? params.value
+    : value.toLocaleString("en-AU");
+}
+
+function decimalFormatter(params: ValueFormatterParams) {
+  if (
+    params.value === null ||
+    params.value === undefined ||
+    params.value === ""
+  ) {
+    return "";
+  }
+
+  const value = Number(params.value);
+
+  return Number.isNaN(value)
+    ? params.value
+    : value.toFixed(2);
+}
+
+function pctFormatter(params: ValueFormatterParams) {
+  if (
+    params.value === null ||
+    params.value === undefined ||
+    params.value === ""
+  ) {
+    return "";
+  }
+
+  const value = Number(params.value);
+
+  return Number.isNaN(value)
+    ? params.value
+    : `${value.toFixed(2)}%`;
+}
+
+function StatusPill(params: ICellRendererParams) {
+  const value = String(params.value ?? "Draft");
+  const normalised = value.toLowerCase();
+
+  let className = "status-pill status-draft";
+
+  if (
+    normalised.includes("planned") ||
+    normalised.includes("active") ||
+    normalised.includes("transferred") ||
+    normalised.includes("closed")
+  ) {
+    className = "status-pill status-ready";
+  }
+
+  return <span className={className}>{value}</span>;
+}
+
+function BreederRearingFlockRegisterContent() {
+  const gridRef =
+    useRef<AgGridReact<BreederRearingFlockRow>>(null);
+
+  const searchParams = useSearchParams();
+  const {
+    currentUser,
+    loadingUser,
+    userError,
+  } = useCurrentUser();
+
+  const activeCompanyId = useMemo(() => {
+    const companyParam = searchParams.get("company_id");
+    const parsed = Number(companyParam);
+
+    if (currentUser?.is_global_admin) {
+      return Number.isInteger(parsed) && parsed > 0
+        ? parsed
+        : null;
+    }
+
+    return currentUser?.company_id ?? null;
+  }, [
+    currentUser?.company_id,
+    currentUser?.is_global_admin,
+    searchParams,
+  ]);
+
+  const [rows, setRows] = useState<BreederRearingFlockRow[]>([]);
+  const [rearingShedOptions, setRearingShedOptions] = useState<ShedOption[]>([]);
+  const [destinationShedOptions, setDestinationShedOptions] = useState<ShedOption[]>([]);
+  const [searchText, setSearchText] = useState("");
+  const [dirtyCount, setDirtyCount] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [lastError, setLastError] = useState<string | null>(null);
+
+  const dirtyRowIds = useRef<Set<number>>(new Set());
+
+  const rearingFarmOptions = useMemo(() => {
+    const farms = new Map<number, string>();
+
+    for (const shed of rearingShedOptions) {
+      farms.set(shed.farm_id, shed.farm_name);
+    }
+
+    return [...farms.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [rearingShedOptions]);
+
+  const destinationFarmOptions = useMemo(() => {
+    const farms = new Map<number, string>();
+
+    for (const shed of destinationShedOptions) {
+      farms.set(shed.farm_id, shed.farm_name);
+    }
+
+    return [...farms.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [destinationShedOptions]);
+
+  const fetchSheds = useCallback(async () => {
+    if (loadingUser || !activeCompanyId) {
+      setRearingShedOptions([]);
+      setDestinationShedOptions([]);
+      return;
+    }
+
+    const [farmsResponse, shedsResponse] = await Promise.all([
+      authenticatedFetch(
+        `${API_BASE}/api/broilers/farms?company_id=${activeCompanyId}`,
+        { cache: "no-store" },
+      ),
+      authenticatedFetch(
+        `${API_BASE}/api/broilers/sheds?company_id=${activeCompanyId}`,
+        { cache: "no-store" },
+      ),
+    ]);
+
+    if (!farmsResponse.ok) {
+      throw new Error(
+        `Could not load farm classifications. Backend returned ${farmsResponse.status}.`,
+      );
+    }
+
+    if (!shedsResponse.ok) {
+      throw new Error(
+        `Could not load farms and sheds. Backend returned ${shedsResponse.status}.`,
+      );
+    }
+
+    const farmsData: FarmOption[] = await farmsResponse.json();
+    const shedsData: ShedOption[] = await shedsResponse.json();
+
+    const activeFarmTypeById = new Map<number, string>(
+      farmsData
+        .filter((farm) => farm.active)
+        .map((farm) => [farm.id, farm.farm_type]),
+    );
+
+    const sortSheds = (data: ShedOption[]) =>
+      data
+        .filter((shed) => shed.active)
+        .sort((a, b) =>
+          `${a.farm_name} ${a.shed_name}`.localeCompare(
+            `${b.farm_name} ${b.shed_name}`,
+          ),
+        );
+
+    setRearingShedOptions(
+      sortSheds(
+        shedsData.filter(
+          (shed) =>
+            activeFarmTypeById.get(shed.farm_id) ===
+            "breeder_rearing",
+        ),
+      ),
+    );
+
+    setDestinationShedOptions(
+      sortSheds(
+        shedsData.filter(
+          (shed) =>
+            activeFarmTypeById.get(shed.farm_id) ===
+            "breeder_layers",
+        ),
+      ),
+    );
+  }, [activeCompanyId, loadingUser]);
+
+  const fetchRows = useCallback(async () => {
+    if (loadingUser) return;
+
+    if (!activeCompanyId) {
+      setRows([]);
+      setLoading(false);
+      setLastError(
+        currentUser?.is_global_admin
+          ? "Select a company before loading Breeder Rearing flocks."
+          : "Your user account is not assigned to a company.",
+      );
+      return;
+    }
+
+    setLoading(true);
+    setLastError(null);
+
+    try {
+      const response = await authenticatedFetch(
+        `${API_BASE}/api/breeders/rearing/flocks?company_id=${activeCompanyId}`,
+        { cache: "no-store" },
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          await readApiError(
+            response,
+            "Could not load Breeder Rearing flocks.",
+          ),
+        );
+      }
+
+      const data = await response.json();
+
+      const mapped: BreederRearingFlockRow[] = data.map((row: any) => ({
+        id: row.id,
+        companyId: row.company_id,
+        farmId: row.farm_id,
+        shedId: row.shed_id,
+        destinationFarmId: row.destination_farm_id ?? undefined,
+        destinationShedId: row.destination_shed_id ?? undefined,
+
+        farmName: row.farm_name ?? "",
+        shedName: row.shed_name ?? "",
+        flockCode: row.flock_code ?? "",
+        breed: row.breed ?? "",
+
+        hatchDate: row.hatch_date,
+        placementDate: row.placement_date,
+        femaleBirds: row.female_birds,
+        maleBirds: row.male_birds,
+
+        plannedTransferDate: row.planned_transfer_date,
+        destinationFarmName: row.destination_farm_name ?? "",
+        destinationShedName: row.destination_shed_name ?? "",
+
+        totalBirds: row.total_birds,
+        maleRatioPct: row.male_ratio_pct,
+        currentAgeWeeks: row.current_age_weeks,
+        daysToTransfer: row.days_to_transfer,
+
+        status: row.status ?? "Draft",
+        notes: row.notes ?? "",
+      }));
+
+      dirtyRowIds.current.clear();
+      setDirtyCount(0);
+      setRows(mapped);
+    } catch (error) {
+      console.error(error);
+      setLastError(
+        error instanceof Error
+          ? error.message
+          : "Could not load Breeder Rearing flocks.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    activeCompanyId,
+    currentUser?.is_global_admin,
+    loadingUser,
+  ]);
+
+  useEffect(() => {
+    Promise.all([
+      fetchSheds(),
+      fetchRows(),
+    ]).catch(console.error);
+  }, [fetchRows, fetchSheds]);
+
+  const defaultColDef = useMemo<
+    ColDef<BreederRearingFlockRow>
+  >(
+    () => ({
+      resizable: true,
+      sortable: true,
+      filter: true,
+      minWidth: 120,
+      cellClass: "center-cell",
+      headerClass: "center-header",
+    }),
+    [],
+  );
+
+  const columnDefs = useMemo<
+    (
+      | ColDef<BreederRearingFlockRow>
+      | ColGroupDef<BreederRearingFlockRow>
+    )[]
+  >(
+    () => [
+      {
+        headerName: "Flock Identity",
+        marryChildren: true,
+        headerClass: "group-header group-planning",
+        children: [
+          {
+            field: "farmName",
+            headerName: "Farm",
+            pinned: "left",
+            minWidth: 185,
+            editable: true,
+            cellEditor: "agSelectCellEditor",
+            cellEditorParams: {
+              values: rearingFarmOptions.map((farm) => farm.name),
+            },
+            valueSetter: (params) => {
+              if (!params.data) return false;
+
+              const selected = rearingFarmOptions.find(
+                (farm) => farm.name === params.newValue,
+              );
+
+              if (!selected) return false;
+
+              const changed =
+                params.data.farmId !== selected.id;
+
+              params.data.farmId = selected.id;
+              params.data.farmName = selected.name;
+
+              if (changed) {
+                params.data.shedId = 0;
+                params.data.shedName = "";
+              }
+
+              return true;
+            },
+            cellClass: "editable-cell identity-cell",
+          },
+          {
+            field: "shedName",
+            headerName: "Shed",
+            pinned: "left",
+            minWidth: 145,
+            editable: (params) => Boolean(params.data?.farmId),
+            cellEditor: "agSelectCellEditor",
+            cellEditorParams: (params: { data?: BreederRearingFlockRow }) => ({
+              values: rearingShedOptions
+                .filter(
+                  (shed) =>
+                    shed.farm_id === params.data?.farmId,
+                )
+                .map((shed) => shed.shed_name),
+            }),
+            valueSetter: (params) => {
+              if (!params.data) return false;
+
+              const selected = rearingShedOptions.find(
+                (shed) =>
+                  shed.farm_id === params.data?.farmId &&
+                  shed.shed_name === params.newValue,
+              );
+
+              if (!selected) return false;
+
+              params.data.shedId = selected.id;
+              params.data.shedName = selected.shed_name;
+              params.data.farmId = selected.farm_id;
+              params.data.farmName = selected.farm_name;
+
+              return true;
+            },
+            cellClass: "editable-cell identity-cell",
+          },
+          {
+            field: "flockCode",
+            headerName: "Flock Code",
+            pinned: "left",
+            minWidth: 160,
+            editable: true,
+            cellClass: "editable-cell identity-cell",
+          },
+          {
+            field: "breed",
+            headerName: "Breed",
+            pinned: "left",
+            minWidth: 150,
+            editable: true,
+            cellClass: "editable-cell",
+          },
+        ],
+      },
+      {
+        headerName: "Placement",
+        marryChildren: true,
+        headerClass: "group-header group-capacity",
+        children: [
+          {
+            field: "hatchDate",
+            headerName: "Hatch Date",
+            minWidth: 145,
+            editable: true,
+            cellDataType: "dateString",
+            cellEditor: "agDateStringCellEditor",
+            valueFormatter: (params) =>
+              isoToDisplayDate(params.value),
+            cellClass: "editable-cell",
+          },
+          {
+            field: "placementDate",
+            headerName: "Placement Date",
+            minWidth: 155,
+            editable: true,
+            cellDataType: "dateString",
+            cellEditor: "agDateStringCellEditor",
+            valueFormatter: (params) =>
+              isoToDisplayDate(params.value),
+            cellClass: "editable-cell",
+          },
+          {
+            field: "femaleBirds",
+            headerName: "Female Birds",
+            minWidth: 145,
+            editable: true,
+            valueFormatter: numberFormatter,
+            cellClass: "editable-cell",
+          },
+          {
+            field: "maleBirds",
+            headerName: "Male Birds",
+            minWidth: 135,
+            editable: true,
+            valueFormatter: numberFormatter,
+            cellClass: "editable-cell",
+          },
+        ],
+      },
+      {
+        headerName: "Transfer",
+        marryChildren: true,
+        headerClass: "group-header group-demand",
+        children: [
+          {
+            field: "plannedTransferDate",
+            headerName: "Planned Transfer",
+            minWidth: 165,
+            editable: true,
+            cellDataType: "dateString",
+            cellEditor: "agDateStringCellEditor",
+            valueFormatter: (params) =>
+              isoToDisplayDate(params.value),
+            cellClass: "editable-cell",
+          },
+          {
+            field: "destinationFarmName",
+            headerName: "Destination Farm",
+            minWidth: 200,
+            editable: true,
+            cellEditor: "agSelectCellEditor",
+            cellEditorParams: {
+              values: destinationFarmOptions.map((farm) => farm.name),
+            },
+            valueSetter: (params) => {
+              if (!params.data) return false;
+
+              const selected = destinationFarmOptions.find(
+                (farm) => farm.name === params.newValue,
+              );
+
+              if (!selected) return false;
+
+              const changed =
+                params.data.destinationFarmId !== selected.id;
+
+              params.data.destinationFarmId = selected.id;
+              params.data.destinationFarmName = selected.name;
+
+              if (changed) {
+                params.data.destinationShedId = undefined;
+                params.data.destinationShedName = "";
+              }
+
+              return true;
+            },
+            cellClass: "editable-cell",
+          },
+          {
+            field: "destinationShedName",
+            headerName: "Destination Shed",
+            minWidth: 175,
+            editable: (params) =>
+              Boolean(params.data?.destinationFarmId),
+            cellEditor: "agSelectCellEditor",
+            cellEditorParams: (params: { data?: BreederRearingFlockRow }) => ({
+              values: destinationShedOptions
+                .filter(
+                  (shed) =>
+                    shed.farm_id
+                    === params.data?.destinationFarmId,
+                )
+                .map((shed) => shed.shed_name),
+            }),
+            valueSetter: (params) => {
+              if (!params.data) return false;
+
+              const selected = destinationShedOptions.find(
+                (shed) =>
+                  shed.farm_id
+                    === params.data?.destinationFarmId
+                  && shed.shed_name === params.newValue,
+              );
+
+              if (!selected) return false;
+
+              params.data.destinationShedId = selected.id;
+              params.data.destinationShedName =
+                selected.shed_name;
+
+              return true;
+            },
+            cellClass: "editable-cell",
+          },
+          {
+            field: "notes",
+            headerName: "Notes",
+            minWidth: 260,
+            flex: 1,
+            editable: true,
+            cellClass: "editable-cell notes-cell",
+          },
+        ],
+      },
+      {
+        headerName: "Calculated Review",
+        marryChildren: true,
+        headerClass: "group-header group-review",
+        children: [
+          {
+            field: "currentAgeWeeks",
+            headerName: "Age Weeks",
+            minWidth: 125,
+            valueFormatter: decimalFormatter,
+            cellClass: "calculated-cell",
+          },
+          {
+            field: "totalBirds",
+            headerName: "Total Birds",
+            minWidth: 135,
+            valueFormatter: numberFormatter,
+            cellClass: "calculated-cell",
+          },
+          {
+            field: "maleRatioPct",
+            headerName: "Male Ratio %",
+            minWidth: 140,
+            valueFormatter: pctFormatter,
+            cellClass: "calculated-cell",
+          },
+          {
+            field: "daysToTransfer",
+            headerName: "Days to Transfer",
+            minWidth: 150,
+            valueFormatter: numberFormatter,
+            cellClass: "calculated-cell",
+          },
+        ],
+      },
+      {
+        headerName: "Workflow",
+        marryChildren: true,
+        headerClass: "group-header group-workflow",
+        children: [
+          {
+            field: "status",
+            headerName: "Status",
+            minWidth: 145,
+            editable: true,
+            cellEditor: "agSelectCellEditor",
+            cellEditorParams: {
+              values: [
+                "Draft",
+                "Planned",
+                "Active",
+                "Transferred",
+                "Closed",
+              ],
+            },
+            cellRenderer: StatusPill,
+            cellClass: "editable-cell",
+          },
+        ],
+      },
+    ],
+    [
+      destinationFarmOptions,
+      destinationShedOptions,
+      rearingFarmOptions,
+      rearingShedOptions,
+    ],
+  );
+
+  const onGridReady = useCallback(
+    (params: GridReadyEvent) => {
+      setTimeout(() => {
+        params.api.sizeColumnsToFit();
+      }, 100);
+    },
+    [],
+  );
+
+  const autosizeColumns = useCallback(() => {
+    const api = gridRef.current?.api;
+    if (!api) return;
+
+    const columnIds: string[] = [];
+
+    api.getColumns()?.forEach((column) => {
+      columnIds.push(column.getId());
+    });
+
+    api.autoSizeColumns(columnIds, false);
+  }, []);
+
+  const markDirty = useCallback(
+    (row: BreederRearingFlockRow) => {
+      dirtyRowIds.current.add(row.id);
+      setDirtyCount(dirtyRowIds.current.size);
+    },
+    [],
+  );
+
+  const addNewFlock = useCallback(async () => {
+    if (!activeCompanyId) {
+      alert("Select a company before creating a Breeder Rearing flock.");
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const response = await authenticatedFetch(
+        `${API_BASE}/api/breeders/rearing/flocks/new-row?company_id=${activeCompanyId}`,
+        { method: "POST" },
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          await readApiError(
+            response,
+            "Could not create the new Breeder Rearing flock.",
+          ),
+        );
+      }
+
+      await fetchRows();
+    } catch (error) {
+      console.error(error);
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Could not create the new Breeder Rearing flock.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }, [activeCompanyId, fetchRows]);
+
+  const duplicateSelected = useCallback(async () => {
+    const selected =
+      gridRef.current?.api.getSelectedRows()[0];
+
+    if (!selected || !activeCompanyId) {
+      alert("Select a Breeder Rearing flock to duplicate.");
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const createResponse = await authenticatedFetch(
+        `${API_BASE}/api/breeders/rearing/flocks/new-row?company_id=${activeCompanyId}`,
+        { method: "POST" },
+      );
+
+      if (!createResponse.ok) {
+        throw new Error(
+          await readApiError(
+            createResponse,
+            "Could not create the duplicate row.",
+          ),
+        );
+      }
+
+      const created = await createResponse.json();
+
+      const patchResponse = await authenticatedFetch(
+        `${API_BASE}/api/breeders/rearing/flocks/${created.id}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            farm_id: selected.farmId,
+            shed_id: selected.shedId,
+            destination_farm_id:
+              selected.destinationFarmId ?? null,
+            destination_shed_id:
+              selected.destinationShedId ?? null,
+            flock_code: `${selected.flockCode}-COPY`,
+            breed: selected.breed || null,
+            hatch_date: displayDateToIso(selected.hatchDate),
+            placement_date: displayDateToIso(
+              selected.placementDate,
+            ),
+            female_birds: selected.femaleBirds,
+            male_birds: selected.maleBirds,
+            planned_transfer_date: displayDateToIso(
+              selected.plannedTransferDate,
+            ),
+            status: "Draft",
+            notes: selected.notes ?? "",
+          }),
+        },
+      );
+
+      if (!patchResponse.ok) {
+        throw new Error(
+          await readApiError(
+            patchResponse,
+            "Could not complete the duplicate flock.",
+          ),
+        );
+      }
+
+      await fetchRows();
+    } catch (error) {
+      console.error(error);
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Could not duplicate the selected flock.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }, [activeCompanyId, fetchRows]);
+
+  const deleteSelected = useCallback(async () => {
+    const selected =
+      gridRef.current?.api.getSelectedRows()[0];
+
+    if (!selected) {
+      alert("Select a Breeder Rearing flock to delete.");
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `Delete Breeder Rearing flock ${selected.flockCode}?`,
+      )
+    ) {
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const response = await authenticatedFetch(
+        `${API_BASE}/api/breeders/rearing/flocks/${selected.id}`,
+        { method: "DELETE" },
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          await readApiError(
+            response,
+            "Could not delete the selected flock.",
+          ),
+        );
+      }
+
+      await fetchRows();
+    } catch (error) {
+      console.error(error);
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Could not delete the selected flock.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }, [fetchRows]);
+
+  const saveDirtyRows = useCallback(async () => {
+    const api = gridRef.current?.api;
+    if (!api) return;
+
+    api.stopEditing();
+
+    const dirtyIds = [...dirtyRowIds.current];
+
+    if (!dirtyIds.length) {
+      alert("No changes to save.");
+      return;
+    }
+
+    const rowMap = new Map<number, BreederRearingFlockRow>();
+
+    api.forEachNode((node) => {
+      if (node.data) {
+        rowMap.set(node.data.id, node.data);
+      }
+    });
+
+    setSaving(true);
+
+    try {
+      for (const id of dirtyIds) {
+        const row = rowMap.get(id);
+        if (!row) continue;
+
+        if (!row.farmId || !row.shedId || !row.flockCode) {
+          alert(
+            "Farm, shed and flock code are required before saving.",
+          );
+          return;
+        }
+
+        const validRearingShed = rearingShedOptions.some(
+          (shed) =>
+            shed.id === row.shedId &&
+            shed.farm_id === row.farmId,
+        );
+
+        if (!validRearingShed) {
+          alert(
+            `${row.flockCode} must use a Breeder Rearing farm and shed.`,
+          );
+          return;
+        }
+
+        const hasDestinationFarm =
+          Boolean(row.destinationFarmId);
+        const hasDestinationShed =
+          Boolean(row.destinationShedId);
+
+        if (hasDestinationFarm !== hasDestinationShed) {
+          alert(
+            `Select both destination farm and destination shed for ${row.flockCode}.`,
+          );
+          return;
+        }
+
+        if (hasDestinationFarm && hasDestinationShed) {
+          const validDestinationShed =
+            destinationShedOptions.some(
+              (shed) =>
+                shed.id === row.destinationShedId &&
+                shed.farm_id === row.destinationFarmId,
+            );
+
+          if (!validDestinationShed) {
+            alert(
+              `${row.flockCode} must transfer to a Breeder Production farm and shed.`,
+            );
+            return;
+          }
+        }
+
+        const response = await authenticatedFetch(
+          `${API_BASE}/api/breeders/rearing/flocks/${id}`,
+          {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              farm_id: row.farmId,
+              shed_id: row.shedId,
+              destination_farm_id:
+                row.destinationFarmId ?? null,
+              destination_shed_id:
+                row.destinationShedId ?? null,
+              flock_code: row.flockCode,
+              breed: row.breed || null,
+              hatch_date: displayDateToIso(row.hatchDate),
+              placement_date: displayDateToIso(
+                row.placementDate,
+              ),
+              female_birds:
+                row.femaleBirds === null
+                  ? null
+                  : Number(row.femaleBirds),
+              male_birds:
+                row.maleBirds === null
+                  ? null
+                  : Number(row.maleBirds),
+              planned_transfer_date: displayDateToIso(
+                row.plannedTransferDate,
+              ),
+              status: row.status,
+              notes: row.notes ?? "",
+            }),
+          },
+        );
+
+        if (!response.ok) {
+          throw new Error(
+            await readApiError(
+              response,
+              `Could not save ${row.flockCode}.`,
+            ),
+          );
+        }
+      }
+
+      await fetchRows();
+      alert("Breeder Rearing flocks saved.");
+    } catch (error) {
+      console.error(error);
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Could not save Breeder Rearing flock changes.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }, [
+    destinationShedOptions,
+    fetchRows,
+    rearingShedOptions,
+  ]);
+
+  const kpis = useMemo(() => {
+    const active = rows.filter((row) =>
+      ["planned", "active"].includes(
+        row.status.toLowerCase(),
+      ),
+    ).length;
+
+    const females = rows.reduce(
+      (sum, row) =>
+        sum + Number(row.femaleBirds ?? 0),
+      0,
+    );
+
+    const males = rows.reduce(
+      (sum, row) =>
+        sum + Number(row.maleBirds ?? 0),
+      0,
+    );
+
+    const transferDue = rows.filter(
+      (row) =>
+        row.daysToTransfer !== null &&
+        row.daysToTransfer >= 0 &&
+        row.daysToTransfer <= 14,
+    ).length;
+
+    return {
+      active,
+      females,
+      males,
+      transferDue,
+    };
+  }, [rows]);
+
+  return (
+    <OviCoreShell module="breeders">
+      <OviCorePageHeader
+        title="Breeder Rearing Flock Register"
+        subtitle="Breeder Rearing farms and sheds only. Transfer destinations are limited to Breeder Production farms and sheds."
+      >
+        <div className="top-actions">
+          <input
+            className="search-box"
+            value={searchText}
+            onChange={(event) =>
+              setSearchText(event.target.value)
+            }
+            placeholder="Search farm, shed, flock or breed"
+          />
+          <div className="avatar">JJ</div>
+        </div>
+      </OviCorePageHeader>
+
+      <OviCoreKpiStrip
+        items={[
+          {
+            label: "Planned / Active Flocks",
+            value: kpis.active,
+          },
+          {
+            label: "Female Birds",
+            value: kpis.females.toLocaleString("en-AU"),
+          },
+          {
+            label: "Male Birds",
+            value: kpis.males.toLocaleString("en-AU"),
+          },
+          {
+            label: "Transfers Due",
+            value: kpis.transferDue,
+          },
+        ]}
+      />
+
+      <OviCoreActionBar
+        left={
+          <>
+            <span
+              className={
+                dirtyCount > 0
+                  ? "ovicore-pill ovicore-pill-amber"
+                  : "ovicore-pill ovicore-pill-green"
+              }
+            >
+              {dirtyCount > 0
+                ? `${dirtyCount} unsaved row${
+                    dirtyCount === 1 ? "" : "s"
+                  }`
+                : "All rows saved"}
+            </span>
+
+            {userError || lastError ? (
+              <span className="ovicore-pill ovicore-pill-red">
+                {userError || lastError}
+              </span>
+            ) : null}
+          </>
+        }
+        right={
+          <>
+            <button
+              type="button"
+              className="ovicore-btn ovicore-btn-primary"
+              onClick={addNewFlock}
+              disabled={saving}
+            >
+              New rearing flock
+            </button>
+
+            <button
+              type="button"
+              className="ovicore-btn"
+              onClick={duplicateSelected}
+              disabled={saving}
+            >
+              Duplicate selected
+            </button>
+
+            <button
+              type="button"
+              className="ovicore-btn ovicore-btn-danger"
+              onClick={deleteSelected}
+              disabled={saving}
+            >
+              Delete selected
+            </button>
+
+            <button
+              type="button"
+              className="ovicore-btn"
+              onClick={autosizeColumns}
+            >
+              Autosize
+            </button>
+
+            <button
+              type="button"
+              className="ovicore-btn"
+              onClick={() =>
+                Promise.all([
+                  fetchSheds(),
+                  fetchRows(),
+                ]).catch(console.error)
+              }
+              disabled={saving}
+            >
+              Reload
+            </button>
+
+            <button
+              type="button"
+              className="ovicore-btn ovicore-btn-primary"
+              onClick={saveDirtyRows}
+              disabled={saving}
+            >
+              {saving ? "Saving..." : "Save dirty rows"}
+            </button>
+          </>
+        }
+      />
+
+      <OviCoreTableCard
+        title="Breeder Rearing Flock Entry"
+        subtitle="Excel-style flock register with the same layout and behaviour as the Commercial Rearing register."
+      >
+        <div className="formula-bar">
+          <div className="formula-name">
+            Flock lifecycle
+          </div>
+
+          <div className="formula-text">
+            Establish the Breeder Rearing flock, female and male
+            placements, and its planned transfer into Breeder Production.
+          </div>
+        </div>
+
+        <div className="ag-theme-quartz broiler-grid demand-planner-grid">
+          <AgGridReact<BreederRearingFlockRow>
+            ref={gridRef}
+            rowData={rows}
+            columnDefs={columnDefs}
+            defaultColDef={defaultColDef}
+            getRowId={(params) =>
+              String(params.data.id)
+            }
+            quickFilterText={searchText}
+            animateRows
+            suppressDragLeaveHidesColumns
+            stopEditingWhenCellsLoseFocus
+            rowSelection="single"
+            suppressRowClickSelection={false}
+            rowHeight={38}
+            headerHeight={38}
+            groupHeaderHeight={34}
+            loading={loading || loadingUser}
+            onGridReady={onGridReady}
+            onFirstDataRendered={autosizeColumns}
+            onCellValueChanged={(event) => {
+              if (event.data?.id) {
+                markDirty(event.data);
+              }
+            }}
+          />
+        </div>
+      </OviCoreTableCard>
+    </OviCoreShell>
+  );
 }
 
 export default function BreederRearingFlockRegisterPage() {
-  const [companyId, setCompanyId] = useState<number | null>(null);
-  const [farms, setFarms] = useState<Farm[]>([]);
-  const [sheds, setSheds] = useState<Shed[]>([]);
-  const [rows, setRows] = useState<Row[]>([]);
-  const [message, setMessage] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  const rearingFarms = useMemo(
-    () => farms.filter((f) => f.active && f.farm_type === "breeder_rearing"),
-    [farms],
-  );
-  const productionFarms = useMemo(
-    () => farms.filter((f) => f.active && f.farm_type === "breeder_layers"),
-    [farms],
-  );
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const companyIdFromUrl = Number(params.get("company_id"));
-    const selectedCompanyId = Number(
-      window.localStorage.getItem("ovicore_selected_company_id"),
-    );
-
-    const resolvedCompanyId =
-      Number.isInteger(companyIdFromUrl) && companyIdFromUrl > 0
-        ? companyIdFromUrl
-        : Number.isInteger(selectedCompanyId) && selectedCompanyId > 0
-          ? selectedCompanyId
-          : null;
-
-    setCompanyId(resolvedCompanyId);
-
-    if (!resolvedCompanyId) {
-      setMessage(
-        "Select a company from the OviCore sidebar before opening this register.",
-      );
-    }
-  }, []);
-
-  const loadData = useCallback(async () => {
-    if (!companyId) return;
-    setBusy(true);
-    setMessage("");
-    try {
-      const [farmRes, shedRes, flockRes] = await Promise.all([
-        api(`${API_BASE}/api/broilers/farms?company_id=${companyId}`, { cache: "no-store" }),
-        api(`${API_BASE}/api/broilers/sheds?company_id=${companyId}`, { cache: "no-store" }),
-        api(`${API_BASE}/api/breeders/rearing/flocks?company_id=${companyId}`, { cache: "no-store" }),
-      ]);
-      if (!farmRes.ok) {
-        throw new Error(
-          farmRes.status === 401
-            ? "Your OviCore login session has expired. Sign in again."
-            : await errorText(farmRes),
-        );
-      }
-      if (!shedRes.ok) throw new Error(await errorText(shedRes));
-      if (!flockRes.ok) throw new Error(await errorText(flockRes));
-      setFarms(await farmRes.json());
-      setSheds(await shedRes.json());
-      setRows(await flockRes.json());
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Could not load data.");
-    } finally { setBusy(false); }
-  }, [companyId]);
-
-  useEffect(() => { void loadData(); }, [loadData]);
-
-  function patchRow(id: number, patch: Partial<Row>) {
-    setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch, dirty: true } : row));
-  }
-
-  async function addRow() {
-    if (!companyId) return;
-    setBusy(true); setMessage("");
-    const response = await api(`${API_BASE}/api/breeders/rearing/flocks/new-row?company_id=${companyId}`, { method: "POST" });
-    if (!response.ok) { setMessage(await errorText(response)); setBusy(false); return; }
-    const row: Row = await response.json();
-    setRows((current) => [row, ...current]);
-    setBusy(false);
-  }
-
-  async function saveRows() {
-    const dirty = rows.filter((row) => row.dirty);
-    if (!dirty.length) { setMessage("No changes to save."); return; }
-    setBusy(true); setMessage("");
-    try {
-      for (const row of dirty) {
-        const response = await api(`${API_BASE}/api/breeders/rearing/flocks/${row.id}`, {
-          method: "PATCH",
-          body: JSON.stringify({
-            farm_id: row.farm_id, shed_id: row.shed_id,
-            destination_farm_id: row.destination_farm_id,
-            destination_shed_id: row.destination_shed_id,
-            flock_code: row.flock_code, breed: row.breed,
-            hatch_date: row.hatch_date, placement_date: row.placement_date,
-            female_birds: row.female_birds, male_birds: row.male_birds,
-            planned_transfer_date: row.planned_transfer_date,
-            status: row.status, notes: row.notes,
-          }),
-        });
-        if (!response.ok) throw new Error(`${row.flock_code}: ${await errorText(response)}`);
-      }
-      await loadData();
-      setMessage("Breeder Rearing flock changes saved.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Could not save changes.");
-    } finally { setBusy(false); }
-  }
-
-  async function deleteRow(row: Row) {
-    if (!confirm(`Delete ${row.flock_code}?`)) return;
-    const response = await api(`${API_BASE}/api/breeders/rearing/flocks/${row.id}`, { method: "DELETE" });
-    if (!response.ok) { setMessage(await errorText(response)); return; }
-    setRows((current) => current.filter((item) => item.id !== row.id));
-  }
-
-  const females = rows.reduce((sum, row) => sum + Number(row.female_birds ?? 0), 0);
-  const males = rows.reduce((sum, row) => sum + Number(row.male_birds ?? 0), 0);
-
   return (
-    <main className="register-main">
-      <section className="header">
-        <div>
-          <p>Breeder Rearing</p>
-          <h1>Flock Register</h1>
-          <span>Breeder Rearing farms only. Destinations are limited to Breeder Production.</span>
-        </div>
-        <div className="actions">
-          <button onClick={addRow} disabled={busy}>Add flock</button>
-          <button onClick={saveRows} disabled={busy}>Save dirty rows</button>
-          <button onClick={loadData} disabled={busy}>Reload</button>
-        </div>
-      </section>
-
-      <section className="kpis">
-        <article><span>Flocks</span><strong>{rows.length}</strong></article>
-        <article><span>Females</span><strong>{females.toLocaleString("en-AU")}</strong></article>
-        <article><span>Males</span><strong>{males.toLocaleString("en-AU")}</strong></article>
-        <article><span>Total Birds</span><strong>{(females + males).toLocaleString("en-AU")}</strong></article>
-      </section>
-
-      {message && <div className="message">{message}</div>}
-
-      <section className="table-card">
-        <div className="titlebar">
-          <div>
-            <p>Flock setup</p>
-            <h2>Breeder Rearing Flock Master List</h2>
-            <span>Editable yellow fields. Transfers are limited to Breeder Production farms and sheds.</span>
-          </div>
-          <strong>{rows.filter((row) => row.dirty).length} unsaved</strong>
-        </div>
-        <div className="scroll">
-          <table>
-            <thead><tr>
-              <th>Current Farm</th><th>Current Shed</th><th>Flock</th><th>Breed</th>
-              <th>Hatch</th><th>Placement</th><th>Females</th><th>Males</th><th>Male Ratio</th>
-              <th>Planned Transfer</th><th>Destination Farm</th><th>Destination Shed</th>
-              <th>Status</th><th>Notes</th><th></th>
-            </tr></thead>
-            <tbody>{rows.map((row) => {
-              const currentSheds = sheds.filter((s) => s.active && s.farm_id === row.farm_id);
-              const destinationSheds = sheds.filter((s) => s.active && s.farm_id === row.destination_farm_id);
-              const ratio = Number(row.female_birds ?? 0) > 0
-                ? ((Number(row.male_birds ?? 0) / Number(row.female_birds ?? 0)) * 100).toFixed(1)
-                : "";
-              return <tr key={row.id}>
-                <td><select value={row.farm_id} onChange={(e) => {
-                  const farmId = Number(e.target.value);
-                  const first = sheds.find((s) => s.active && s.farm_id === farmId);
-                  patchRow(row.id, { farm_id: farmId, shed_id: first?.id ?? 0 });
-                }}>{rearingFarms.map((f) => <option key={f.id} value={f.id}>{f.farm_name}</option>)}</select></td>
-                <td><select value={row.shed_id} onChange={(e) => patchRow(row.id, { shed_id: Number(e.target.value) })}>{currentSheds.map((s) => <option key={s.id} value={s.id}>{s.shed_name}</option>)}</select></td>
-                <td><input value={row.flock_code} onChange={(e) => patchRow(row.id, { flock_code: e.target.value })}/></td>
-                <td><input value={row.breed ?? ""} onChange={(e) => patchRow(row.id, { breed: e.target.value })}/></td>
-                <td><input type="date" value={row.hatch_date ?? ""} onChange={(e) => patchRow(row.id, { hatch_date: e.target.value || null })}/></td>
-                <td><input type="date" value={row.placement_date ?? ""} onChange={(e) => patchRow(row.id, { placement_date: e.target.value || null })}/></td>
-                <td><input type="number" min="0" value={row.female_birds ?? ""} onChange={(e) => patchRow(row.id, { female_birds: e.target.value === "" ? null : Number(e.target.value) })}/></td>
-                <td><input type="number" min="0" value={row.male_birds ?? ""} onChange={(e) => patchRow(row.id, { male_birds: e.target.value === "" ? null : Number(e.target.value) })}/></td>
-                <td>{ratio ? `${ratio}%` : "—"}</td>
-                <td><input type="date" value={row.planned_transfer_date ?? ""} onChange={(e) => patchRow(row.id, { planned_transfer_date: e.target.value || null })}/></td>
-                <td><select value={row.destination_farm_id ?? ""} onChange={(e) => {
-                  if (!e.target.value) { patchRow(row.id, { destination_farm_id: null, destination_shed_id: null }); return; }
-                  const farmId = Number(e.target.value);
-                  const first = sheds.find((s) => s.active && s.farm_id === farmId);
-                  patchRow(row.id, { destination_farm_id: farmId, destination_shed_id: first?.id ?? null });
-                }}><option value="">Not selected</option>{productionFarms.map((f) => <option key={f.id} value={f.id}>{f.farm_name}</option>)}</select></td>
-                <td><select value={row.destination_shed_id ?? ""} disabled={!row.destination_farm_id} onChange={(e) => patchRow(row.id, { destination_shed_id: e.target.value ? Number(e.target.value) : null })}><option value="">Not selected</option>{destinationSheds.map((s) => <option key={s.id} value={s.id}>{s.shed_name}</option>)}</select></td>
-                <td><select value={row.status} onChange={(e) => patchRow(row.id, { status: e.target.value })}><option>Draft</option><option>Planned</option><option>Active</option><option>Transferred</option><option>Closed</option></select></td>
-                <td><input value={row.notes ?? ""} onChange={(e) => patchRow(row.id, { notes: e.target.value })}/></td>
-                <td><button className="delete" onClick={() => deleteRow(row)}>Delete</button></td>
-              </tr>;
-            })}</tbody>
-          </table>
-        </div>
-      </section>
-
-      <style>{`
-        .register-main {
-          min-height: 100vh;
-          width: 100%;
-          min-width: 0;
-          padding: 10px 12px 24px 12px;
-          background:
-            radial-gradient(circle at top left, rgba(216, 241, 232, .72), transparent 31%),
-            linear-gradient(180deg, #f5faf8 0%, #fbfaf6 100%);
-          color: #082f2a;
-        }
-
-        .header,
-        .kpis,
-        .message,
-        .table-card {
-          width: 100%;
-          max-width: none;
-          margin-left: 0;
-          margin-right: 0;
-        }
-
-        .header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 18px;
-          min-height: 88px;
-          padding: 15px 18px;
-          border: 1px solid rgba(8, 75, 64, .14);
-          border-radius: 13px;
-          background: linear-gradient(105deg, #ffffff 0%, #e5f5ee 100%);
-          box-shadow: 0 8px 22px rgba(8, 60, 53, .06);
-        }
-
-        .header p {
-          margin: 0;
-          color: #16775c;
-          font-size: 9px;
-          font-weight: 900;
-          letter-spacing: .14em;
-          text-transform: uppercase;
-        }
-
-        .header h1 {
-          margin: 3px 0 4px;
-          color: #082f2a;
-          font-size: clamp(23px, 1.8vw, 29px);
-          line-height: 1;
-          letter-spacing: -.035em;
-        }
-
-        .header span {
-          display: block;
-          color: #49665f;
-          font-size: 12px;
-          font-weight: 700;
-          line-height: 1.35;
-        }
-
-        .actions {
-          display: flex;
-          align-items: center;
-          justify-content: flex-end;
-          gap: 7px;
-          flex-wrap: wrap;
-        }
-
-        .actions button,
-        .delete {
-          min-height: 31px;
-          border: 1px solid rgba(7, 60, 53, .12);
-          border-radius: 8px;
-          padding: 0 11px;
-          background: #063c35;
-          color: #fff;
-          font-size: 10px;
-          font-weight: 900;
-          cursor: pointer;
-          white-space: nowrap;
-        }
-
-        .actions button:nth-child(2) {
-          background: #0b6b58;
-        }
-
-        .actions button:last-child {
-          background: #eef4f1;
-          color: #0a443a;
-        }
-
-        .actions button:disabled,
-        .delete:disabled {
-          cursor: not-allowed;
-          opacity: .55;
-        }
-
-        .delete {
-          min-height: 28px;
-          border-radius: 7px;
-          background: #fff0ee;
-          color: #9f332d;
-        }
-
-        .kpis {
-          display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 8px;
-          margin-top: 9px;
-          margin-bottom: 9px;
-        }
-
-        .kpis article {
-          min-height: 72px;
-          padding: 12px 14px;
-          border: 1px solid rgba(8, 75, 64, .13);
-          border-radius: 10px;
-          background: rgba(255, 255, 255, .96);
-          box-shadow: 0 5px 16px rgba(8, 60, 53, .035);
-        }
-
-        .kpis span {
-          display: block;
-          color: #5a746e;
-          font-size: 8px;
-          font-weight: 950;
-          letter-spacing: .11em;
-          text-transform: uppercase;
-        }
-
-        .kpis strong {
-          display: block;
-          margin-top: 7px;
-          color: #073c35;
-          font-size: 22px;
-          line-height: 1;
-          letter-spacing: -.025em;
-        }
-
-        .message {
-          margin-bottom: 9px;
-          padding: 8px 11px;
-          border: 1px solid #ecd993;
-          border-radius: 9px;
-          background: #fff8d9;
-          color: #6f5400;
-          font-size: 10px;
-          font-weight: 850;
-        }
-
-        .table-card {
-          overflow: hidden;
-          border: 1px solid rgba(8, 75, 64, .14);
-          border-radius: 12px;
-          background: #fff;
-          box-shadow: 0 10px 28px rgba(8, 60, 53, .055);
-        }
-
-        .titlebar {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 14px;
-          min-height: 70px;
-          padding: 13px 16px;
-          background: linear-gradient(90deg, #063c35 0%, #08745f 100%);
-          color: #fff;
-        }
-
-        .titlebar p {
-          margin: 0 0 3px;
-          color: #bfe7d8;
-          font-size: 8px;
-          font-weight: 950;
-          letter-spacing: .13em;
-          text-transform: uppercase;
-        }
-
-        .titlebar h2 {
-          margin: 0;
-          font-size: 20px;
-          line-height: 1.05;
-          letter-spacing: -.02em;
-        }
-
-        .titlebar span {
-          display: block;
-          margin-top: 4px;
-          color: rgba(255, 255, 255, .78);
-          font-size: 9.5px;
-          font-weight: 700;
-        }
-
-        .titlebar strong {
-          flex: 0 0 auto;
-          border-radius: 999px;
-          padding: 6px 9px;
-          background: rgba(255,255,255,.13);
-          color: #effff8;
-          font-size: 9px;
-          font-weight: 950;
-          text-transform: uppercase;
-        }
-
-        .scroll {
-          width: 100%;
-          max-height: calc(100vh - 300px);
-          min-height: 430px;
-          overflow: auto;
-          background: #fff;
-        }
-
-        table {
-          width: max-content;
-          min-width: 1840px;
-          border-collapse: separate;
-          border-spacing: 0;
-          table-layout: fixed;
-          color: #082f2a;
-          font-size: 11.5px;
-        }
-
-        th {
-          position: sticky;
-          top: 0;
-          z-index: 3;
-          height: 36px;
-          padding: 6px 7px;
-          border-right: 1px solid rgba(8, 75, 64, .12);
-          border-bottom: 1px solid rgba(8, 75, 64, .16);
-          background: #dcefe7;
-          color: #063c35;
-          font-size: 9px;
-          font-weight: 950;
-          letter-spacing: .055em;
-          text-align: center;
-          text-transform: uppercase;
-          white-space: nowrap;
-        }
-
-        td {
-          height: 44px;
-          padding: 5px 6px;
-          border-right: 1px solid rgba(8, 75, 64, .09);
-          border-bottom: 1px solid rgba(8, 75, 64, .09);
-          background: #fff;
-          text-align: center;
-          vertical-align: middle;
-          white-space: nowrap;
-        }
-
-        tbody tr:hover td {
-          background: #f9fcfa;
-        }
-
-        td input,
-        td select {
-          width: 100%;
-          min-width: 118px;
-          height: 32px;
-          border: 1px solid rgba(145, 116, 24, .24);
-          border-radius: 6px;
-          background: #fff2bf;
-          padding: 0 7px;
-          color: #082f2a;
-          font-size: 11px;
-          font-weight: 800;
-          outline: none;
-        }
-
-        td input:focus,
-        td select:focus {
-          border-color: #0d7a63;
-          box-shadow: 0 0 0 2px rgba(13, 122, 99, .12);
-        }
-
-        th:nth-child(1), td:nth-child(1) { width: 190px; }
-        th:nth-child(2), td:nth-child(2) { width: 105px; }
-        th:nth-child(3), td:nth-child(3) { width: 125px; }
-        th:nth-child(4), td:nth-child(4) { width: 125px; }
-        th:nth-child(5), td:nth-child(5),
-        th:nth-child(6), td:nth-child(6),
-        th:nth-child(10), td:nth-child(10) { width: 125px; }
-        th:nth-child(7), td:nth-child(7),
-        th:nth-child(8), td:nth-child(8) { width: 105px; }
-        th:nth-child(9), td:nth-child(9) { width: 90px; }
-        th:nth-child(11), td:nth-child(11) { width: 200px; }
-        th:nth-child(12), td:nth-child(12) { width: 120px; }
-        th:nth-child(13), td:nth-child(13) { width: 110px; }
-        th:nth-child(14), td:nth-child(14) { width: 230px; }
-        th:nth-child(15), td:nth-child(15) { width: 78px; }
-
-        @media (max-width: 980px) {
-          .register-main {
-            padding-left: 12px;
-          }
-
-          .header {
-            align-items: flex-start;
-          }
-
-          .kpis {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-          }
-
-          .scroll {
-            max-height: none;
-          }
-        }
-
-        @media (max-width: 760px) {
-          .register-main {
-            padding: 8px;
-          }
-
-          .header {
-            flex-direction: column;
-          }
-
-          .actions {
-            width: 100%;
-            justify-content: flex-start;
-          }
-
-          .kpis {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-          }
-
-          .titlebar {
-            align-items: flex-start;
-          }
-        }
-      `}</style>
-    </main>
+    <Suspense fallback={null}>
+      <BreederRearingFlockRegisterContent />
+    </Suspense>
   );
 }
