@@ -34,6 +34,14 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 const API_BASE = "";
 
+type FarmOption = {
+  id: number;
+  company_id: number;
+  farm_name: string;
+  farm_type: string;
+  active: boolean;
+};
+
 type ShedOption = {
   id: number;
   company_id: number;
@@ -305,31 +313,37 @@ function LayerRearingFlockRegisterContent() {
       return;
     }
 
-    const [rearingResponse, destinationResponse] = await Promise.all([
+    const [farmsResponse, shedsResponse] = await Promise.all([
       authenticatedFetch(
-        `${API_BASE}/api/broilers/sheds?company_id=${activeCompanyId}&farm_type=layer_rearing`,
+        `${API_BASE}/api/broilers/farms?company_id=${activeCompanyId}`,
         { cache: "no-store" },
       ),
       authenticatedFetch(
-        `${API_BASE}/api/broilers/sheds?company_id=${activeCompanyId}&farm_type=commercial_layers`,
+        `${API_BASE}/api/broilers/sheds?company_id=${activeCompanyId}`,
         { cache: "no-store" },
       ),
     ]);
 
-    if (!rearingResponse.ok) {
+    if (!farmsResponse.ok) {
       throw new Error(
-        `Could not load Commercial Rearing farms and sheds. Backend returned ${rearingResponse.status}.`,
+        `Could not load farm classifications. Backend returned ${farmsResponse.status}.`,
       );
     }
 
-    if (!destinationResponse.ok) {
+    if (!shedsResponse.ok) {
       throw new Error(
-        `Could not load Layer destination farms and sheds. Backend returned ${destinationResponse.status}.`,
+        `Could not load farms and sheds. Backend returned ${shedsResponse.status}.`,
       );
     }
 
-    const rearingData: ShedOption[] = await rearingResponse.json();
-    const destinationData: ShedOption[] = await destinationResponse.json();
+    const farmsData: FarmOption[] = await farmsResponse.json();
+    const shedsData: ShedOption[] = await shedsResponse.json();
+
+    const activeFarmTypeById = new Map<number, string>(
+      farmsData
+        .filter((farm) => farm.active)
+        .map((farm) => [farm.id, farm.farm_type]),
+    );
 
     const sortSheds = (data: ShedOption[]) =>
       data
@@ -339,6 +353,18 @@ function LayerRearingFlockRegisterContent() {
             `${b.farm_name} ${b.shed_name}`,
           ),
         );
+
+    const rearingData = shedsData.filter(
+      (shed) =>
+        activeFarmTypeById.get(shed.farm_id) ===
+        "layer_rearing",
+    );
+
+    const destinationData = shedsData.filter(
+      (shed) =>
+        activeFarmTypeById.get(shed.farm_id) ===
+        "commercial_layers",
+    );
 
     setRearingShedOptions(sortSheds(rearingData));
     setDestinationShedOptions(sortSheds(destinationData));
