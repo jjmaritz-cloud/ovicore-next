@@ -106,6 +106,31 @@ function isoToDisplayDate(value: string | null | undefined) {
   return `${match[3]}-${match[2]}-${match[1]}`;
 }
 
+async function readApiError(
+  response: Response,
+  fallback: string,
+) {
+  try {
+    const payload = await response.json();
+
+    if (
+      payload &&
+      typeof payload === "object" &&
+      "detail" in payload
+    ) {
+      const detail = (payload as { detail?: unknown }).detail;
+
+      if (typeof detail === "string" && detail.trim()) {
+        return detail;
+      }
+    }
+  } catch {
+    // Fall through to the generic message.
+  }
+
+  return fallback;
+}
+
 function displayDateToIso(value: string | null | undefined) {
   if (!value) return null;
 
@@ -786,13 +811,22 @@ function LayerRearingFlockRegisterContent() {
       );
 
       if (!response.ok) {
-        throw new Error(await response.text());
+        throw new Error(
+          await readApiError(
+            response,
+            "Could not create the new Commercial Rearing flock.",
+          ),
+        );
       }
 
       await fetchRows();
     } catch (error) {
       console.error(error);
-      alert("Could not create the new rearing flock.");
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Could not create the new Commercial Rearing flock.",
+      );
     } finally {
       setSaving(false);
     }
@@ -927,6 +961,47 @@ function LayerRearingFlockRegisterContent() {
           return;
         }
 
+        const hasDestinationFarm =
+          Boolean(row.destinationFarmId);
+        const hasDestinationShed =
+          Boolean(row.destinationShedId);
+
+        if (hasDestinationFarm !== hasDestinationShed) {
+          alert(
+            `Select both destination farm and destination shed for ${row.flockCode}.`,
+          );
+          return;
+        }
+
+        const validRearingShed = rearingShedOptions.some(
+          (shed) =>
+            shed.id === row.shedId &&
+            shed.farm_id === row.farmId,
+        );
+
+        if (!validRearingShed) {
+          alert(
+            `${row.flockCode} must use a Commercial Rearing farm and shed.`,
+          );
+          return;
+        }
+
+        if (hasDestinationFarm && hasDestinationShed) {
+          const validDestinationShed =
+            destinationShedOptions.some(
+              (shed) =>
+                shed.id === row.destinationShedId &&
+                shed.farm_id === row.destinationFarmId,
+            );
+
+          if (!validDestinationShed) {
+            alert(
+              `${row.flockCode} must transfer to a Commercial Layers farm and shed.`,
+            );
+            return;
+          }
+        }
+
         const response = await authenticatedFetch(
           `${API_BASE}/api/layers/rearing/flocks/${id}`,
           {
@@ -961,19 +1036,28 @@ function LayerRearingFlockRegisterContent() {
         );
 
         if (!response.ok) {
-          throw new Error(await response.text());
+          throw new Error(
+            await readApiError(
+              response,
+              `Could not save ${row.flockCode}.`,
+            ),
+          );
         }
       }
 
       await fetchRows();
-      alert("Layer Rearing flocks saved.");
+      alert("Commercial Rearing flocks saved.");
     } catch (error) {
       console.error(error);
-      alert("Could not save Layer Rearing flock changes.");
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Could not save Commercial Rearing flock changes.",
+      );
     } finally {
       setSaving(false);
     }
-  }, [fetchRows]);
+  }, [destinationShedOptions, fetchRows, rearingShedOptions]);
 
   const kpis = useMemo(() => {
     const active = rows.filter((row) =>
@@ -1012,7 +1096,7 @@ function LayerRearingFlockRegisterContent() {
     <OviCoreShell module="layers">
       <OviCorePageHeader
         title="Commercial Rearing Flock Register"
-        subtitle="Manage commercial pullet flocks from placement through transfer into the Layers module."
+        subtitle="Commercial Rearing farms and sheds only. Transfer destinations are limited to Commercial Layers farms and sheds."
       >
         <div className="top-actions">
           <input
