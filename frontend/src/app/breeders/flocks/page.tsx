@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8001";
+const API_BASE = "";
 
 type Farm = { id: number; farm_name: string; farm_type: string; active: boolean };
 type Shed = { id: number; farm_id: number; farm_name: string; shed_name: string; active: boolean };
@@ -80,7 +80,7 @@ export default function BreederRearingFlockRegisterPage() {
       if (!farmRes.ok) {
         throw new Error(
           farmRes.status === 401
-            ? "Your OviCore session could not be confirmed. Refresh the page once; you will not be logged out automatically."
+            ? "Your OviCore login session has expired. Sign in again."
             : await errorText(farmRes),
         );
       }
