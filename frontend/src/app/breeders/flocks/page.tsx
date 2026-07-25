@@ -47,6 +47,12 @@ export default function BreederRearingFlockRegisterPage() {
 
   const loadUser = useCallback(async () => {
     const response = await api(`${API_BASE}/api/auth/me`, { cache: "no-store" });
+
+    if (response.status === 401) {
+      window.location.href = "/login";
+      return;
+    }
+
     if (!response.ok) throw new Error(await errorText(response));
     const user: CurrentUser = await response.json();
     const stored = Number(localStorage.getItem("ovicore_active_company_id"));
@@ -212,7 +218,7 @@ export default function BreederRearingFlockRegisterPage() {
           min-height: 100vh;
           width: 100%;
           min-width: 0;
-          padding: 12px 14px 28px 18px;
+          padding: 10px 12px 24px 12px;
           background:
             radial-gradient(circle at top left, rgba(216, 241, 232, .72), transparent 31%),
             linear-gradient(180deg, #f5faf8 0%, #fbfaf6 100%);
@@ -223,9 +229,10 @@ export default function BreederRearingFlockRegisterPage() {
         .kpis,
         .message,
         .table-card {
-          width: min(100%, 1560px);
-          margin-left: auto;
-          margin-right: auto;
+          width: 100%;
+          max-width: none;
+          margin-left: 0;
+          margin-right: 0;
         }
 
         .header {
@@ -233,8 +240,8 @@ export default function BreederRearingFlockRegisterPage() {
           align-items: center;
           justify-content: space-between;
           gap: 18px;
-          min-height: 76px;
-          padding: 13px 16px;
+          min-height: 88px;
+          padding: 15px 18px;
           border: 1px solid rgba(8, 75, 64, .14);
           border-radius: 13px;
           background: linear-gradient(105deg, #ffffff 0%, #e5f5ee 100%);
@@ -253,7 +260,7 @@ export default function BreederRearingFlockRegisterPage() {
         .header h1 {
           margin: 3px 0 4px;
           color: #082f2a;
-          font-size: clamp(20px, 1.7vw, 25px);
+          font-size: clamp(23px, 1.8vw, 29px);
           line-height: 1;
           letter-spacing: -.035em;
         }
@@ -261,7 +268,7 @@ export default function BreederRearingFlockRegisterPage() {
         .header span {
           display: block;
           color: #49665f;
-          font-size: 11px;
+          font-size: 12px;
           font-weight: 700;
           line-height: 1.35;
         }
@@ -319,8 +326,8 @@ export default function BreederRearingFlockRegisterPage() {
         }
 
         .kpis article {
-          min-height: 64px;
-          padding: 10px 12px;
+          min-height: 72px;
+          padding: 12px 14px;
           border: 1px solid rgba(8, 75, 64, .13);
           border-radius: 10px;
           background: rgba(255, 255, 255, .96);
@@ -340,7 +347,7 @@ export default function BreederRearingFlockRegisterPage() {
           display: block;
           margin-top: 7px;
           color: #073c35;
-          font-size: 19px;
+          font-size: 22px;
           line-height: 1;
           letter-spacing: -.025em;
         }
@@ -369,8 +376,8 @@ export default function BreederRearingFlockRegisterPage() {
           align-items: center;
           justify-content: space-between;
           gap: 14px;
-          min-height: 64px;
-          padding: 11px 14px;
+          min-height: 70px;
+          padding: 13px 16px;
           background: linear-gradient(90deg, #063c35 0%, #08745f 100%);
           color: #fff;
         }
@@ -386,7 +393,7 @@ export default function BreederRearingFlockRegisterPage() {
 
         .titlebar h2 {
           margin: 0;
-          font-size: 17px;
+          font-size: 20px;
           line-height: 1.05;
           letter-spacing: -.02em;
         }
@@ -412,33 +419,33 @@ export default function BreederRearingFlockRegisterPage() {
 
         .scroll {
           width: 100%;
-          max-height: calc(100vh - 285px);
-          min-height: 250px;
+          max-height: calc(100vh - 300px);
+          min-height: 430px;
           overflow: auto;
           background: #fff;
         }
 
         table {
           width: max-content;
-          min-width: 1760px;
+          min-width: 1840px;
           border-collapse: separate;
           border-spacing: 0;
           table-layout: fixed;
           color: #082f2a;
-          font-size: 11px;
+          font-size: 11.5px;
         }
 
         th {
           position: sticky;
           top: 0;
           z-index: 3;
-          height: 32px;
+          height: 36px;
           padding: 6px 7px;
           border-right: 1px solid rgba(8, 75, 64, .12);
           border-bottom: 1px solid rgba(8, 75, 64, .16);
           background: #dcefe7;
           color: #063c35;
-          font-size: 8.5px;
+          font-size: 9px;
           font-weight: 950;
           letter-spacing: .055em;
           text-align: center;
@@ -447,7 +454,7 @@ export default function BreederRearingFlockRegisterPage() {
         }
 
         td {
-          height: 40px;
+          height: 44px;
           padding: 5px 6px;
           border-right: 1px solid rgba(8, 75, 64, .09);
           border-bottom: 1px solid rgba(8, 75, 64, .09);
@@ -464,14 +471,14 @@ export default function BreederRearingFlockRegisterPage() {
         td input,
         td select {
           width: 100%;
-          min-width: 112px;
-          height: 30px;
+          min-width: 118px;
+          height: 32px;
           border: 1px solid rgba(145, 116, 24, .24);
           border-radius: 6px;
           background: #fff2bf;
           padding: 0 7px;
           color: #082f2a;
-          font-size: 10.5px;
+          font-size: 11px;
           font-weight: 800;
           outline: none;
         }
@@ -498,7 +505,7 @@ export default function BreederRearingFlockRegisterPage() {
         th:nth-child(14), td:nth-child(14) { width: 230px; }
         th:nth-child(15), td:nth-child(15) { width: 78px; }
 
-        @media (max-width: 1100px) {
+        @media (max-width: 980px) {
           .register-main {
             padding-left: 12px;
           }
