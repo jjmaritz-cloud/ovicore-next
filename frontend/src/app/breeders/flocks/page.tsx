@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8001";
 
-type CurrentUser = { company_id: number | null; is_global_admin: boolean };
 type Farm = { id: number; farm_name: string; farm_type: string; active: boolean };
 type Shed = { id: number; farm_id: number; farm_name: string; shed_name: string; active: boolean };
 type Row = {
@@ -45,18 +44,27 @@ export default function BreederRearingFlockRegisterPage() {
     [farms],
   );
 
-  const loadUser = useCallback(async () => {
-    const response = await api(`${API_BASE}/api/auth/me`, { cache: "no-store" });
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const companyIdFromUrl = Number(params.get("company_id"));
+    const selectedCompanyId = Number(
+      window.localStorage.getItem("ovicore_selected_company_id"),
+    );
 
-    if (response.status === 401) {
-      window.location.href = "/login";
-      return;
+    const resolvedCompanyId =
+      Number.isInteger(companyIdFromUrl) && companyIdFromUrl > 0
+        ? companyIdFromUrl
+        : Number.isInteger(selectedCompanyId) && selectedCompanyId > 0
+          ? selectedCompanyId
+          : null;
+
+    setCompanyId(resolvedCompanyId);
+
+    if (!resolvedCompanyId) {
+      setMessage(
+        "Select a company from the OviCore sidebar before opening this register.",
+      );
     }
-
-    if (!response.ok) throw new Error(await errorText(response));
-    const user: CurrentUser = await response.json();
-    const stored = Number(localStorage.getItem("ovicore_active_company_id"));
-    setCompanyId(user.is_global_admin && stored > 0 ? stored : user.company_id);
   }, []);
 
   const loadData = useCallback(async () => {
@@ -69,7 +77,13 @@ export default function BreederRearingFlockRegisterPage() {
         api(`${API_BASE}/api/broilers/sheds?company_id=${companyId}`, { cache: "no-store" }),
         api(`${API_BASE}/api/breeders/rearing/flocks?company_id=${companyId}`, { cache: "no-store" }),
       ]);
-      if (!farmRes.ok) throw new Error(await errorText(farmRes));
+      if (!farmRes.ok) {
+        throw new Error(
+          farmRes.status === 401
+            ? "Your OviCore session could not be confirmed. Refresh the page once; you will not be logged out automatically."
+            : await errorText(farmRes),
+        );
+      }
       if (!shedRes.ok) throw new Error(await errorText(shedRes));
       if (!flockRes.ok) throw new Error(await errorText(flockRes));
       setFarms(await farmRes.json());
@@ -80,7 +94,6 @@ export default function BreederRearingFlockRegisterPage() {
     } finally { setBusy(false); }
   }, [companyId]);
 
-  useEffect(() => { void loadUser().catch((e) => setMessage(e.message)); }, [loadUser]);
   useEffect(() => { void loadData(); }, [loadData]);
 
   function patchRow(id: number, patch: Partial<Row>) {
