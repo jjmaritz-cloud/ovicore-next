@@ -28,7 +28,6 @@ import "ag-grid-community/styles/ag-theme-quartz.css";
 import OviCoreActionBar from "@/components/ovicore/OviCoreActionBar";
 import OviCoreKpiStrip from "@/components/ovicore/OviCoreKpiStrip";
 import OviCorePageHeader from "@/components/ovicore/OviCorePageHeader";
-import OviCoreShell from "@/components/ovicore/OviCoreShell";
 import OviCoreTableCard from "@/components/ovicore/OviCoreTableCard";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
@@ -1132,7 +1131,7 @@ function BreederRearingFlockRegisterContent() {
   }, [rows]);
 
   return (
-    <OviCoreShell module="breeders">
+    <div className="breeder-flock-page">
       <OviCorePageHeader
         title="Breeder Rearing Flock Register"
         subtitle="Breeder Rearing farms and sheds only. Transfer destinations are limited to Breeder Production farms and sheds."
@@ -1302,7 +1301,16 @@ function BreederRearingFlockRegisterContent() {
           />
         </div>
       </OviCoreTableCard>
-    </OviCoreShell>
+
+      <style jsx>{`
+        .breeder-flock-page {
+          width: 100%;
+          min-width: 0;
+          margin: 0;
+          padding: 0;
+        }
+      `}</style>
+    </div>
   );
 }
 
