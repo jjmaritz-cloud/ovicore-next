@@ -1307,7 +1307,14 @@ function BreederRearingFlockRegisterContent() {
           width: 100%;
           min-width: 0;
           margin: 0;
-          padding: 0;
+          padding: 10px 12px 18px 12px;
+          box-sizing: border-box;
+        }
+
+        @media (max-width: 760px) {
+          .breeder-flock-page {
+            padding: 8px;
+          }
         }
       `}</style>
     </div>
