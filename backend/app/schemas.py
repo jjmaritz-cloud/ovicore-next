@@ -729,3 +729,67 @@ class LayerRearingDailyPerformanceOut(BaseModel):
     last_saved_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# ---------------------------------------------------------------------
+# Breeder Rearing Flock Register
+# ---------------------------------------------------------------------
+
+class BreederRearingFlockCreate(BaseModel):
+    company_id: int
+    farm_id: int
+    shed_id: int
+    destination_farm_id: Optional[int] = None
+    destination_shed_id: Optional[int] = None
+    flock_code: str
+    breed: Optional[str] = None
+    hatch_date: Optional[date] = None
+    placement_date: Optional[date] = None
+    female_birds: Optional[int] = None
+    male_birds: Optional[int] = None
+    planned_transfer_date: Optional[date] = None
+    status: str = "Draft"
+    notes: Optional[str] = None
+
+class BreederRearingFlockPatch(BaseModel):
+    farm_id: Optional[int] = None
+    shed_id: Optional[int] = None
+    destination_farm_id: Optional[int] = None
+    destination_shed_id: Optional[int] = None
+    flock_code: Optional[str] = None
+    breed: Optional[str] = None
+    hatch_date: Optional[date] = None
+    placement_date: Optional[date] = None
+    female_birds: Optional[int] = None
+    male_birds: Optional[int] = None
+    planned_transfer_date: Optional[date] = None
+    status: Optional[str] = None
+    notes: Optional[str] = None
+
+class BreederRearingFlockOut(BaseModel):
+    id: int
+    company_id: int
+    farm_id: int
+    shed_id: int
+    farm_name: str
+    shed_name: str
+    destination_farm_id: Optional[int] = None
+    destination_shed_id: Optional[int] = None
+    destination_farm_name: Optional[str] = None
+    destination_shed_name: Optional[str] = None
+    flock_code: str
+    breed: Optional[str] = None
+    hatch_date: Optional[date] = None
+    placement_date: Optional[date] = None
+    female_birds: Optional[int] = None
+    male_birds: Optional[int] = None
+    total_birds: Optional[int] = None
+    male_ratio_pct: Optional[float] = None
+    planned_transfer_date: Optional[date] = None
+    current_age_weeks: Optional[float] = None
+    days_to_transfer: Optional[int] = None
+    status: str
+    notes: Optional[str] = None
+    last_saved_by: Optional[str] = None
+    last_saved_at: Optional[datetime] = None
+    model_config = ConfigDict(from_attributes=True)

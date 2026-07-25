@@ -41,6 +41,9 @@ from .schemas import (
     LayerRearingFlockCreate,
     LayerRearingFlockPatch,
     LayerRearingFlockOut,
+    BreederRearingFlockCreate,
+    BreederRearingFlockPatch,
+    BreederRearingFlockOut,
 )
 from .calculations import build_plan_response
 from .seed import seed_demo_data
@@ -3737,3 +3740,202 @@ def delete_layer_rearing_flock(
         "id": deleted_id,
         "flock_code": deleted_code,
     }
+
+
+# ---------------------------------------------------------------------
+# Breeder Rearing Flock Register
+# ---------------------------------------------------------------------
+
+def _get_breeder_rearing_flock(db: Session, flock_id: int):
+    flock = (
+        db.query(models.BreederRearingFlock)
+        .options(
+            joinedload(models.BreederRearingFlock.farm),
+            joinedload(models.BreederRearingFlock.shed),
+            joinedload(models.BreederRearingFlock.destination_farm),
+            joinedload(models.BreederRearingFlock.destination_shed),
+        )
+        .filter(models.BreederRearingFlock.id == flock_id)
+        .first()
+    )
+    if flock is None:
+        raise HTTPException(status_code=404, detail="Breeder Rearing flock not found")
+    return flock
+
+def _validate_breeder_rearing_location(
+    db: Session, current_user: models.AppUser, company_id: int,
+    farm_id: int, shed_id: int, required_type: str, require_access: bool, label: str,
+):
+    farm = (
+        db.query(BroilerFarm)
+        .filter(
+            BroilerFarm.id == farm_id,
+            BroilerFarm.company_id == company_id,
+            BroilerFarm.active == True,
+            BroilerFarm.farm_type == required_type,
+        )
+        .first()
+    )
+    if farm is None:
+        raise HTTPException(status_code=400, detail=f"{label} farm has the wrong farm type or is inactive")
+    if require_access and not access.user_has_farm_access(db, current_user, farm.id):
+        raise HTTPException(status_code=403, detail=f"You do not have access to the {label.lower()} farm")
+    shed = (
+        db.query(BroilerShed)
+        .filter(
+            BroilerShed.id == shed_id,
+            BroilerShed.company_id == company_id,
+            BroilerShed.farm_id == farm.id,
+            BroilerShed.active == True,
+        )
+        .first()
+    )
+    if shed is None:
+        raise HTTPException(status_code=400, detail=f"The selected {label.lower()} shed does not belong to the selected farm")
+    return farm, shed
+
+def _breeder_rearing_response(flock):
+    females = int(flock.female_birds or 0)
+    males = int(flock.male_birds or 0)
+    start_date = flock.hatch_date or flock.placement_date
+    age_weeks = round((date.today() - start_date).days / 7, 2) if start_date else None
+    days_to_transfer = (flock.planned_transfer_date - date.today()).days if flock.planned_transfer_date else None
+    male_ratio = round((males / females) * 100, 2) if females > 0 else None
+    return BreederRearingFlockOut(
+        id=flock.id, company_id=flock.company_id,
+        farm_id=flock.farm_id, shed_id=flock.shed_id,
+        farm_name=flock.farm.farm_name if flock.farm else "",
+        shed_name=flock.shed.shed_name if flock.shed else "",
+        destination_farm_id=flock.destination_farm_id,
+        destination_shed_id=flock.destination_shed_id,
+        destination_farm_name=flock.destination_farm.farm_name if flock.destination_farm else None,
+        destination_shed_name=flock.destination_shed.shed_name if flock.destination_shed else None,
+        flock_code=flock.flock_code, breed=flock.breed,
+        hatch_date=flock.hatch_date, placement_date=flock.placement_date,
+        female_birds=flock.female_birds, male_birds=flock.male_birds,
+        total_birds=females + males, male_ratio_pct=male_ratio,
+        planned_transfer_date=flock.planned_transfer_date,
+        current_age_weeks=age_weeks, days_to_transfer=days_to_transfer,
+        status=flock.status, notes=flock.notes,
+        last_saved_by=flock.last_saved_by, last_saved_at=flock.last_saved_at,
+    )
+
+@app.get("/api/breeders/rearing/flocks", response_model=list[BreederRearingFlockOut])
+def list_breeder_rearing_flocks(
+    company_id: int | None = None,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    resolved_company_id = resolve_company_id(current_user, company_id)
+    query = (
+        db.query(models.BreederRearingFlock)
+        .options(
+            joinedload(models.BreederRearingFlock.farm),
+            joinedload(models.BreederRearingFlock.shed),
+            joinedload(models.BreederRearingFlock.destination_farm),
+            joinedload(models.BreederRearingFlock.destination_shed),
+        )
+        .filter(models.BreederRearingFlock.company_id == resolved_company_id)
+    )
+    if not (current_user.is_global_admin or current_user.is_company_admin):
+        permitted = db.query(models.UserFarmAccess.farm_id).filter(models.UserFarmAccess.user_id == current_user.id)
+        query = query.filter(models.BreederRearingFlock.farm_id.in_(permitted))
+    return [_breeder_rearing_response(row) for row in query.order_by(models.BreederRearingFlock.id.desc()).all()]
+
+@app.post("/api/breeders/rearing/flocks/new-row", response_model=BreederRearingFlockOut)
+def create_breeder_rearing_flock_new_row(
+    company_id: int | None = None,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    resolved_company_id = resolve_company_id(current_user, company_id)
+    query = (
+        db.query(BroilerShed)
+        .join(BroilerFarm, BroilerFarm.id == BroilerShed.farm_id)
+        .filter(
+            BroilerShed.company_id == resolved_company_id,
+            BroilerShed.active == True,
+            BroilerFarm.company_id == resolved_company_id,
+            BroilerFarm.active == True,
+            BroilerFarm.farm_type == "breeder_rearing",
+        )
+    )
+    if not (current_user.is_global_admin or current_user.is_company_admin):
+        permitted = db.query(models.UserFarmAccess.farm_id).filter(models.UserFarmAccess.user_id == current_user.id)
+        query = query.filter(BroilerShed.farm_id.in_(permitted))
+    shed = query.order_by(BroilerFarm.farm_name.asc(), BroilerShed.shed_name.asc()).first()
+    if shed is None:
+        raise HTTPException(status_code=400, detail="No active Breeder Rearing shed is available")
+    next_number = db.query(models.BreederRearingFlock).filter(models.BreederRearingFlock.company_id == resolved_company_id).count() + 1
+    flock_code = f"BRR-NEW-{next_number:03d}"
+    while db.query(models.BreederRearingFlock).filter(models.BreederRearingFlock.company_id == resolved_company_id, models.BreederRearingFlock.flock_code == flock_code).first():
+        next_number += 1
+        flock_code = f"BRR-NEW-{next_number:03d}"
+    flock = models.BreederRearingFlock(
+        company_id=resolved_company_id, farm_id=shed.farm_id, shed_id=shed.id,
+        flock_code=flock_code, status="Draft", notes="",
+        last_saved_by=current_user.full_name, last_saved_at=datetime.utcnow(),
+    )
+    db.add(flock)
+    db.commit()
+    return _breeder_rearing_response(_get_breeder_rearing_flock(db, flock.id))
+
+@app.patch("/api/breeders/rearing/flocks/{flock_id}", response_model=BreederRearingFlockOut)
+def update_breeder_rearing_flock(
+    flock_id: int, payload: BreederRearingFlockPatch,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    flock = _get_breeder_rearing_flock(db, flock_id)
+    if not current_user.is_global_admin and flock.company_id != current_user.company_id:
+        raise HTTPException(status_code=403, detail="You do not have access to this company")
+    if not access.user_has_farm_access(db, current_user, flock.farm_id):
+        raise HTTPException(status_code=403, detail="You do not have access to this Breeder Rearing farm")
+    data = payload.model_dump(exclude_unset=True)
+    farm_id = data.get("farm_id", flock.farm_id)
+    shed_id = data.get("shed_id", flock.shed_id)
+    _validate_breeder_rearing_location(db, current_user, flock.company_id, farm_id, shed_id, "breeder_rearing", True, "Breeder Rearing")
+    destination_farm_id = data.get("destination_farm_id", flock.destination_farm_id)
+    destination_shed_id = data.get("destination_shed_id", flock.destination_shed_id)
+    if (destination_farm_id is None) != (destination_shed_id is None):
+        raise HTTPException(status_code=400, detail="Destination farm and shed must both be selected or both be blank")
+    if destination_farm_id is not None:
+        _validate_breeder_rearing_location(db, current_user, flock.company_id, destination_farm_id, destination_shed_id, "breeder_layers", False, "Breeder Production")
+    if "flock_code" in data:
+        code = (data["flock_code"] or "").strip()
+        if not code:
+            raise HTTPException(status_code=400, detail="Flock code is required")
+        duplicate = db.query(models.BreederRearingFlock).filter(models.BreederRearingFlock.company_id == flock.company_id, models.BreederRearingFlock.flock_code == code, models.BreederRearingFlock.id != flock.id).first()
+        if duplicate:
+            raise HTTPException(status_code=400, detail="Flock code already exists")
+        data["flock_code"] = code
+    for field in ("breed", "status", "notes"):
+        if field in data:
+            data[field] = data[field].strip() if data[field] else ("Draft" if field == "status" else None if field == "breed" else "")
+    data.update({"farm_id": farm_id, "shed_id": shed_id, "destination_farm_id": destination_farm_id, "destination_shed_id": destination_shed_id})
+    for field, value in data.items():
+        setattr(flock, field, value)
+    flock.last_saved_by = current_user.full_name
+    flock.last_saved_at = datetime.utcnow()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Flock code already exists")
+    return _breeder_rearing_response(_get_breeder_rearing_flock(db, flock.id))
+
+@app.delete("/api/breeders/rearing/flocks/{flock_id}")
+def delete_breeder_rearing_flock(
+    flock_id: int,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    flock = _get_breeder_rearing_flock(db, flock_id)
+    if not (current_user.is_global_admin or current_user.is_company_admin):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    if (flock.status or "").strip().lower() not in {"draft", "planned"}:
+        raise HTTPException(status_code=400, detail="Only Draft or Planned flocks can be deleted")
+    deleted_id = flock.id
+    db.delete(flock)
+    db.commit()
+    return {"deleted": True, "id": deleted_id}
