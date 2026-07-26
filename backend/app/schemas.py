@@ -605,6 +605,12 @@ class LayerRearingFlockOut(BaseModel):
     birds_placed: Optional[int] = None
 
     planned_transfer_date: Optional[date] = None
+    actual_transfer_date: Optional[date] = None
+    birds_transferred: Optional[int] = None
+    transfer_notes: Optional[str] = None
+    transferred_by: Optional[str] = None
+    transferred_at: Optional[datetime] = None
+    commercial_layer_flock_id: Optional[int] = None
 
     current_age_weeks: Optional[float] = None
     days_to_transfer: Optional[int] = None
@@ -968,6 +974,7 @@ class BreederProductionDailyPerformanceOut(BaseModel):
 
 class CommercialLayerFlockOut(BaseModel):
     id: int
+    source_rearing_flock_id: int
     company_id: int
     farm_id: int
     shed_id: int
@@ -1025,3 +1032,16 @@ class CommercialLayerPerformanceOut(BaseModel):
     last_saved_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class LayerRearingTransferCreate(BaseModel):
+    actual_transfer_date: date
+    destination_farm_id: int
+    destination_shed_id: int
+    birds_transferred: int
+    transfer_notes: Optional[str] = None
+
+
+class LayerRearingTransferResult(BaseModel):
+    rearing_flock: LayerRearingFlockOut
+    commercial_layer_flock: CommercialLayerFlockOut

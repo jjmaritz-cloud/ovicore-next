@@ -408,6 +408,12 @@ class LayerRearingFlock(Base):
 
     planned_transfer_date = Column(Date, nullable=True)
 
+    actual_transfer_date = Column(Date, nullable=True)
+    birds_transferred = Column(Integer, nullable=True)
+    transfer_notes = Column(Text, nullable=True)
+    transferred_by = Column(String(255), nullable=True)
+    transferred_at = Column(DateTime, nullable=True)
+
     status = Column(String(40), nullable=False, default="Draft")
     notes = Column(Text, nullable=True)
 
@@ -440,6 +446,11 @@ class LayerRearingFlock(Base):
         "LayerRearingDailyPerformance",
         back_populates="flock",
         cascade="all, delete-orphan",
+    )
+    commercial_layer_flock = relationship(
+        "CommercialLayerFlock",
+        back_populates="source_rearing_flock",
+        uselist=False,
     )
 
     __table_args__ = (
@@ -686,6 +697,13 @@ class CommercialLayerFlock(Base):
     __tablename__ = "commercial_layer_flocks"
 
     id = Column(Integer, primary_key=True, index=True)
+    source_rearing_flock_id = Column(
+        Integer,
+        ForeignKey("layer_rearing_flocks.id"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
     company_id = Column(
         Integer,
         ForeignKey("companies.id"),
@@ -722,6 +740,10 @@ class CommercialLayerFlock(Base):
     )
     created_at = Column(DateTime, server_default=func.now())
 
+    source_rearing_flock = relationship(
+        "LayerRearingFlock",
+        back_populates="commercial_layer_flock",
+    )
     farm = relationship("BroilerFarm", foreign_keys=[farm_id])
     shed = relationship("BroilerShed", foreign_keys=[shed_id])
 

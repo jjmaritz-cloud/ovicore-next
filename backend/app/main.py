@@ -52,6 +52,8 @@ from .schemas import (
     BreederProductionDailyPerformanceOut,
     CommercialLayerFlockOut,
     CommercialLayerPerformanceOut,
+    LayerRearingTransferCreate,
+    LayerRearingTransferResult,
 )
 from .calculations import build_plan_response
 from .seed import seed_demo_data
@@ -279,6 +281,37 @@ def ensure_module_access_schema() -> None:
         )
 
 
+def ensure_layer_transfer_schema() -> None:
+    inspector = inspect(engine)
+    table_names = set(inspector.get_table_names())
+
+    if "layer_rearing_flocks" not in table_names:
+        return
+
+    columns = {
+        column["name"]
+        for column in inspector.get_columns("layer_rearing_flocks")
+    }
+
+    column_sql = {
+        "actual_transfer_date": "DATE",
+        "birds_transferred": "INTEGER",
+        "transfer_notes": "TEXT",
+        "transferred_by": "VARCHAR(255)",
+        "transferred_at": "TIMESTAMP",
+    }
+
+    with engine.begin() as connection:
+        for column_name, sql_type in column_sql.items():
+            if column_name not in columns:
+                connection.execute(
+                    text(
+                        f"ALTER TABLE layer_rearing_flocks "
+                        f"ADD COLUMN {column_name} {sql_type}"
+                    )
+                )
+
+
 def ensure_breeder_transfer_schema() -> None:
     """
     Add transfer audit columns to existing breeder rearing databases.
@@ -363,6 +396,7 @@ def repair_shed_company_links(db: Session) -> int:
 def startup():
     Base.metadata.create_all(bind=engine)
     ensure_module_access_schema()
+    ensure_layer_transfer_schema()
     ensure_breeder_transfer_schema()
 
     should_seed_demo_data = (
@@ -3178,6 +3212,16 @@ def build_layer_rearing_flock_response(
         placement_date=flock.placement_date,
         birds_placed=flock.birds_placed,
         planned_transfer_date=flock.planned_transfer_date,
+        actual_transfer_date=flock.actual_transfer_date,
+        birds_transferred=flock.birds_transferred,
+        transfer_notes=flock.transfer_notes,
+        transferred_by=flock.transferred_by,
+        transferred_at=flock.transferred_at,
+        commercial_layer_flock_id=(
+            flock.commercial_layer_flock.id
+            if getattr(flock, "commercial_layer_flock", None)
+            else None
+        ),
         current_age_weeks=_layer_rearing_age_weeks(flock),
 
         # These fields will later be driven by the shared Daily House Card.
@@ -3211,6 +3255,7 @@ def _get_layer_rearing_flock(
             joinedload(models.LayerRearingFlock.shed),
             joinedload(models.LayerRearingFlock.destination_farm),
             joinedload(models.LayerRearingFlock.destination_shed),
+            joinedload(models.LayerRearingFlock.commercial_layer_flock),
         )
         .filter(models.LayerRearingFlock.id == flock_id)
         .first()
@@ -3691,6 +3736,15 @@ def update_layer_rearing_flock(
         )
 
     if "status" in data:
+        if (data["status"] or "").strip().lower() == "transferred":
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Use Transfer selected flock to complete a transfer. "
+                    "The status cannot be manually changed to Transferred."
+                ),
+            )
+
         data["status"] = (
             data["status"].strip()
             if data["status"]
@@ -4975,6 +5029,7 @@ def _commercial_layer_flock_response(
 ) -> CommercialLayerFlockOut:
     return CommercialLayerFlockOut(
         id=flock.id,
+        source_rearing_flock_id=flock.source_rearing_flock_id,
         company_id=flock.company_id,
         farm_id=flock.farm_id,
         shed_id=flock.shed_id,
@@ -5291,3 +5346,149 @@ def list_commercial_layer_performance(
         )
 
     return output
+
+
+@app.post(
+    "/api/layers/rearing/flocks/{flock_id}/transfer",
+    response_model=LayerRearingTransferResult,
+)
+def transfer_layer_rearing_flock(
+    flock_id: int,
+    payload: LayerRearingTransferCreate,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    flock = _get_layer_rearing_flock(db, flock_id)
+
+    if (
+        not current_user.is_global_admin
+        and flock.company_id != current_user.company_id
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have access to this company",
+        )
+
+    if not access.user_has_farm_access(
+        db,
+        current_user,
+        flock.farm_id,
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have access to this Commercial Rearing farm",
+        )
+
+    if (flock.status or "").strip().lower() == "transferred":
+        raise HTTPException(
+            status_code=409,
+            detail="This Commercial Rearing flock has already been transferred",
+        )
+
+    existing = (
+        db.query(models.CommercialLayerFlock)
+        .filter(
+            models.CommercialLayerFlock.source_rearing_flock_id
+            == flock.id
+        )
+        .first()
+    )
+    if existing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="A Commercial Layer flock already exists for this rearing flock",
+        )
+
+    if payload.birds_transferred <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Birds transferred must be greater than zero",
+        )
+
+    available_birds = int(flock.birds_placed or 0)
+    if payload.birds_transferred > available_birds:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Birds transferred cannot exceed the rearing position "
+                f"of {available_birds:,}."
+            ),
+        )
+
+    destination_farm, destination_shed = (
+        _validate_layer_rearing_location(
+            db,
+            current_user,
+            flock.company_id,
+            payload.destination_farm_id,
+            payload.destination_shed_id,
+            require_user_farm_access=False,
+            location_label="Commercial Layers",
+        )
+    )
+
+    if destination_farm.farm_type != "commercial_layers":
+        raise HTTPException(
+            status_code=400,
+            detail="The destination farm must be classified as Commercial Layers",
+        )
+
+    commercial_flock = models.CommercialLayerFlock(
+        source_rearing_flock_id=flock.id,
+        company_id=flock.company_id,
+        farm_id=destination_farm.id,
+        shed_id=destination_shed.id,
+        flock_code=flock.flock_code,
+        breed=flock.breed,
+        hatch_date=flock.hatch_date,
+        housed_date=payload.actual_transfer_date,
+        birds_housed=payload.birds_transferred,
+        status="Active",
+        notes=(payload.transfer_notes or "").strip(),
+        last_saved_by=current_user.full_name,
+        last_saved_at=datetime.utcnow(),
+    )
+
+    flock.destination_farm_id = destination_farm.id
+    flock.destination_shed_id = destination_shed.id
+    flock.actual_transfer_date = payload.actual_transfer_date
+    flock.birds_transferred = payload.birds_transferred
+    flock.transfer_notes = (payload.transfer_notes or "").strip()
+    flock.transferred_by = current_user.full_name
+    flock.transferred_at = datetime.utcnow()
+    flock.status = "Transferred"
+    flock.last_saved_by = current_user.full_name
+    flock.last_saved_at = datetime.utcnow()
+
+    db.add(commercial_flock)
+
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "The transfer could not be completed because a matching "
+                "Commercial Layer flock already exists."
+            ),
+        )
+
+    db.refresh(commercial_flock)
+
+    return LayerRearingTransferResult(
+        rearing_flock=build_layer_rearing_flock_response(
+            _get_layer_rearing_flock(db, flock.id)
+        ),
+        commercial_layer_flock=_commercial_layer_flock_response(
+            (
+                db.query(models.CommercialLayerFlock)
+                .options(
+                    joinedload(models.CommercialLayerFlock.farm),
+                    joinedload(models.CommercialLayerFlock.shed),
+                )
+                .filter(models.CommercialLayerFlock.id == commercial_flock.id)
+                .first()
+            )
+        ),
+    )

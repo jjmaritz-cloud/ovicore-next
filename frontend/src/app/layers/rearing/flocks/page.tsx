@@ -81,6 +81,10 @@ type LayerRearingFlockRow = {
 
   status: string;
   notes: string | null;
+
+  actualTransferDate?: string | null;
+  birdsTransferred?: number | null;
+  commercialLayerFlockId?: number | null;
 };
 
 async function authenticatedFetch(
@@ -279,6 +283,16 @@ function LayerRearingFlockRegisterContent() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [lastError, setLastError] = useState<string | null>(null);
+  const [transferRow, setTransferRow] =
+    useState<LayerRearingFlockRow | null>(null);
+  const [transferDate, setTransferDate] = useState("");
+  const [transferBirds, setTransferBirds] = useState("");
+  const [transferFarmId, setTransferFarmId] =
+    useState<number | "">("");
+  const [transferShedId, setTransferShedId] =
+    useState<number | "">("");
+  const [transferNotes, setTransferNotes] = useState("");
+  const [transferring, setTransferring] = useState(false);
 
   const dirtyRowIds = useRef<Set<number>>(new Set());
 
@@ -433,6 +447,12 @@ function LayerRearingFlockRegisterContent() {
 
         status: row.status ?? "Draft",
         notes: row.notes ?? "",
+        actualTransferDate: row.actual_transfer_date
+          ? isoToDisplayDate(row.actual_transfer_date)
+          : null,
+        birdsTransferred: row.birds_transferred ?? null,
+        commercialLayerFlockId:
+          row.commercial_layer_flock_id ?? null,
       }));
 
       dirtyRowIds.current.clear();
@@ -779,7 +799,6 @@ function LayerRearingFlockRegisterContent() {
                 "Placed",
                 "Growing",
                 "Transfer Due",
-                "Transferred",
                 "Closed",
               ],
             },
@@ -913,6 +932,120 @@ function LayerRearingFlockRegisterContent() {
       setSaving(false);
     }
   }, [activeCompanyId, fetchRows]);
+
+  const openTransferModal = useCallback(() => {
+    const selected =
+      gridRef.current?.api.getSelectedRows()[0];
+
+    if (!selected) {
+      alert("Select a Commercial Rearing flock to transfer.");
+      return;
+    }
+
+    if (dirtyRowIds.current.has(selected.id)) {
+      alert("Save the selected flock before completing its transfer.");
+      return;
+    }
+
+    if (
+      selected.status.toLowerCase() === "transferred" ||
+      selected.commercialLayerFlockId
+    ) {
+      alert("This flock has already been transferred.");
+      return;
+    }
+
+    if (
+      !selected.destinationFarmId ||
+      !selected.destinationShedId
+    ) {
+      alert(
+        "Select and save the planned Commercial Layers destination first.",
+      );
+      return;
+    }
+
+    setTransferRow(selected);
+    setTransferDate(
+      selected.plannedTransferDate
+        ? displayDateToIso(selected.plannedTransferDate) ?? ""
+        : new Date().toISOString().slice(0, 10),
+    );
+    setTransferBirds(String(selected.currentBirds ?? selected.birdsPlaced ?? 0));
+    setTransferFarmId(selected.destinationFarmId);
+    setTransferShedId(selected.destinationShedId);
+    setTransferNotes("");
+  }, []);
+
+  const confirmTransfer = useCallback(async () => {
+    if (!transferRow) return;
+
+    const birdCount = Number(transferBirds);
+
+    if (
+      !transferDate ||
+      !transferFarmId ||
+      !transferShedId ||
+      !Number.isInteger(birdCount) ||
+      birdCount <= 0
+    ) {
+      alert("Complete the transfer date, destination and bird number.");
+      return;
+    }
+
+    setTransferring(true);
+
+    try {
+      const response = await authenticatedFetch(
+        `${API_BASE}/api/layers/rearing/flocks/${transferRow.id}/transfer`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            actual_transfer_date: transferDate,
+            destination_farm_id: Number(transferFarmId),
+            destination_shed_id: Number(transferShedId),
+            birds_transferred: birdCount,
+            transfer_notes: transferNotes || null,
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          await readApiError(
+            response,
+            "Could not complete the Commercial Layers transfer.",
+          ),
+        );
+      }
+
+      const result = await response.json();
+      setTransferRow(null);
+      await fetchRows();
+
+      alert(
+        `${transferRow.flockCode} transferred successfully. ` +
+        `Commercial Layer flock ${result.commercial_layer_flock.flock_code} was created.`,
+      );
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Could not complete the transfer.",
+      );
+    } finally {
+      setTransferring(false);
+    }
+  }, [
+    fetchRows,
+    transferBirds,
+    transferDate,
+    transferFarmId,
+    transferNotes,
+    transferRow,
+    transferShedId,
+  ]);
 
   const deleteSelected = useCallback(async () => {
     const selected =
@@ -1200,6 +1333,15 @@ function LayerRearingFlockRegisterContent() {
               disabled={saving}
             >
               Duplicate selected
+            </button>
+
+            <button
+              type="button"
+              className="ovicore-btn ovicore-btn-primary"
+              onClick={openTransferModal}
+              disabled={saving || transferring}
+            >
+              Transfer selected flock
             </button>
 
             <button
