@@ -1,392 +1,843 @@
-import DailyHouseCard from "@/components/daily-house-card";
+"use client";
 
-type HouseCardRow = {
-  entryDate: string;
-  flock: string;
-  farm: string;
-  shed: string;
-  ageWeeks: number;
-  females: number;
-  males: number;
-  dailyEggs: number;
-  productionPct: number;
-  productionStdPct: number;
-  settableEggs: number;
-  floorEggs: number;
-  cracks: number;
-  rejects: number;
-  femaleMortality: number;
-  maleMortality: number;
-  feedKg: number;
-  waterLitres: number;
-  fertilityPct: number;
-  hatchabilityPct: number;
-  status: "Saved" | "Needs Review" | "Egg Quality Review" | "Mortality Review";
-  comments: string;
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
+import { useSearchParams } from "next/navigation";
+import { AgGridReact } from "ag-grid-react";
+import {
+  AllCommunityModule,
+  ModuleRegistry,
+  type ColDef,
+  type ColGroupDef,
+  type GridReadyEvent,
+  type ICellRendererParams,
+  type ValueFormatterParams,
+} from "ag-grid-community";
+
+ModuleRegistry.registerModules([AllCommunityModule]);
+
+import "ag-grid-community/styles/ag-grid.css";
+import "ag-grid-community/styles/ag-theme-quartz.css";
+
+import OviCoreActionBar from "@/components/ovicore/OviCoreActionBar";
+import OviCoreKpiStrip from "@/components/ovicore/OviCoreKpiStrip";
+import OviCorePageHeader from "@/components/ovicore/OviCorePageHeader";
+import OviCoreTableCard from "@/components/ovicore/OviCoreTableCard";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+
+const API_BASE = "";
+
+type BreederProductionFlockRow = {
+  id: number;
+  companyId: number;
+  sourceRearingFlockId: number;
+
+  farmId: number;
+  shedId: number;
+  farmName: string;
+  shedName: string;
+
+  flockCode: string;
+  breed: string;
+
+  hatchDate: string | null;
+  transferDate: string | null;
+
+  openingFemaleBirds: number;
+  openingMaleBirds: number;
+  totalOpeningBirds: number;
+  maleRatioPct: number | null;
+
+  status: string;
+  notes: string;
+  lastSavedBy: string;
+  lastSavedAt: string | null;
 };
 
-const rows: HouseCardRow[] = [
-  {
-    entryDate: "2026-06-28",
-    flock: "BRD-26-001",
-    farm: "North Breeder Farm",
-    shed: "Shed 01",
-    ageWeeks: 34,
-    females: 24500,
-    males: 2450,
-    dailyEggs: 16114,
-    productionPct: 65.8,
-    productionStdPct: 66.5,
-    settableEggs: 14771,
-    floorEggs: 118,
-    cracks: 64,
-    rejects: 221,
-    femaleMortality: 44,
-    maleMortality: 5,
-    feedKg: 3950,
-    waterLitres: 9100,
-    fertilityPct: 92.4,
-    hatchabilityPct: 86.8,
-    status: "Saved",
-    comments: "Strong production and good egg quality.",
-  },
-  {
-    entryDate: "2026-06-29",
-    flock: "BRD-26-001",
-    farm: "North Breeder Farm",
-    shed: "Shed 01",
-    ageWeeks: 34,
-    females: 24456,
-    males: 2445,
-    dailyEggs: 16080,
-    productionPct: 65.8,
-    productionStdPct: 66.4,
-    settableEggs: 14720,
-    floorEggs: 124,
-    cracks: 69,
-    rejects: 236,
-    femaleMortality: 38,
-    maleMortality: 4,
-    feedKg: 3940,
-    waterLitres: 9020,
-    fertilityPct: 92.3,
-    hatchabilityPct: 86.7,
-    status: "Saved",
-    comments: "Stable production.",
-  },
-  {
-    entryDate: "2026-06-30",
-    flock: "BRD-26-001",
-    farm: "North Breeder Farm",
-    shed: "Shed 01",
-    ageWeeks: 34,
-    females: 24418,
-    males: 2441,
-    dailyEggs: 16010,
-    productionPct: 65.6,
-    productionStdPct: 66.3,
-    settableEggs: 14620,
-    floorEggs: 133,
-    cracks: 73,
-    rejects: 254,
-    femaleMortality: 41,
-    maleMortality: 6,
-    feedKg: 3930,
-    waterLitres: 8990,
-    fertilityPct: 92.1,
-    hatchabilityPct: 86.6,
-    status: "Needs Review",
-    comments: "Slight production drift below standard.",
-  },
-  {
-    entryDate: "2026-07-01",
-    flock: "BRD-26-001",
-    farm: "North Breeder Farm",
-    shed: "Shed 01",
-    ageWeeks: 35,
-    females: 24377,
-    males: 2435,
-    dailyEggs: 15960,
-    productionPct: 65.5,
-    productionStdPct: 66.1,
-    settableEggs: 14590,
-    floorEggs: 127,
-    cracks: 75,
-    rejects: 242,
-    femaleMortality: 36,
-    maleMortality: 5,
-    feedKg: 3925,
-    waterLitres: 9100,
-    fertilityPct: 92.0,
-    hatchabilityPct: 86.5,
-    status: "Saved",
-    comments: "Continue watching production trend.",
-  },
-];
+async function authenticatedFetch(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+) {
+  const response = await fetch(input, {
+    ...init,
+    credentials: "include",
+  });
 
-const formatNumber = (value: number) =>
-  new Intl.NumberFormat("en-AU", {
-    maximumFractionDigits: 0,
-  }).format(value);
+  if (response.status === 401) {
+    const nextPath =
+      `${window.location.pathname}${window.location.search}`;
 
-const formatPercent = (value: number) =>
-  `${value.toLocaleString("en-AU", {
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1,
-  })}%`;
+    window.location.href =
+      `/login?next=${encodeURIComponent(nextPath)}`;
 
-const formatSignedPercent = (value: number) =>
-  `${value >= 0 ? "+" : ""}${formatPercent(value)}`;
+    throw new Error("Your login session has expired.");
+  }
 
-const totalDailyEggs = rows.reduce((sum, row) => sum + row.dailyEggs, 0);
-const totalSettableEggs = rows.reduce((sum, row) => sum + row.settableEggs, 0);
-const totalFloorEggs = rows.reduce((sum, row) => sum + row.floorEggs, 0);
-const totalRejects = rows.reduce((sum, row) => sum + row.rejects, 0);
-const totalFemaleMortality = rows.reduce(
-  (sum, row) => sum + row.femaleMortality,
-  0,
-);
-const totalMaleMortality = rows.reduce(
-  (sum, row) => sum + row.maleMortality,
-  0,
-);
-const latestClosingFemales = rows[rows.length - 1]?.females ?? 0;
-const latestClosingMales = rows[rows.length - 1]?.males ?? 0;
-
-const averageProduction =
-  rows.reduce((sum, row) => sum + row.productionPct, 0) / rows.length;
-
-const averageProductionStd =
-  rows.reduce((sum, row) => sum + row.productionStdPct, 0) / rows.length;
-
-const productionVariance = averageProduction - averageProductionStd;
-const reviewRows = rows.filter((row) => row.status !== "Saved").length;
-
-function statusClass(status: HouseCardRow["status"]) {
-  return status === "Saved"
-    ? "dhc-status dhc-status-good"
-    : "dhc-status dhc-status-warning";
+  return response;
 }
 
-export default function BreederDailyHouseCardPage() {
-	return (
-		<DailyHouseCard
-      moduleLabel="Breeder Production"
-      description="Dense breeder house card entry for production, egg quality, mortality, feed, water, fertility and hatchability."
-      homeAction={{
-        label: "Breeder Home",
-        href: "/breeders",
-      }}
-      secondaryAction={{
-        label: "Flock Register",
-        href: "/breeders/flocks",
-        variant: "secondary",
-      }}
-      selectorLabel="Select Flock"
-      selector={
-        <select defaultValue="BRD-26-001">
-          <option>BRD-26-001 / North Breeder Farm / Shed 01</option>
-          <option>BRD-26-002 / East Breeder Farm / Shed 03</option>
-          <option>BRD-26-003 / South Breeder Farm / Shed 02</option>
-          <option>BRD-26-004 / West Breeder Farm / Shed 04</option>
-        </select>
+async function readApiError(
+  response: Response,
+  fallback: string,
+) {
+  try {
+    const payload = await response.json();
+
+    if (
+      payload &&
+      typeof payload === "object" &&
+      "detail" in payload
+    ) {
+      const detail = (payload as { detail?: unknown }).detail;
+
+      if (typeof detail === "string" && detail.trim()) {
+        return detail;
       }
-      discardDisabled
-      saveDisabled
-      kpis={[
-        {
-          label: "Daily Eggs",
-          value: formatNumber(totalDailyEggs),
-          helper: "Total eggs in selected period.",
-        },
-        {
-          label: "Settable Eggs",
-          value: formatNumber(totalSettableEggs),
-          helper: "Available for hatchery planning.",
-        },
-        {
-          label: "Production %",
-          value: formatPercent(averageProduction),
-          helper: "Average production.",
-        },
-        {
-          label: "Production Var",
-          value: formatSignedPercent(productionVariance),
-          helper: "Against standard.",
-          tone: productionVariance < 0 ? "bad" : "good",
-        },
-        {
-          label: "Female / Male Mort",
-          value: `${formatNumber(totalFemaleMortality)} / ${formatNumber(
-            totalMaleMortality,
-          )}`,
-          helper: "Total recorded loss.",
-        },
-        {
-          label: "Review Rows",
-          value: reviewRows,
-          helper: "Rows needing attention.",
-        },
-      ]}
-      tableDescription="Yellow cells represent editable daily values. Calculated review columns are shown beside entry fields."
-      tableSummary={`Closing females: ${formatNumber(
-        latestClosingFemales,
-      )} · Closing males: ${formatNumber(latestClosingMales)}`}
-      footerItems={[
-        { label: "Floor eggs", value: formatNumber(totalFloorEggs) },
-        { label: "Rejects", value: formatNumber(totalRejects) },
-        { label: "Settable eggs", value: formatNumber(totalSettableEggs) },
-        {
-          label: "Production variance",
-          value: formatSignedPercent(productionVariance),
-        },
-      ]}
-    >
-      <table >
-        <thead>
-          <tr>
-            <th colSpan={2}>Day</th>
-            <th colSpan={4}>Bird Count</th>
-            <th colSpan={5}>Production</th>
-            <th colSpan={4}>Egg Quality</th>
-            <th colSpan={2}>Mortality</th>
-            <th colSpan={2}>Inputs</th>
-            <th colSpan={2}>Hatch Link</th>
-            <th colSpan={2}>Review</th>
-          </tr>
+    }
+  } catch {
+    // Use fallback.
+  }
 
-          <tr>
-            <th>Date</th>
-            <th>Age</th>
-            <th>Females</th>
-            <th>Males</th>
-            <th>Female Balance</th>
-            <th>Male Balance</th>
-            <th>Daily Eggs</th>
-            <th>Production %</th>
-            <th>Production Std %</th>
-            <th>Prod Var %</th>
-            <th>Settable Eggs</th>
-            <th>Floor Eggs</th>
-            <th>Cracks</th>
-            <th>Rejects</th>
-            <th>Reject %</th>
-            <th>Female Mort</th>
-            <th>Male Mort</th>
-            <th>Feed Kg</th>
-            <th>Water L</th>
-            <th>Fertility %</th>
-            <th>Hatchability %</th>
-            <th>Status</th>
-            <th>Comments</th>
-          </tr>
-        </thead>
+  return fallback;
+}
 
-        <tbody>
-          {rows.map((row, index) => {
-            const previous = rows[index - 1];
-            const femaleBalance = previous
-              ? row.females - previous.females
-              : 0;
-            const maleBalance = previous ? row.males - previous.males : 0;
-            const prodVar = row.productionPct - row.productionStdPct;
-            const rejectPct =
-              row.dailyEggs === 0
-                ? 0
-                : ((row.floorEggs + row.cracks + row.rejects) /
-                    row.dailyEggs) *
-                  100;
+function isoToDisplayDate(
+  value: string | null | undefined,
+) {
+  if (!value) return "";
 
-            return (
-              <tr key={`${row.entryDate}-${row.flock}`}>
-                <td>{row.entryDate}</td>
-                <td>{row.ageWeeks} wks</td>
+  const match = value.match(
+    /^(\d{4})-(\d{2})-(\d{2})/,
+  );
 
-                <td data-cell="editable">
-                  {formatNumber(row.females)}
-                </td>
-                <td data-cell="editable">
-                  {formatNumber(row.males)}
-                </td>
+  if (!match) return value;
 
-                <td
-                  data-cell={femaleBalance < 0 ? "warning" : "good"}
-                >
-                  {femaleBalance >= 0 ? "+" : ""}
-                  {formatNumber(femaleBalance)}
-                </td>
+  return `${match[3]}-${match[2]}-${match[1]}`;
+}
 
-                <td
-                  data-cell={maleBalance < 0 ? "warning" : "good"}
-                >
-                  {maleBalance >= 0 ? "+" : ""}
-                  {formatNumber(maleBalance)}
-                </td>
+function dateTimeToDisplay(
+  value: string | null | undefined,
+) {
+  if (!value) return "";
 
-                <td data-cell="editable">
-                  {formatNumber(row.dailyEggs)}
-                </td>
+  const parsed = new Date(value);
 
-                <td data-cell="calculated">
-                  {formatPercent(row.productionPct)}
-                </td>
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
 
-                <td data-cell="calculated">
-                  {formatPercent(row.productionStdPct)}
-                </td>
+  return parsed.toLocaleString("en-AU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
-                <td
-                  data-cell={prodVar < 0 ? "warning" : "good"}
-                >
-                  {formatSignedPercent(prodVar)}
-                </td>
+function numberFormatter(
+  params: ValueFormatterParams,
+) {
+  if (
+    params.value === null ||
+    params.value === undefined ||
+    params.value === ""
+  ) {
+    return "";
+  }
 
-                <td data-cell="editable">
-                  {formatNumber(row.settableEggs)}
-                </td>
-                <td data-cell="editable">
-                  {formatNumber(row.floorEggs)}
-                </td>
-                <td data-cell="editable">
-                  {formatNumber(row.cracks)}
-                </td>
-                <td data-cell="editable">
-                  {formatNumber(row.rejects)}
-                </td>
+  const value = Number(params.value);
 
-                <td data-cell="calculated">
-                  {formatPercent(rejectPct)}
-                </td>
+  return Number.isNaN(value)
+    ? params.value
+    : value.toLocaleString("en-AU");
+}
 
-                <td data-cell="editable">
-                  {formatNumber(row.femaleMortality)}
-                </td>
-                <td data-cell="editable">
-                  {formatNumber(row.maleMortality)}
-                </td>
-                <td data-cell="editable">
-                  {formatNumber(row.feedKg)}
-                </td>
-                <td data-cell="editable">
-                  {formatNumber(row.waterLitres)}
-                </td>
-                <td data-cell="editable">
-                  {formatPercent(row.fertilityPct)}
-                </td>
-                <td data-cell="editable">
-                  {formatPercent(row.hatchabilityPct)}
-                </td>
+function pctFormatter(
+  params: ValueFormatterParams,
+) {
+  if (
+    params.value === null ||
+    params.value === undefined ||
+    params.value === ""
+  ) {
+    return "";
+  }
 
-                <td>
-                  <span className={statusClass(row.status)}>{row.status}</span>
-                </td>
+  const value = Number(params.value);
 
-                <td className="dhc-comment">{row.comments}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </DailyHouseCard>
+  return Number.isNaN(value)
+    ? params.value
+    : `${value.toFixed(2)}%`;
+}
+
+function StatusPill(
+  params: ICellRendererParams,
+) {
+  const value = String(
+    params.value ?? "Active",
+  );
+
+  const normalised = value.toLowerCase();
+
+  const className =
+    normalised === "active"
+      ? "status-pill status-ready"
+      : normalised === "closed"
+        ? "status-pill status-draft"
+        : "status-pill status-ready";
+
+  return (
+    <span className={className}>
+      {value}
+    </span>
+  );
+}
+
+function BreederProductionFlockRegisterContent() {
+  const gridRef =
+    useRef<
+      AgGridReact<BreederProductionFlockRow>
+    >(null);
+
+  const searchParams = useSearchParams();
+
+  const {
+    currentUser,
+    loadingUser,
+    userError,
+  } = useCurrentUser();
+
+  const activeCompanyId = useMemo(() => {
+    const companyParam =
+      searchParams.get("company_id");
+
+    const parsed = Number(companyParam);
+
+    if (currentUser?.is_global_admin) {
+      return Number.isInteger(parsed)
+        && parsed > 0
+        ? parsed
+        : null;
+    }
+
+    return currentUser?.company_id ?? null;
+  }, [
+    currentUser?.company_id,
+    currentUser?.is_global_admin,
+    searchParams,
+  ]);
+
+  const [rows, setRows] =
+    useState<
+      BreederProductionFlockRow[]
+    >([]);
+
+  const [searchText, setSearchText] =
+    useState("");
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [lastError, setLastError] =
+    useState<string | null>(null);
+
+  const fetchRows = useCallback(
+    async () => {
+      if (loadingUser) return;
+
+      if (!activeCompanyId) {
+        setRows([]);
+        setLoading(false);
+
+        setLastError(
+          currentUser?.is_global_admin
+            ? "Select a company before loading Breeder Production flocks."
+            : "Your user account is not assigned to a company.",
+        );
+
+        return;
+      }
+
+      setLoading(true);
+      setLastError(null);
+
+      try {
+        const response =
+          await authenticatedFetch(
+            `${API_BASE}/api/breeders/production/flocks?company_id=${activeCompanyId}`,
+            {
+              cache: "no-store",
+            },
+          );
+
+        if (!response.ok) {
+          throw new Error(
+            await readApiError(
+              response,
+              "Could not load Breeder Production flocks.",
+            ),
+          );
+        }
+
+        const data = await response.json();
+
+        const mapped:
+          BreederProductionFlockRow[] =
+          data.map((row: any) => ({
+            id: row.id,
+            companyId: row.company_id,
+            sourceRearingFlockId:
+              row.source_rearing_flock_id,
+
+            farmId: row.farm_id,
+            shedId: row.shed_id,
+            farmName:
+              row.farm_name ?? "",
+            shedName:
+              row.shed_name ?? "",
+
+            flockCode:
+              row.flock_code ?? "",
+            breed:
+              row.breed ?? "",
+
+            hatchDate:
+              row.hatch_date ?? null,
+            transferDate:
+              row.transfer_date ?? null,
+
+            openingFemaleBirds:
+              Number(
+                row.opening_female_birds
+                ?? 0,
+              ),
+            openingMaleBirds:
+              Number(
+                row.opening_male_birds
+                ?? 0,
+              ),
+            totalOpeningBirds:
+              Number(
+                row.total_opening_birds
+                ?? 0,
+              ),
+            maleRatioPct:
+              row.male_ratio_pct
+              ?? null,
+
+            status:
+              row.status ?? "Active",
+            notes:
+              row.notes ?? "",
+            lastSavedBy:
+              row.last_saved_by ?? "",
+            lastSavedAt:
+              row.last_saved_at ?? null,
+          }));
+
+        setRows(mapped);
+      } catch (error) {
+        console.error(error);
+
+        setLastError(
+          error instanceof Error
+            ? error.message
+            : "Could not load Breeder Production flocks.",
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [
+      activeCompanyId,
+      currentUser?.is_global_admin,
+      loadingUser,
+    ],
+  );
+
+  useEffect(() => {
+    void fetchRows();
+  }, [fetchRows]);
+
+  const defaultColDef = useMemo<
+    ColDef<BreederProductionFlockRow>
+  >(
+    () => ({
+      resizable: true,
+      sortable: true,
+      filter: true,
+      minWidth: 120,
+      cellClass: "center-cell",
+      headerClass: "center-header",
+    }),
+    [],
+  );
+
+  const columnDefs = useMemo<
+    (
+      | ColDef<
+          BreederProductionFlockRow
+        >
+      | ColGroupDef<
+          BreederProductionFlockRow
+        >
+    )[]
+  >(
+    () => [
+      {
+        headerName: "Flock Identity",
+        marryChildren: true,
+        headerClass:
+          "group-header group-planning",
+        children: [
+          {
+            field: "farmName",
+            headerName: "Production Farm",
+            pinned: "left",
+            minWidth: 210,
+            cellClass:
+              "identity-cell",
+          },
+          {
+            field: "shedName",
+            headerName: "Shed",
+            pinned: "left",
+            minWidth: 145,
+            cellClass:
+              "identity-cell",
+          },
+          {
+            field: "flockCode",
+            headerName: "Flock Code",
+            pinned: "left",
+            minWidth: 170,
+            cellClass:
+              "identity-cell",
+          },
+          {
+            field: "breed",
+            headerName: "Breed",
+            pinned: "left",
+            minWidth: 145,
+          },
+        ],
+      },
+      {
+        headerName: "Transfer",
+        marryChildren: true,
+        headerClass:
+          "group-header group-demand",
+        children: [
+          {
+            field: "hatchDate",
+            headerName: "Hatch Date",
+            minWidth: 140,
+            valueFormatter: (
+              params,
+            ) =>
+              isoToDisplayDate(
+                params.value,
+              ),
+          },
+          {
+            field: "transferDate",
+            headerName: "Transfer Date",
+            minWidth: 150,
+            valueFormatter: (
+              params,
+            ) =>
+              isoToDisplayDate(
+                params.value,
+              ),
+          },
+          {
+            field:
+              "sourceRearingFlockId",
+            headerName:
+              "Source Rearing ID",
+            minWidth: 155,
+            valueFormatter:
+              numberFormatter,
+          },
+        ],
+      },
+      {
+        headerName: "Opening Position",
+        marryChildren: true,
+        headerClass:
+          "group-header group-capacity",
+        children: [
+          {
+            field:
+              "openingFemaleBirds",
+            headerName:
+              "Opening Females",
+            minWidth: 160,
+            valueFormatter:
+              numberFormatter,
+            cellClass:
+              "calculated-cell",
+          },
+          {
+            field:
+              "openingMaleBirds",
+            headerName:
+              "Opening Males",
+            minWidth: 150,
+            valueFormatter:
+              numberFormatter,
+            cellClass:
+              "calculated-cell",
+          },
+          {
+            field:
+              "totalOpeningBirds",
+            headerName:
+              "Total Opening",
+            minWidth: 150,
+            valueFormatter:
+              numberFormatter,
+            cellClass:
+              "calculated-cell",
+          },
+          {
+            field: "maleRatioPct",
+            headerName:
+              "Male Ratio %",
+            minWidth: 140,
+            valueFormatter:
+              pctFormatter,
+            cellClass:
+              "calculated-cell",
+          },
+        ],
+      },
+      {
+        headerName: "Workflow",
+        marryChildren: true,
+        headerClass:
+          "group-header group-workflow",
+        children: [
+          {
+            field: "status",
+            headerName: "Status",
+            minWidth: 135,
+            cellRenderer:
+              StatusPill,
+          },
+          {
+            field: "notes",
+            headerName: "Transfer Notes",
+            minWidth: 260,
+            flex: 1,
+          },
+          {
+            field: "lastSavedBy",
+            headerName:
+              "Transferred By",
+            minWidth: 165,
+          },
+          {
+            field: "lastSavedAt",
+            headerName:
+              "Transferred At",
+            minWidth: 180,
+            valueFormatter: (
+              params,
+            ) =>
+              dateTimeToDisplay(
+                params.value,
+              ),
+          },
+        ],
+      },
+    ],
+    [],
+  );
+
+  const autosizeColumns =
+    useCallback(() => {
+      const api =
+        gridRef.current?.api;
+
+      if (!api) return;
+
+      const columnIds: string[] =
+        [];
+
+      api
+        .getColumns()
+        ?.forEach((column) => {
+          columnIds.push(
+            column.getId(),
+          );
+        });
+
+      api.autoSizeColumns(
+        columnIds,
+        false,
+      );
+    }, []);
+
+  const onGridReady =
+    useCallback(
+      (
+        params: GridReadyEvent,
+      ) => {
+        setTimeout(() => {
+          params.api
+            .sizeColumnsToFit();
+        }, 100);
+      },
+      [],
+    );
+
+  const kpis = useMemo(() => {
+    const active = rows.filter(
+      (row) =>
+        row.status
+          .toLowerCase()
+          === "active",
+    ).length;
+
+    const females = rows.reduce(
+      (sum, row) =>
+        sum
+        + Number(
+          row.openingFemaleBirds
+          ?? 0,
+        ),
+      0,
+    );
+
+    const males = rows.reduce(
+      (sum, row) =>
+        sum
+        + Number(
+          row.openingMaleBirds
+          ?? 0,
+        ),
+      0,
+    );
+
+    const totalBirds = rows.reduce(
+      (sum, row) =>
+        sum
+        + Number(
+          row.totalOpeningBirds
+          ?? 0,
+        ),
+      0,
+    );
+
+    return {
+      active,
+      females,
+      males,
+      totalBirds,
+    };
+  }, [rows]);
+
+  return (
+    <div className="breeder-production-page">
+      <OviCorePageHeader
+        title="Breeder Production Flock Register"
+        subtitle="Active Breeder Production flocks created through the Breeder Rearing transfer workflow."
+      >
+        <div className="top-actions">
+          <input
+            className="search-box"
+            value={searchText}
+            onChange={(event) =>
+              setSearchText(
+                event.target.value,
+              )
+            }
+            placeholder="Search farm, shed, flock or breed"
+          />
+
+          <div className="avatar">
+            JJ
+          </div>
+        </div>
+      </OviCorePageHeader>
+
+      <OviCoreKpiStrip
+        items={[
+          {
+            label:
+              "Active Production Flocks",
+            value: kpis.active,
+          },
+          {
+            label:
+              "Opening Females",
+            value:
+              kpis.females.toLocaleString(
+                "en-AU",
+              ),
+          },
+          {
+            label:
+              "Opening Males",
+            value:
+              kpis.males.toLocaleString(
+                "en-AU",
+              ),
+          },
+          {
+            label:
+              "Total Opening Birds",
+            value:
+              kpis.totalBirds.toLocaleString(
+                "en-AU",
+              ),
+          },
+        ]}
+      />
+
+      <OviCoreActionBar
+        left={
+          <>
+            <span className="ovicore-pill ovicore-pill-green">
+              {rows.length} production
+              flock
+              {rows.length === 1
+                ? ""
+                : "s"}
+            </span>
+
+            {userError
+            || lastError ? (
+              <span className="ovicore-pill ovicore-pill-red">
+                {userError
+                  || lastError}
+              </span>
+            ) : null}
+          </>
+        }
+        right={
+          <>
+            <button
+              type="button"
+              className="ovicore-btn"
+              onClick={
+                autosizeColumns
+              }
+            >
+              Autosize
+            </button>
+
+            <button
+              type="button"
+              className="ovicore-btn ovicore-btn-primary"
+              onClick={() =>
+                void fetchRows()
+              }
+              disabled={
+                loading
+              }
+            >
+              {loading
+                ? "Loading..."
+                : "Reload"}
+            </button>
+          </>
+        }
+      />
+
+      <OviCoreTableCard
+        title="Breeder Production Flock Entry"
+        subtitle="Transferred flocks appear here automatically. Opening female and male positions are preserved from the confirmed transfer."
+      >
+        <div className="formula-bar">
+          <div className="formula-name">
+            Production lifecycle
+          </div>
+
+          <div className="formula-text">
+            Each record is linked back to its source Breeder Rearing flock and becomes the opening position for the Breeder Production Daily House Card.
+          </div>
+        </div>
+
+        <div className="ag-theme-quartz broiler-grid demand-planner-grid">
+          <AgGridReact<
+            BreederProductionFlockRow
+          >
+            ref={gridRef}
+            rowData={rows}
+            columnDefs={
+              columnDefs
+            }
+            defaultColDef={
+              defaultColDef
+            }
+            getRowId={(params) =>
+              String(
+                params.data.id,
+              )
+            }
+            quickFilterText={
+              searchText
+            }
+            animateRows
+            suppressDragLeaveHidesColumns
+            rowSelection="single"
+            suppressRowClickSelection={
+              false
+            }
+            rowHeight={38}
+            headerHeight={38}
+            groupHeaderHeight={34}
+            loading={
+              loading
+              || loadingUser
+            }
+            onGridReady={
+              onGridReady
+            }
+            onFirstDataRendered={
+              autosizeColumns
+            }
+          />
+        </div>
+      </OviCoreTableCard>
+
+      <style jsx>{`
+        .breeder-production-page {
+          width: 100%;
+          min-width: 0;
+          margin: 0;
+          padding:
+            10px 12px 18px
+            12px;
+          box-sizing: border-box;
+        }
+
+        @media (
+          max-width: 760px
+        ) {
+          .breeder-production-page {
+            padding: 8px;
+          }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+export default function BreederProductionFlockRegisterPage() {
+  return (
+    <Suspense fallback={null}>
+      <BreederProductionFlockRegisterContent />
+    </Suspense>
   );
 }
