@@ -50,6 +50,8 @@ from .schemas import (
     BreederProductionDailyPerformanceCreate,
     BreederProductionDailyPerformancePatch,
     BreederProductionDailyPerformanceOut,
+    CommercialLayerFlockOut,
+    CommercialLayerPerformanceOut,
 )
 from .calculations import build_plan_response
 from .seed import seed_demo_data
@@ -4962,3 +4964,330 @@ def delete_breeder_production_daily_performance(
         "deleted": True,
         "id": deleted_id,
     }
+
+
+# ---------------------------------------------------------------------
+# Commercial Layer Performance
+# ---------------------------------------------------------------------
+
+def _commercial_layer_flock_response(
+    flock: models.CommercialLayerFlock,
+) -> CommercialLayerFlockOut:
+    return CommercialLayerFlockOut(
+        id=flock.id,
+        company_id=flock.company_id,
+        farm_id=flock.farm_id,
+        shed_id=flock.shed_id,
+        farm_name=flock.farm.farm_name if flock.farm else "",
+        shed_name=flock.shed.shed_name if flock.shed else "",
+        flock_code=flock.flock_code,
+        breed=flock.breed,
+        hatch_date=flock.hatch_date,
+        housed_date=flock.housed_date,
+        birds_housed=flock.birds_housed,
+        status=flock.status,
+        notes=flock.notes,
+        last_saved_by=flock.last_saved_by,
+        last_saved_at=flock.last_saved_at,
+    )
+
+
+@app.get(
+    "/api/layers/commercial/flocks",
+    response_model=list[CommercialLayerFlockOut],
+)
+def list_commercial_layer_flocks(
+    company_id: int | None = None,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    resolved_company_id = resolve_company_id(
+        current_user,
+        company_id,
+    )
+
+    query = (
+        db.query(models.CommercialLayerFlock)
+        .options(
+            joinedload(models.CommercialLayerFlock.farm),
+            joinedload(models.CommercialLayerFlock.shed),
+        )
+        .filter(
+            models.CommercialLayerFlock.company_id
+            == resolved_company_id
+        )
+    )
+
+    if not (
+        current_user.is_global_admin
+        or current_user.is_company_admin
+    ):
+        permitted_farm_ids = (
+            db.query(models.UserFarmAccess.farm_id)
+            .filter(
+                models.UserFarmAccess.user_id == current_user.id
+            )
+        )
+
+        query = query.filter(
+            models.CommercialLayerFlock.farm_id.in_(
+                permitted_farm_ids
+            )
+        )
+
+    return [
+        _commercial_layer_flock_response(flock)
+        for flock in (
+            query
+            .order_by(
+                models.CommercialLayerFlock.housed_date.desc(),
+                models.CommercialLayerFlock.id.desc(),
+            )
+            .all()
+        )
+    ]
+
+
+@app.get(
+    "/api/layers/commercial/performance",
+    response_model=list[CommercialLayerPerformanceOut],
+)
+def list_commercial_layer_performance(
+    company_id: int | None = None,
+    flock_id: int | None = None,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    resolved_company_id = resolve_company_id(
+        current_user,
+        company_id,
+    )
+
+    query = (
+        db.query(models.CommercialLayerDailyPerformance)
+        .options(
+            joinedload(
+                models.CommercialLayerDailyPerformance.flock
+            ).joinedload(models.CommercialLayerFlock.farm),
+            joinedload(
+                models.CommercialLayerDailyPerformance.flock
+            ).joinedload(models.CommercialLayerFlock.shed),
+        )
+        .join(
+            models.CommercialLayerFlock,
+            models.CommercialLayerFlock.id
+            == models.CommercialLayerDailyPerformance.flock_id,
+        )
+        .filter(
+            models.CommercialLayerDailyPerformance.company_id
+            == resolved_company_id,
+            models.CommercialLayerFlock.company_id
+            == resolved_company_id,
+        )
+    )
+
+    if flock_id is not None:
+        flock = (
+            db.query(models.CommercialLayerFlock)
+            .filter(
+                models.CommercialLayerFlock.id == flock_id,
+                models.CommercialLayerFlock.company_id
+                == resolved_company_id,
+            )
+            .first()
+        )
+
+        if flock is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Commercial Layer flock not found",
+            )
+
+        if not access.user_has_farm_access(
+            db,
+            current_user,
+            flock.farm_id,
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="You do not have access to this Commercial Layer farm",
+            )
+
+        query = query.filter(
+            models.CommercialLayerDailyPerformance.flock_id
+            == flock.id
+        )
+
+    elif not (
+        current_user.is_global_admin
+        or current_user.is_company_admin
+    ):
+        permitted_farm_ids = (
+            db.query(models.UserFarmAccess.farm_id)
+            .filter(
+                models.UserFarmAccess.user_id == current_user.id
+            )
+        )
+
+        query = query.filter(
+            models.CommercialLayerFlock.farm_id.in_(
+                permitted_farm_ids
+            )
+        )
+
+    entries = (
+        query
+        .order_by(
+            models.CommercialLayerDailyPerformance.flock_id.asc(),
+            models.CommercialLayerDailyPerformance.entry_date.asc(),
+            models.CommercialLayerDailyPerformance.id.asc(),
+        )
+        .all()
+    )
+
+    cumulative_mortality_by_flock: dict[int, int] = {}
+    cumulative_eggs_by_flock: dict[int, int] = {}
+    output: list[CommercialLayerPerformanceOut] = []
+
+    for entry in entries:
+        flock = entry.flock
+        flock_id_key = entry.flock_id
+
+        cumulative_mortality_by_flock.setdefault(
+            flock_id_key,
+            0,
+        )
+        cumulative_eggs_by_flock.setdefault(
+            flock_id_key,
+            0,
+        )
+
+        cumulative_mortality_by_flock[flock_id_key] += int(
+            entry.mortality_birds or 0
+        )
+        cumulative_eggs_by_flock[flock_id_key] += int(
+            entry.total_eggs or 0
+        )
+
+        opening_birds = int(entry.opening_birds or 0)
+        closing_birds = int(entry.closing_birds or 0)
+        total_eggs = int(entry.total_eggs or 0)
+        housed_birds = int(flock.birds_housed or 0) if flock else 0
+        feed_kg = (
+            float(entry.feed_kg)
+            if entry.feed_kg is not None
+            else None
+        )
+
+        production_pct = (
+            round((total_eggs / opening_birds) * 100, 3)
+            if opening_birds > 0
+            else None
+        )
+        cumulative_mortality_pct = (
+            round(
+                (
+                    cumulative_mortality_by_flock[flock_id_key]
+                    / housed_birds
+                )
+                * 100,
+                3,
+            )
+            if housed_birds > 0
+            else None
+        )
+        feed_g_bird_day = (
+            round((feed_kg * 1000) / closing_birds, 3)
+            if feed_kg is not None and closing_birds > 0
+            else None
+        )
+        eggs_per_bird_cumulative = (
+            round(
+                cumulative_eggs_by_flock[flock_id_key]
+                / housed_birds,
+                4,
+            )
+            if housed_birds > 0
+            else None
+        )
+
+        output.append(
+            CommercialLayerPerformanceOut(
+                id=entry.id,
+                company_id=entry.company_id,
+                flock_id=entry.flock_id,
+                farm_name=(
+                    flock.farm.farm_name
+                    if flock and flock.farm
+                    else ""
+                ),
+                shed_name=(
+                    flock.shed.shed_name
+                    if flock and flock.shed
+                    else ""
+                ),
+                flock_code=flock.flock_code if flock else "",
+                breed=flock.breed if flock else None,
+                entry_date=entry.entry_date,
+                age_days=entry.age_days,
+                age_weeks=(
+                    round(entry.age_days / 7, 2)
+                    if entry.age_days is not None
+                    else None
+                ),
+                opening_birds=entry.opening_birds,
+                mortality_birds=int(entry.mortality_birds or 0),
+                cull_birds=int(entry.cull_birds or 0),
+                closing_birds=entry.closing_birds,
+                total_eggs=total_eggs,
+                production_pct=production_pct,
+                cumulative_mortality_pct=cumulative_mortality_pct,
+                egg_weight_g=(
+                    float(entry.egg_weight_g)
+                    if entry.egg_weight_g is not None
+                    else None
+                ),
+                feed_g_bird_day=feed_g_bird_day,
+                eggs_per_bird_cumulative=eggs_per_bird_cumulative,
+                bodyweight_g=(
+                    float(entry.bodyweight_g)
+                    if entry.bodyweight_g is not None
+                    else None
+                ),
+                production_standard_pct=(
+                    float(entry.production_standard_pct)
+                    if entry.production_standard_pct is not None
+                    else None
+                ),
+                mortality_standard_pct=(
+                    float(entry.mortality_standard_pct)
+                    if entry.mortality_standard_pct is not None
+                    else None
+                ),
+                egg_weight_standard_g=(
+                    float(entry.egg_weight_standard_g)
+                    if entry.egg_weight_standard_g is not None
+                    else None
+                ),
+                feed_standard_g_bird_day=(
+                    float(entry.feed_standard_g_bird_day)
+                    if entry.feed_standard_g_bird_day is not None
+                    else None
+                ),
+                eggs_per_bird_standard=(
+                    float(entry.eggs_per_bird_standard)
+                    if entry.eggs_per_bird_standard is not None
+                    else None
+                ),
+                bodyweight_standard_g=(
+                    float(entry.bodyweight_standard_g)
+                    if entry.bodyweight_standard_g is not None
+                    else None
+                ),
+                notes=entry.notes,
+                last_saved_by=entry.last_saved_by,
+                last_saved_at=entry.last_saved_at,
+            )
+        )
+
+    return output

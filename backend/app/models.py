@@ -676,3 +676,126 @@ class BreederProductionDailyPerformance(Base):
             name="uq_breeder_production_flock_entry_date",
         ),
     )
+
+
+# ---------------------------------------------------------------------
+# Commercial Layers
+# ---------------------------------------------------------------------
+
+class CommercialLayerFlock(Base):
+    __tablename__ = "commercial_layer_flocks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(
+        Integer,
+        ForeignKey("companies.id"),
+        nullable=False,
+        index=True,
+    )
+    farm_id = Column(
+        Integer,
+        ForeignKey("broiler_farms.id"),
+        nullable=False,
+        index=True,
+    )
+    shed_id = Column(
+        Integer,
+        ForeignKey("broiler_sheds.id"),
+        nullable=False,
+        index=True,
+    )
+
+    flock_code = Column(String(120), nullable=False)
+    breed = Column(String(120), nullable=True)
+    hatch_date = Column(Date, nullable=True)
+    housed_date = Column(Date, nullable=True)
+    birds_housed = Column(Integer, nullable=True)
+
+    status = Column(String(40), nullable=False, default="Active")
+    notes = Column(Text, nullable=True)
+
+    last_saved_by = Column(String(255), nullable=True)
+    last_saved_at = Column(
+        DateTime,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+    created_at = Column(DateTime, server_default=func.now())
+
+    farm = relationship("BroilerFarm", foreign_keys=[farm_id])
+    shed = relationship("BroilerShed", foreign_keys=[shed_id])
+
+    daily_performance = relationship(
+        "CommercialLayerDailyPerformance",
+        back_populates="flock",
+        cascade="all, delete-orphan",
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "company_id",
+            "flock_code",
+            name="uq_company_commercial_layer_flock_code",
+        ),
+    )
+
+
+class CommercialLayerDailyPerformance(Base):
+    __tablename__ = "commercial_layer_daily_performance"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(
+        Integer,
+        ForeignKey("companies.id"),
+        nullable=False,
+        index=True,
+    )
+    flock_id = Column(
+        Integer,
+        ForeignKey("commercial_layer_flocks.id"),
+        nullable=False,
+        index=True,
+    )
+
+    entry_date = Column(Date, nullable=False)
+    age_days = Column(Integer, nullable=True)
+
+    opening_birds = Column(Integer, nullable=True)
+    mortality_birds = Column(Integer, nullable=False, default=0)
+    cull_birds = Column(Integer, nullable=False, default=0)
+    closing_birds = Column(Integer, nullable=True)
+
+    total_eggs = Column(Integer, nullable=False, default=0)
+    egg_weight_g = Column(Numeric(8, 3), nullable=True)
+    feed_kg = Column(Numeric(12, 2), nullable=True)
+    water_litres = Column(Numeric(12, 2), nullable=True)
+    bodyweight_g = Column(Numeric(10, 2), nullable=True)
+
+    production_standard_pct = Column(Numeric(7, 3), nullable=True)
+    mortality_standard_pct = Column(Numeric(7, 3), nullable=True)
+    egg_weight_standard_g = Column(Numeric(8, 3), nullable=True)
+    feed_standard_g_bird_day = Column(Numeric(8, 3), nullable=True)
+    eggs_per_bird_standard = Column(Numeric(10, 4), nullable=True)
+    bodyweight_standard_g = Column(Numeric(10, 2), nullable=True)
+
+    notes = Column(Text, nullable=True)
+    last_saved_by = Column(String(255), nullable=True)
+    last_saved_at = Column(
+        DateTime,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+    created_at = Column(DateTime, server_default=func.now())
+
+    flock = relationship(
+        "CommercialLayerFlock",
+        back_populates="daily_performance",
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "flock_id",
+            "entry_date",
+            name="uq_commercial_layer_flock_entry_date",
+        ),
+    )

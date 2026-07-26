@@ -960,3 +960,68 @@ class BreederProductionDailyPerformanceOut(BaseModel):
     last_saved_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# ---------------------------------------------------------------------
+# Commercial Layer Performance
+# ---------------------------------------------------------------------
+
+class CommercialLayerFlockOut(BaseModel):
+    id: int
+    company_id: int
+    farm_id: int
+    shed_id: int
+    farm_name: str
+    shed_name: str
+    flock_code: str
+    breed: Optional[str] = None
+    hatch_date: Optional[date] = None
+    housed_date: Optional[date] = None
+    birds_housed: Optional[int] = None
+    status: str
+    notes: Optional[str] = None
+    last_saved_by: Optional[str] = None
+    last_saved_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CommercialLayerPerformanceOut(BaseModel):
+    id: int
+    company_id: int
+    flock_id: int
+
+    farm_name: str
+    shed_name: str
+    flock_code: str
+    breed: Optional[str] = None
+
+    entry_date: date
+    age_days: Optional[int] = None
+    age_weeks: Optional[float] = None
+
+    opening_birds: Optional[int] = None
+    mortality_birds: int = 0
+    cull_birds: int = 0
+    closing_birds: Optional[int] = None
+
+    total_eggs: int = 0
+    production_pct: Optional[float] = None
+    cumulative_mortality_pct: Optional[float] = None
+    egg_weight_g: Optional[float] = None
+    feed_g_bird_day: Optional[float] = None
+    eggs_per_bird_cumulative: Optional[float] = None
+    bodyweight_g: Optional[float] = None
+
+    production_standard_pct: Optional[float] = None
+    mortality_standard_pct: Optional[float] = None
+    egg_weight_standard_g: Optional[float] = None
+    feed_standard_g_bird_day: Optional[float] = None
+    eggs_per_bird_standard: Optional[float] = None
+    bodyweight_standard_g: Optional[float] = None
+
+    notes: Optional[str] = None
+    last_saved_by: Optional[str] = None
+    last_saved_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
