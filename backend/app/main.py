@@ -4392,6 +4392,61 @@ def _recalculate_breeder_production_entry(
     return entry
 
 
+def _recalculate_breeder_production_flock_sequence(
+    db: Session,
+    flock: models.BreederProductionFlock,
+    saved_by: str,
+) -> int:
+    """
+    Recalculate the full Breeder Production bird-position sequence.
+
+    The first daily row opens from the transferred production position.
+    Every later row opens from the previous day's closing position.
+    Female and male positions are rolled forward independently.
+    """
+    entries = (
+        db.query(models.BreederProductionDailyPerformance)
+        .filter(
+            models.BreederProductionDailyPerformance.flock_id
+            == flock.id
+        )
+        .order_by(
+            models.BreederProductionDailyPerformance.entry_date.asc(),
+            models.BreederProductionDailyPerformance.id.asc(),
+        )
+        .all()
+    )
+
+    previous_female_closing = int(
+        flock.opening_female_birds or 0
+    )
+    previous_male_closing = int(
+        flock.opening_male_birds or 0
+    )
+
+    for entry in entries:
+        entry.opening_female_birds = (
+            previous_female_closing
+        )
+        entry.opening_male_birds = (
+            previous_male_closing
+        )
+
+        _recalculate_breeder_production_entry(entry)
+
+        previous_female_closing = int(
+            entry.closing_female_birds or 0
+        )
+        previous_male_closing = int(
+            entry.closing_male_birds or 0
+        )
+
+        entry.last_saved_by = saved_by
+        entry.last_saved_at = datetime.utcnow()
+
+    return len(entries)
+
+
 def _breeder_production_daily_response(
     entry: models.BreederProductionDailyPerformance,
 ) -> BreederProductionDailyPerformanceOut:
@@ -4672,6 +4727,13 @@ def create_breeder_production_daily_row(
     _recalculate_breeder_production_entry(entry)
 
     db.add(entry)
+    db.flush()
+
+    _recalculate_breeder_production_flock_sequence(
+        db,
+        flock,
+        current_user.full_name,
+    )
 
     try:
         db.commit()
@@ -4736,6 +4798,14 @@ def create_breeder_production_daily_performance(
     entry.last_saved_at = datetime.utcnow()
 
     db.add(entry)
+    db.flush()
+
+    _recalculate_breeder_production_flock_sequence(
+        db,
+        flock,
+        current_user.full_name,
+    )
+
     db.commit()
 
     return _breeder_production_daily_response(
@@ -4818,6 +4888,12 @@ def update_breeder_production_daily_performance(
 
     entry.last_saved_by = current_user.full_name
     entry.last_saved_at = datetime.utcnow()
+
+    _recalculate_breeder_production_flock_sequence(
+        db,
+        flock,
+        current_user.full_name,
+    )
 
     db.commit()
 
