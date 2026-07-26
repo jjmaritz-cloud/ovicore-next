@@ -4650,6 +4650,30 @@ def list_breeder_production_daily_performance(
         .all()
     )
 
+    if flock_id is not None:
+        flock = _validate_breeder_production_flock_access(
+            db,
+            current_user,
+            flock_id,
+        )
+
+        _recalculate_breeder_production_flock_sequence(
+            db,
+            flock,
+            current_user.full_name,
+        )
+
+        db.commit()
+
+        entries = (
+            query
+            .order_by(
+                models.BreederProductionDailyPerformance.entry_date.asc(),
+                models.BreederProductionDailyPerformance.id.asc(),
+            )
+            .all()
+        )
+
     return [
         _breeder_production_daily_response(entry)
         for entry in entries
