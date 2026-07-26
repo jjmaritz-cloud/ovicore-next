@@ -252,6 +252,17 @@ function BreederRearingFlockRegisterContent() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [lastError, setLastError] = useState<string | null>(null);
+  const [transferRow, setTransferRow] =
+    useState<BreederRearingFlockRow | null>(null);
+  const [transferDate, setTransferDate] = useState("");
+  const [transferFemales, setTransferFemales] = useState("");
+  const [transferMales, setTransferMales] = useState("");
+  const [transferDestinationFarmId, setTransferDestinationFarmId] =
+    useState<number | "">("");
+  const [transferDestinationShedId, setTransferDestinationShedId] =
+    useState<number | "">("");
+  const [transferNotes, setTransferNotes] = useState("");
+  const [transferring, setTransferring] = useState(false);
 
   const dirtyRowIds = useRef<Set<number>>(new Set());
 
@@ -743,7 +754,6 @@ function BreederRearingFlockRegisterContent() {
                 "Draft",
                 "Planned",
                 "Active",
-                "Transferred",
                 "Closed",
               ],
             },
@@ -1096,6 +1106,152 @@ function BreederRearingFlockRegisterContent() {
     rearingShedOptions,
   ]);
 
+  const openTransferModal = useCallback(() => {
+    const selected =
+      gridRef.current?.api.getSelectedRows()[0];
+
+    if (!selected) {
+      alert("Select a Breeder Rearing flock to transfer.");
+      return;
+    }
+
+    if (dirtyRowIds.current.has(selected.id)) {
+      alert("Save the selected flock before completing its transfer.");
+      return;
+    }
+
+    if (selected.status.toLowerCase() === "transferred") {
+      alert("This flock has already been transferred.");
+      return;
+    }
+
+    if (
+      !selected.destinationFarmId ||
+      !selected.destinationShedId
+    ) {
+      alert(
+        "Select and save the planned Breeder Production destination first.",
+      );
+      return;
+    }
+
+    setTransferRow(selected);
+    setTransferDate(
+      selected.plannedTransferDate
+        ? displayDateToIso(selected.plannedTransferDate) ?? ""
+        : new Date().toISOString().slice(0, 10),
+    );
+    setTransferFemales(
+      String(selected.femaleBirds ?? 0),
+    );
+    setTransferMales(
+      String(selected.maleBirds ?? 0),
+    );
+    setTransferDestinationFarmId(
+      selected.destinationFarmId,
+    );
+    setTransferDestinationShedId(
+      selected.destinationShedId,
+    );
+    setTransferNotes("");
+  }, []);
+
+  const closeTransferModal = useCallback(() => {
+    if (transferring) return;
+    setTransferRow(null);
+  }, [transferring]);
+
+  const confirmTransfer = useCallback(async () => {
+    if (!transferRow) return;
+
+    const femaleCount = Number(transferFemales);
+    const maleCount = Number(transferMales);
+
+    if (!transferDate) {
+      alert("Select the actual transfer date.");
+      return;
+    }
+
+    if (
+      !transferDestinationFarmId ||
+      !transferDestinationShedId
+    ) {
+      alert("Select the final Breeder Production farm and shed.");
+      return;
+    }
+
+    if (
+      !Number.isInteger(femaleCount) ||
+      femaleCount < 0 ||
+      !Number.isInteger(maleCount) ||
+      maleCount < 0
+    ) {
+      alert("Transferred female and male numbers must be whole numbers.");
+      return;
+    }
+
+    setTransferring(true);
+
+    try {
+      const response = await authenticatedFetch(
+        `${API_BASE}/api/breeders/rearing/flocks/${transferRow.id}/transfer`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            actual_transfer_date: transferDate,
+            destination_farm_id:
+              Number(transferDestinationFarmId),
+            destination_shed_id:
+              Number(transferDestinationShedId),
+            females_transferred: femaleCount,
+            males_transferred: maleCount,
+            transfer_notes: transferNotes || null,
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          await readApiError(
+            response,
+            "Could not complete the Breeder Production transfer.",
+          ),
+        );
+      }
+
+      const result = await response.json();
+
+      setTransferRow(null);
+      await fetchRows();
+
+      alert(
+        `${transferRow.flockCode} transferred successfully. ` +
+        `Breeder Production flock ${result.production_flock.flock_code} was created.`,
+      );
+    } catch (error) {
+      console.error(error);
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Could not complete the transfer.",
+      );
+    } finally {
+      setTransferring(false);
+    }
+  }, [
+    fetchRows,
+    transferDate,
+    transferDestinationFarmId,
+    transferDestinationShedId,
+    transferFemales,
+    transferMales,
+    transferNotes,
+    transferRow,
+  ]);
+
   const kpis = useMemo(() => {
     const active = rows.filter((row) =>
       ["planned", "active"].includes(
@@ -1216,6 +1372,15 @@ function BreederRearingFlockRegisterContent() {
 
             <button
               type="button"
+              className="ovicore-btn ovicore-btn-primary"
+              onClick={openTransferModal}
+              disabled={saving || transferring}
+            >
+              Transfer selected flock
+            </button>
+
+            <button
+              type="button"
               className="ovicore-btn ovicore-btn-danger"
               onClick={deleteSelected}
               disabled={saving}
@@ -1302,6 +1467,199 @@ function BreederRearingFlockRegisterContent() {
         </div>
       </OviCoreTableCard>
 
+      {transferRow ? (
+        <div
+          className="transfer-modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeTransferModal();
+            }
+          }}
+        >
+          <section
+            className="transfer-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="transfer-modal-title"
+          >
+            <div className="transfer-modal-head">
+              <div>
+                <p className="transfer-eyebrow">
+                  Breeder Rearing → Breeder Production
+                </p>
+                <h3 id="transfer-modal-title">
+                  Transfer {transferRow.flockCode}
+                </h3>
+                <span>
+                  {transferRow.farmName} / {transferRow.shedName}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                className="modal-close"
+                onClick={closeTransferModal}
+                disabled={transferring}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="transfer-summary">
+              <div>
+                <span>Available females</span>
+                <strong>
+                  {Number(
+                    transferRow.femaleBirds ?? 0,
+                  ).toLocaleString("en-AU")}
+                </strong>
+              </div>
+              <div>
+                <span>Available males</span>
+                <strong>
+                  {Number(
+                    transferRow.maleBirds ?? 0,
+                  ).toLocaleString("en-AU")}
+                </strong>
+              </div>
+              <div>
+                <span>Planned destination</span>
+                <strong>
+                  {transferRow.destinationFarmName} /{" "}
+                  {transferRow.destinationShedName}
+                </strong>
+              </div>
+            </div>
+
+            <div className="transfer-form-grid">
+              <label>
+                Actual transfer date
+                <input
+                  type="date"
+                  value={transferDate}
+                  onChange={(event) =>
+                    setTransferDate(event.target.value)
+                  }
+                />
+              </label>
+
+              <label>
+                Females transferred
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={transferFemales}
+                  onChange={(event) =>
+                    setTransferFemales(event.target.value)
+                  }
+                />
+              </label>
+
+              <label>
+                Males transferred
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={transferMales}
+                  onChange={(event) =>
+                    setTransferMales(event.target.value)
+                  }
+                />
+              </label>
+
+              <label>
+                Final destination farm
+                <select
+                  value={transferDestinationFarmId}
+                  onChange={(event) => {
+                    setTransferDestinationFarmId(
+                      Number(event.target.value),
+                    );
+                    setTransferDestinationShedId("");
+                  }}
+                >
+                  <option value="">Select farm</option>
+                  {destinationFarmOptions.map((farm) => (
+                    <option key={farm.id} value={farm.id}>
+                      {farm.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Final destination shed
+                <select
+                  value={transferDestinationShedId}
+                  onChange={(event) =>
+                    setTransferDestinationShedId(
+                      Number(event.target.value),
+                    )
+                  }
+                  disabled={!transferDestinationFarmId}
+                >
+                  <option value="">Select shed</option>
+                  {destinationShedOptions
+                    .filter(
+                      (shed) =>
+                        shed.farm_id ===
+                        Number(transferDestinationFarmId),
+                    )
+                    .map((shed) => (
+                      <option key={shed.id} value={shed.id}>
+                        {shed.shed_name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+
+              <label className="transfer-notes">
+                Transfer notes
+                <textarea
+                  rows={3}
+                  value={transferNotes}
+                  onChange={(event) =>
+                    setTransferNotes(event.target.value)
+                  }
+                  placeholder="Transport, placement or transfer comments"
+                />
+              </label>
+            </div>
+
+            <div className="transfer-warning">
+              Confirming this action will mark the rearing flock as
+              Transferred and create the matching active Breeder Production
+              flock. This flock cannot be transferred twice.
+            </div>
+
+            <div className="transfer-modal-actions">
+              <button
+                type="button"
+                className="ovicore-btn"
+                onClick={closeTransferModal}
+                disabled={transferring}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                className="ovicore-btn ovicore-btn-primary"
+                onClick={confirmTransfer}
+                disabled={transferring}
+              >
+                {transferring
+                  ? "Transferring..."
+                  : "Confirm transfer"}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
       <style jsx>{`
         .breeder-flock-page {
           width: 100%;
@@ -1311,9 +1669,168 @@ function BreederRearingFlockRegisterContent() {
           box-sizing: border-box;
         }
 
+        .transfer-modal-backdrop {
+          position: fixed;
+          inset: 0;
+          z-index: 2000;
+          display: grid;
+          place-items: center;
+          padding: 18px;
+          background: rgba(4, 28, 20, 0.58);
+          backdrop-filter: blur(3px);
+        }
+
+        .transfer-modal {
+          width: min(760px, 100%);
+          max-height: calc(100vh - 36px);
+          overflow-y: auto;
+          border: 1px solid #d7e4dd;
+          border-radius: 18px;
+          background: #ffffff;
+          box-shadow: 0 24px 70px rgba(6, 38, 27, 0.28);
+        }
+
+        .transfer-modal-head {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 16px;
+          padding: 18px 20px 14px;
+          border-bottom: 1px solid #e2ebe6;
+          background:
+            linear-gradient(
+              105deg,
+              rgba(15, 107, 67, 0.1),
+              rgba(240, 123, 34, 0.07)
+            );
+        }
+
+        .transfer-modal-head h3 {
+          margin: 2px 0 4px;
+          color: #123f2b;
+          font-size: 1.35rem;
+        }
+
+        .transfer-modal-head span,
+        .transfer-eyebrow {
+          color: #64736b;
+          font-size: 0.82rem;
+        }
+
+        .transfer-eyebrow {
+          margin: 0;
+          color: #0f6b43;
+          font-weight: 800;
+          letter-spacing: 0.05em;
+          text-transform: uppercase;
+        }
+
+        .modal-close {
+          width: 34px;
+          height: 34px;
+          border: 1px solid #d5e0da;
+          border-radius: 9px;
+          background: #ffffff;
+          color: #244c39;
+          font-size: 1.35rem;
+          cursor: pointer;
+        }
+
+        .transfer-summary {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 8px;
+          padding: 14px 20px 6px;
+        }
+
+        .transfer-summary div {
+          display: grid;
+          gap: 3px;
+          padding: 10px;
+          border: 1px solid #e0e9e4;
+          border-radius: 11px;
+          background: #f8fbf9;
+        }
+
+        .transfer-summary span {
+          color: #69786f;
+          font-size: 0.72rem;
+          font-weight: 700;
+          text-transform: uppercase;
+        }
+
+        .transfer-summary strong {
+          color: #153f2d;
+          font-size: 0.92rem;
+        }
+
+        .transfer-form-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
+          padding: 14px 20px;
+        }
+
+        .transfer-form-grid label {
+          display: grid;
+          gap: 6px;
+          color: #364b40;
+          font-size: 0.78rem;
+          font-weight: 800;
+        }
+
+        .transfer-form-grid input,
+        .transfer-form-grid select,
+        .transfer-form-grid textarea {
+          width: 100%;
+          box-sizing: border-box;
+          min-height: 40px;
+          padding: 9px 10px;
+          border: 1px solid #cbd8d1;
+          border-radius: 9px;
+          background: #ffffff;
+          color: #173c2b;
+          font: inherit;
+        }
+
+        .transfer-form-grid textarea {
+          resize: vertical;
+        }
+
+        .transfer-notes {
+          grid-column: 1 / -1;
+        }
+
+        .transfer-warning {
+          margin: 0 20px;
+          padding: 10px 12px;
+          border: 1px solid #f2d6b8;
+          border-radius: 10px;
+          background: #fff7ed;
+          color: #8b4c12;
+          font-size: 0.82rem;
+          font-weight: 700;
+        }
+
+        .transfer-modal-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 8px;
+          padding: 14px 20px 18px;
+        }
+
         @media (max-width: 760px) {
           .breeder-flock-page {
             padding: 8px;
+          }
+
+          .transfer-summary,
+          .transfer-form-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .transfer-notes {
+            grid-column: auto;
           }
         }
       `}</style>

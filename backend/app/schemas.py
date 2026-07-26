@@ -786,6 +786,14 @@ class BreederRearingFlockOut(BaseModel):
     total_birds: Optional[int] = None
     male_ratio_pct: Optional[float] = None
     planned_transfer_date: Optional[date] = None
+    actual_transfer_date: Optional[date] = None
+    females_transferred: Optional[int] = None
+    males_transferred: Optional[int] = None
+    transfer_notes: Optional[str] = None
+    transferred_by: Optional[str] = None
+    transferred_at: Optional[datetime] = None
+    production_flock_id: Optional[int] = None
+
     current_age_weeks: Optional[float] = None
     days_to_transfer: Optional[int] = None
     status: str
@@ -793,3 +801,49 @@ class BreederRearingFlockOut(BaseModel):
     last_saved_by: Optional[str] = None
     last_saved_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
+
+
+# ---------------------------------------------------------------------
+# Breeder Rearing Transfer / Breeder Production
+# ---------------------------------------------------------------------
+
+class BreederRearingTransferCreate(BaseModel):
+    actual_transfer_date: date
+    destination_farm_id: int
+    destination_shed_id: int
+    females_transferred: int
+    males_transferred: int
+    transfer_notes: Optional[str] = None
+
+
+class BreederProductionFlockOut(BaseModel):
+    id: int
+    company_id: int
+    source_rearing_flock_id: int
+
+    farm_id: int
+    shed_id: int
+    farm_name: str
+    shed_name: str
+
+    flock_code: str
+    breed: Optional[str] = None
+    hatch_date: Optional[date] = None
+    transfer_date: date
+
+    opening_female_birds: int
+    opening_male_birds: int
+    total_opening_birds: int
+    male_ratio_pct: Optional[float] = None
+
+    status: str
+    notes: Optional[str] = None
+    last_saved_by: Optional[str] = None
+    last_saved_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class BreederTransferResult(BaseModel):
+    rearing_flock: BreederRearingFlockOut
+    production_flock: BreederProductionFlockOut

@@ -532,6 +532,14 @@ class BreederRearingFlock(Base):
     female_birds = Column(Integer, nullable=True)
     male_birds = Column(Integer, nullable=True)
     planned_transfer_date = Column(Date, nullable=True)
+
+    actual_transfer_date = Column(Date, nullable=True)
+    females_transferred = Column(Integer, nullable=True)
+    males_transferred = Column(Integer, nullable=True)
+    transfer_notes = Column(Text, nullable=True)
+    transferred_by = Column(String(255), nullable=True)
+    transferred_at = Column(DateTime, nullable=True)
+
     status = Column(String(40), nullable=False, default="Draft")
     notes = Column(Text, nullable=True)
     last_saved_by = Column(String(255), nullable=True)
@@ -542,7 +550,58 @@ class BreederRearingFlock(Base):
     shed = relationship("BroilerShed", foreign_keys=[shed_id])
     destination_farm = relationship("BroilerFarm", foreign_keys=[destination_farm_id])
     destination_shed = relationship("BroilerShed", foreign_keys=[destination_shed_id])
+    production_flock = relationship(
+        "BreederProductionFlock",
+        back_populates="source_rearing_flock",
+        uselist=False,
+    )
 
     __table_args__ = (
         UniqueConstraint("company_id", "flock_code", name="uq_company_breeder_rearing_flock_code"),
+    )
+
+
+class BreederProductionFlock(Base):
+    __tablename__ = "breeder_production_flocks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
+    source_rearing_flock_id = Column(
+        Integer,
+        ForeignKey("breeder_rearing_flocks.id"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    farm_id = Column(Integer, ForeignKey("broiler_farms.id"), nullable=False, index=True)
+    shed_id = Column(Integer, ForeignKey("broiler_sheds.id"), nullable=False, index=True)
+
+    flock_code = Column(String(120), nullable=False)
+    breed = Column(String(120), nullable=True)
+    hatch_date = Column(Date, nullable=True)
+    transfer_date = Column(Date, nullable=False)
+
+    opening_female_birds = Column(Integer, nullable=False, default=0)
+    opening_male_birds = Column(Integer, nullable=False, default=0)
+
+    status = Column(String(40), nullable=False, default="Active")
+    notes = Column(Text, nullable=True)
+
+    last_saved_by = Column(String(255), nullable=True)
+    last_saved_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime, server_default=func.now())
+
+    source_rearing_flock = relationship(
+        "BreederRearingFlock",
+        back_populates="production_flock",
+    )
+    farm = relationship("BroilerFarm", foreign_keys=[farm_id])
+    shed = relationship("BroilerShed", foreign_keys=[shed_id])
+
+    __table_args__ = (
+        UniqueConstraint(
+            "company_id",
+            "flock_code",
+            name="uq_company_breeder_production_flock_code",
+        ),
     )

@@ -44,6 +44,9 @@ from .schemas import (
     BreederRearingFlockCreate,
     BreederRearingFlockPatch,
     BreederRearingFlockOut,
+    BreederRearingTransferCreate,
+    BreederProductionFlockOut,
+    BreederTransferResult,
 )
 from .calculations import build_plan_response
 from .seed import seed_demo_data
@@ -271,6 +274,45 @@ def ensure_module_access_schema() -> None:
         )
 
 
+def ensure_breeder_transfer_schema() -> None:
+    """
+    Add transfer audit columns to existing breeder rearing databases.
+
+    Base.metadata.create_all() creates the new breeder_production_flocks
+    table, but does not add columns to an existing breeder_rearing_flocks
+    table.
+    """
+    inspector = inspect(engine)
+    table_names = set(inspector.get_table_names())
+
+    if "breeder_rearing_flocks" not in table_names:
+        return
+
+    columns = {
+        column["name"]
+        for column in inspector.get_columns("breeder_rearing_flocks")
+    }
+
+    column_sql = {
+        "actual_transfer_date": "DATE",
+        "females_transferred": "INTEGER",
+        "males_transferred": "INTEGER",
+        "transfer_notes": "TEXT",
+        "transferred_by": "VARCHAR(255)",
+        "transferred_at": "TIMESTAMP",
+    }
+
+    with engine.begin() as connection:
+        for column_name, sql_type in column_sql.items():
+            if column_name not in columns:
+                connection.execute(
+                    text(
+                        f"ALTER TABLE breeder_rearing_flocks "
+                        f"ADD COLUMN {column_name} {sql_type}"
+                    )
+                )
+
+
 def repair_shed_company_links(db: Session) -> int:
     """
     Align every shed's company_id with its parent farm.
@@ -316,6 +358,7 @@ def repair_shed_company_links(db: Session) -> int:
 def startup():
     Base.metadata.create_all(bind=engine)
     ensure_module_access_schema()
+    ensure_breeder_transfer_schema()
 
     should_seed_demo_data = (
         os.getenv("SEED_DEMO_DATA", "false").strip().lower()
@@ -3754,6 +3797,7 @@ def _get_breeder_rearing_flock(db: Session, flock_id: int):
             joinedload(models.BreederRearingFlock.shed),
             joinedload(models.BreederRearingFlock.destination_farm),
             joinedload(models.BreederRearingFlock.destination_shed),
+            joinedload(models.BreederRearingFlock.production_flock),
         )
         .filter(models.BreederRearingFlock.id == flock_id)
         .first()
@@ -3815,6 +3859,17 @@ def _breeder_rearing_response(flock):
         female_birds=flock.female_birds, male_birds=flock.male_birds,
         total_birds=females + males, male_ratio_pct=male_ratio,
         planned_transfer_date=flock.planned_transfer_date,
+        actual_transfer_date=flock.actual_transfer_date,
+        females_transferred=flock.females_transferred,
+        males_transferred=flock.males_transferred,
+        transfer_notes=flock.transfer_notes,
+        transferred_by=flock.transferred_by,
+        transferred_at=flock.transferred_at,
+        production_flock_id=(
+            flock.production_flock.id
+            if getattr(flock, "production_flock", None)
+            else None
+        ),
         current_age_weeks=age_weeks, days_to_transfer=days_to_transfer,
         status=flock.status, notes=flock.notes,
         last_saved_by=flock.last_saved_by, last_saved_at=flock.last_saved_at,
@@ -3834,6 +3889,7 @@ def list_breeder_rearing_flocks(
             joinedload(models.BreederRearingFlock.shed),
             joinedload(models.BreederRearingFlock.destination_farm),
             joinedload(models.BreederRearingFlock.destination_shed),
+            joinedload(models.BreederRearingFlock.production_flock),
         )
         .filter(models.BreederRearingFlock.company_id == resolved_company_id)
     )
@@ -3909,6 +3965,15 @@ def update_breeder_rearing_flock(
         if duplicate:
             raise HTTPException(status_code=400, detail="Flock code already exists")
         data["flock_code"] = code
+    if "status" in data and (data["status"] or "").strip().lower() == "transferred":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Use Transfer selected flock to complete a transfer. "
+                "The status cannot be manually changed to Transferred."
+            ),
+        )
+
     for field in ("breed", "status", "notes"):
         if field in data:
             data[field] = data[field].strip() if data[field] else ("Draft" if field == "status" else None if field == "breed" else "")
@@ -3939,3 +4004,296 @@ def delete_breeder_rearing_flock(
     db.delete(flock)
     db.commit()
     return {"deleted": True, "id": deleted_id}
+
+
+# ---------------------------------------------------------------------
+# Breeder Rearing -> Breeder Production Transfer
+# ---------------------------------------------------------------------
+
+def _breeder_production_response(
+    flock: models.BreederProductionFlock,
+) -> BreederProductionFlockOut:
+    females = int(flock.opening_female_birds or 0)
+    males = int(flock.opening_male_birds or 0)
+
+    return BreederProductionFlockOut(
+        id=flock.id,
+        company_id=flock.company_id,
+        source_rearing_flock_id=flock.source_rearing_flock_id,
+        farm_id=flock.farm_id,
+        shed_id=flock.shed_id,
+        farm_name=flock.farm.farm_name if flock.farm else "",
+        shed_name=flock.shed.shed_name if flock.shed else "",
+        flock_code=flock.flock_code,
+        breed=flock.breed,
+        hatch_date=flock.hatch_date,
+        transfer_date=flock.transfer_date,
+        opening_female_birds=females,
+        opening_male_birds=males,
+        total_opening_birds=females + males,
+        male_ratio_pct=(
+            round((males / females) * 100, 2)
+            if females > 0
+            else None
+        ),
+        status=flock.status,
+        notes=flock.notes,
+        last_saved_by=flock.last_saved_by,
+        last_saved_at=flock.last_saved_at,
+    )
+
+
+def _get_breeder_production_flock(
+    db: Session,
+    flock_id: int,
+) -> models.BreederProductionFlock:
+    flock = (
+        db.query(models.BreederProductionFlock)
+        .options(
+            joinedload(models.BreederProductionFlock.farm),
+            joinedload(models.BreederProductionFlock.shed),
+        )
+        .filter(models.BreederProductionFlock.id == flock_id)
+        .first()
+    )
+
+    if flock is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Breeder Production flock not found",
+        )
+
+    return flock
+
+
+@app.get(
+    "/api/breeders/production/flocks",
+    response_model=list[BreederProductionFlockOut],
+)
+def list_breeder_production_flocks(
+    company_id: int | None = None,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    resolved_company_id = resolve_company_id(
+        current_user,
+        company_id,
+    )
+
+    query = (
+        db.query(models.BreederProductionFlock)
+        .options(
+            joinedload(models.BreederProductionFlock.farm),
+            joinedload(models.BreederProductionFlock.shed),
+        )
+        .filter(
+            models.BreederProductionFlock.company_id
+            == resolved_company_id
+        )
+    )
+
+    if not (
+        current_user.is_global_admin
+        or current_user.is_company_admin
+    ):
+        permitted_farm_ids = (
+            db.query(models.UserFarmAccess.farm_id)
+            .filter(
+                models.UserFarmAccess.user_id
+                == current_user.id
+            )
+        )
+
+        query = query.filter(
+            models.BreederProductionFlock.farm_id.in_(
+                permitted_farm_ids
+            )
+        )
+
+    flocks = (
+        query
+        .order_by(
+            models.BreederProductionFlock.transfer_date.desc(),
+            models.BreederProductionFlock.id.desc(),
+        )
+        .all()
+    )
+
+    return [
+        _breeder_production_response(flock)
+        for flock in flocks
+    ]
+
+
+@app.post(
+    "/api/breeders/rearing/flocks/{flock_id}/transfer",
+    response_model=BreederTransferResult,
+)
+def transfer_breeder_rearing_flock(
+    flock_id: int,
+    payload: BreederRearingTransferCreate,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    flock = _get_breeder_rearing_flock(db, flock_id)
+
+    if (
+        not current_user.is_global_admin
+        and flock.company_id != current_user.company_id
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have access to this company",
+        )
+
+    if not access.user_has_farm_access(
+        db,
+        current_user,
+        flock.farm_id,
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have access to this Breeder Rearing farm",
+        )
+
+    if (flock.status or "").strip().lower() == "transferred":
+        raise HTTPException(
+            status_code=409,
+            detail="This Breeder Rearing flock has already been transferred",
+        )
+
+    existing_production = (
+        db.query(models.BreederProductionFlock)
+        .filter(
+            models.BreederProductionFlock.source_rearing_flock_id
+            == flock.id
+        )
+        .first()
+    )
+
+    if existing_production is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="A Breeder Production flock already exists for this rearing flock",
+        )
+
+    if payload.females_transferred < 0 or payload.males_transferred < 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Transferred bird numbers cannot be negative",
+        )
+
+    available_females = int(flock.female_birds or 0)
+    available_males = int(flock.male_birds or 0)
+
+    if payload.females_transferred > available_females:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Females transferred cannot exceed the rearing position "
+                f"of {available_females:,}."
+            ),
+        )
+
+    if payload.males_transferred > available_males:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Males transferred cannot exceed the rearing position "
+                f"of {available_males:,}."
+            ),
+        )
+
+    if (
+        payload.females_transferred
+        + payload.males_transferred
+        <= 0
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="At least one bird must be transferred",
+        )
+
+    destination_farm, destination_shed = (
+        _validate_breeder_rearing_location(
+            db,
+            current_user,
+            flock.company_id,
+            payload.destination_farm_id,
+            payload.destination_shed_id,
+            "breeder_layers",
+            False,
+            "Breeder Production",
+        )
+    )
+
+    production_flock = models.BreederProductionFlock(
+        company_id=flock.company_id,
+        source_rearing_flock_id=flock.id,
+        farm_id=destination_farm.id,
+        shed_id=destination_shed.id,
+        flock_code=flock.flock_code,
+        breed=flock.breed,
+        hatch_date=flock.hatch_date,
+        transfer_date=payload.actual_transfer_date,
+        opening_female_birds=payload.females_transferred,
+        opening_male_birds=payload.males_transferred,
+        status="Active",
+        notes=(
+            payload.transfer_notes.strip()
+            if payload.transfer_notes
+            else ""
+        ),
+        last_saved_by=current_user.full_name,
+        last_saved_at=datetime.utcnow(),
+    )
+
+    flock.destination_farm_id = destination_farm.id
+    flock.destination_shed_id = destination_shed.id
+    flock.actual_transfer_date = payload.actual_transfer_date
+    flock.females_transferred = payload.females_transferred
+    flock.males_transferred = payload.males_transferred
+    flock.transfer_notes = (
+        payload.transfer_notes.strip()
+        if payload.transfer_notes
+        else ""
+    )
+    flock.transferred_by = current_user.full_name
+    flock.transferred_at = datetime.utcnow()
+    flock.status = "Transferred"
+    flock.last_saved_by = current_user.full_name
+    flock.last_saved_at = datetime.utcnow()
+
+    db.add(production_flock)
+
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "The transfer could not be completed because a matching "
+                "Breeder Production flock already exists."
+            ),
+        )
+
+    db.refresh(production_flock)
+
+    rearing_result = _get_breeder_rearing_flock(
+        db,
+        flock.id,
+    )
+    production_result = _get_breeder_production_flock(
+        db,
+        production_flock.id,
+    )
+
+    return BreederTransferResult(
+        rearing_flock=_breeder_rearing_response(
+            rearing_result
+        ),
+        production_flock=_breeder_production_response(
+            production_result
+        ),
+    )
