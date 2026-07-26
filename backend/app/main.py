@@ -47,6 +47,9 @@ from .schemas import (
     BreederRearingTransferCreate,
     BreederProductionFlockOut,
     BreederTransferResult,
+    BreederProductionDailyPerformanceCreate,
+    BreederProductionDailyPerformancePatch,
+    BreederProductionDailyPerformanceOut,
 )
 from .calculations import build_plan_response
 from .seed import seed_demo_data
@@ -4297,3 +4300,565 @@ def transfer_breeder_rearing_flock(
             production_result
         ),
     )
+
+
+# ---------------------------------------------------------------------
+# Breeder Production Daily House Card
+# ---------------------------------------------------------------------
+
+def _get_breeder_production_daily_entry(
+    db: Session,
+    entry_id: int,
+) -> models.BreederProductionDailyPerformance:
+    entry = (
+        db.query(models.BreederProductionDailyPerformance)
+        .options(
+            joinedload(
+                models.BreederProductionDailyPerformance.flock
+            ).joinedload(models.BreederProductionFlock.farm),
+            joinedload(
+                models.BreederProductionDailyPerformance.flock
+            ).joinedload(models.BreederProductionFlock.shed),
+        )
+        .filter(
+            models.BreederProductionDailyPerformance.id
+            == entry_id
+        )
+        .first()
+    )
+
+    if entry is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Breeder Production daily entry not found",
+        )
+
+    return entry
+
+
+def _validate_breeder_production_flock_access(
+    db: Session,
+    current_user: models.AppUser,
+    flock_id: int,
+) -> models.BreederProductionFlock:
+    flock = _get_breeder_production_flock(db, flock_id)
+
+    if (
+        not current_user.is_global_admin
+        and flock.company_id != current_user.company_id
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have access to this company",
+        )
+
+    if not access.user_has_farm_access(
+        db,
+        current_user,
+        flock.farm_id,
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have access to this Breeder Production farm",
+        )
+
+    return flock
+
+
+def _recalculate_breeder_production_entry(
+    entry: models.BreederProductionDailyPerformance,
+):
+    opening_females = int(entry.opening_female_birds or 0)
+    opening_males = int(entry.opening_male_birds or 0)
+
+    female_losses = (
+        int(entry.female_mortality or 0)
+        + int(entry.female_culls or 0)
+    )
+    male_losses = (
+        int(entry.male_mortality or 0)
+        + int(entry.male_culls or 0)
+    )
+
+    entry.closing_female_birds = max(
+        0,
+        opening_females - female_losses,
+    )
+    entry.closing_male_birds = max(
+        0,
+        opening_males - male_losses,
+    )
+
+    return entry
+
+
+def _breeder_production_daily_response(
+    entry: models.BreederProductionDailyPerformance,
+) -> BreederProductionDailyPerformanceOut:
+    flock = entry.flock
+    farm = flock.farm if flock else None
+    shed = flock.shed if flock else None
+
+    opening_females = int(entry.opening_female_birds or 0)
+    closing_females = int(entry.closing_female_birds or 0)
+    closing_males = int(entry.closing_male_birds or 0)
+    total_closing = closing_females + closing_males
+
+    total_eggs = int(entry.total_eggs or 0)
+    hatching_eggs = int(entry.hatching_eggs or 0)
+    floor_eggs = int(entry.floor_eggs or 0)
+
+    production_pct = (
+        round((total_eggs / opening_females) * 100, 3)
+        if opening_females > 0
+        else None
+    )
+
+    standard_pct = (
+        float(entry.production_standard_pct)
+        if entry.production_standard_pct is not None
+        else None
+    )
+
+    variance_pct = (
+        round(production_pct - standard_pct, 3)
+        if production_pct is not None
+        and standard_pct is not None
+        else None
+    )
+
+    hatching_egg_pct = (
+        round((hatching_eggs / total_eggs) * 100, 3)
+        if total_eggs > 0
+        else None
+    )
+
+    floor_egg_pct = (
+        round((floor_eggs / total_eggs) * 100, 3)
+        if total_eggs > 0
+        else None
+    )
+
+    male_ratio_pct = (
+        round((closing_males / closing_females) * 100, 3)
+        if closing_females > 0
+        else None
+    )
+
+    feed_kg = (
+        float(entry.feed_kg)
+        if entry.feed_kg is not None
+        else None
+    )
+
+    feed_per_bird_g = (
+        round((feed_kg * 1000) / total_closing, 3)
+        if feed_kg is not None and total_closing > 0
+        else None
+    )
+
+    return BreederProductionDailyPerformanceOut(
+        id=entry.id,
+        company_id=entry.company_id,
+        flock_id=entry.flock_id,
+
+        farm_name=farm.farm_name if farm else "",
+        shed_name=shed.shed_name if shed else "",
+        flock_code=flock.flock_code if flock else "",
+        breed=flock.breed if flock else None,
+
+        entry_date=entry.entry_date,
+        age_days=entry.age_days,
+
+        opening_female_birds=entry.opening_female_birds,
+        female_mortality=int(entry.female_mortality or 0),
+        female_culls=int(entry.female_culls or 0),
+        closing_female_birds=entry.closing_female_birds,
+
+        opening_male_birds=entry.opening_male_birds,
+        male_mortality=int(entry.male_mortality or 0),
+        male_culls=int(entry.male_culls or 0),
+        closing_male_birds=entry.closing_male_birds,
+
+        total_closing_birds=total_closing,
+        male_ratio_pct=male_ratio_pct,
+
+        feed_kg=feed_kg,
+        water_litres=(
+            float(entry.water_litres)
+            if entry.water_litres is not None
+            else None
+        ),
+        feed_per_bird_g=feed_per_bird_g,
+
+        female_bodyweight_kg=(
+            float(entry.female_bodyweight_kg)
+            if entry.female_bodyweight_kg is not None
+            else None
+        ),
+        male_bodyweight_kg=(
+            float(entry.male_bodyweight_kg)
+            if entry.male_bodyweight_kg is not None
+            else None
+        ),
+
+        total_eggs=total_eggs,
+        hatching_eggs=hatching_eggs,
+        floor_eggs=floor_eggs,
+        rejects=int(entry.rejects or 0),
+
+        production_pct=production_pct,
+        production_standard_pct=standard_pct,
+        production_variance_pct=variance_pct,
+        hatching_egg_pct=hatching_egg_pct,
+        floor_egg_pct=floor_egg_pct,
+
+        notes=entry.notes,
+        last_saved_by=entry.last_saved_by,
+        last_saved_at=entry.last_saved_at,
+    )
+
+
+@app.get(
+    "/api/breeders/production/daily-performance",
+    response_model=list[BreederProductionDailyPerformanceOut],
+)
+def list_breeder_production_daily_performance(
+    company_id: int | None = None,
+    flock_id: int | None = None,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    resolved_company_id = resolve_company_id(
+        current_user,
+        company_id,
+    )
+
+    query = (
+        db.query(models.BreederProductionDailyPerformance)
+        .options(
+            joinedload(
+                models.BreederProductionDailyPerformance.flock
+            ).joinedload(models.BreederProductionFlock.farm),
+            joinedload(
+                models.BreederProductionDailyPerformance.flock
+            ).joinedload(models.BreederProductionFlock.shed),
+        )
+        .join(
+            models.BreederProductionFlock,
+            models.BreederProductionFlock.id
+            == models.BreederProductionDailyPerformance.flock_id,
+        )
+        .filter(
+            models.BreederProductionDailyPerformance.company_id
+            == resolved_company_id,
+            models.BreederProductionFlock.company_id
+            == resolved_company_id,
+        )
+    )
+
+    if flock_id is not None:
+        flock = _validate_breeder_production_flock_access(
+            db,
+            current_user,
+            flock_id,
+        )
+
+        query = query.filter(
+            models.BreederProductionDailyPerformance.flock_id
+            == flock.id
+        )
+
+    elif not (
+        current_user.is_global_admin
+        or current_user.is_company_admin
+    ):
+        permitted_farm_ids = (
+            db.query(models.UserFarmAccess.farm_id)
+            .filter(
+                models.UserFarmAccess.user_id == current_user.id
+            )
+        )
+
+        query = query.filter(
+            models.BreederProductionFlock.farm_id.in_(
+                permitted_farm_ids
+            )
+        )
+
+    entries = (
+        query
+        .order_by(
+            models.BreederProductionDailyPerformance.entry_date.asc(),
+            models.BreederProductionDailyPerformance.id.asc(),
+        )
+        .all()
+    )
+
+    return [
+        _breeder_production_daily_response(entry)
+        for entry in entries
+    ]
+
+
+@app.post(
+    "/api/breeders/production/daily-performance/new-row",
+    response_model=BreederProductionDailyPerformanceOut,
+)
+def create_breeder_production_daily_row(
+    flock_id: int,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    flock = _validate_breeder_production_flock_access(
+        db,
+        current_user,
+        flock_id,
+    )
+
+    previous = (
+        db.query(models.BreederProductionDailyPerformance)
+        .filter(
+            models.BreederProductionDailyPerformance.flock_id
+            == flock.id
+        )
+        .order_by(
+            models.BreederProductionDailyPerformance.entry_date.desc(),
+            models.BreederProductionDailyPerformance.id.desc(),
+        )
+        .first()
+    )
+
+    if previous is not None:
+        entry_date = previous.entry_date + timedelta(days=1)
+        opening_females = int(previous.closing_female_birds or 0)
+        opening_males = int(previous.closing_male_birds or 0)
+    else:
+        entry_date = flock.transfer_date
+        opening_females = int(flock.opening_female_birds or 0)
+        opening_males = int(flock.opening_male_birds or 0)
+
+    age_days = (
+        (entry_date - flock.hatch_date).days
+        if flock.hatch_date is not None
+        else None
+    )
+
+    entry = models.BreederProductionDailyPerformance(
+        company_id=flock.company_id,
+        flock_id=flock.id,
+        entry_date=entry_date,
+        age_days=age_days,
+        opening_female_birds=opening_females,
+        female_mortality=0,
+        female_culls=0,
+        opening_male_birds=opening_males,
+        male_mortality=0,
+        male_culls=0,
+        feed_kg=None,
+        water_litres=None,
+        female_bodyweight_kg=None,
+        male_bodyweight_kg=None,
+        total_eggs=0,
+        hatching_eggs=0,
+        floor_eggs=0,
+        rejects=0,
+        production_standard_pct=None,
+        notes="",
+        last_saved_by=current_user.full_name,
+        last_saved_at=datetime.utcnow(),
+    )
+
+    _recalculate_breeder_production_entry(entry)
+
+    db.add(entry)
+
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="A daily entry already exists for this flock and date",
+        )
+
+    return _breeder_production_daily_response(
+        _get_breeder_production_daily_entry(db, entry.id)
+    )
+
+
+@app.post(
+    "/api/breeders/production/daily-performance",
+    response_model=BreederProductionDailyPerformanceOut,
+)
+def create_breeder_production_daily_performance(
+    payload: BreederProductionDailyPerformanceCreate,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    flock = _validate_breeder_production_flock_access(
+        db,
+        current_user,
+        payload.flock_id,
+    )
+
+    if payload.company_id != flock.company_id:
+        raise HTTPException(
+            status_code=400,
+            detail="The selected company does not match the flock company",
+        )
+
+    existing = (
+        db.query(models.BreederProductionDailyPerformance)
+        .filter(
+            models.BreederProductionDailyPerformance.flock_id
+            == flock.id,
+            models.BreederProductionDailyPerformance.entry_date
+            == payload.entry_date,
+        )
+        .first()
+    )
+
+    if existing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="A daily entry already exists for this flock and date",
+        )
+
+    data = payload.model_dump()
+    data["company_id"] = flock.company_id
+
+    entry = models.BreederProductionDailyPerformance(**data)
+
+    _recalculate_breeder_production_entry(entry)
+
+    entry.last_saved_by = current_user.full_name
+    entry.last_saved_at = datetime.utcnow()
+
+    db.add(entry)
+    db.commit()
+
+    return _breeder_production_daily_response(
+        _get_breeder_production_daily_entry(db, entry.id)
+    )
+
+
+@app.patch(
+    "/api/breeders/production/daily-performance/{entry_id}",
+    response_model=BreederProductionDailyPerformanceOut,
+)
+def update_breeder_production_daily_performance(
+    entry_id: int,
+    payload: BreederProductionDailyPerformancePatch,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    entry = _get_breeder_production_daily_entry(
+        db,
+        entry_id,
+    )
+
+    flock = _validate_breeder_production_flock_access(
+        db,
+        current_user,
+        entry.flock_id,
+    )
+
+    data = payload.model_dump(exclude_unset=True)
+
+    integer_fields = {
+        "opening_female_birds",
+        "female_mortality",
+        "female_culls",
+        "opening_male_birds",
+        "male_mortality",
+        "male_culls",
+        "total_eggs",
+        "hatching_eggs",
+        "floor_eggs",
+        "rejects",
+    }
+
+    for field in integer_fields:
+        if field in data and data[field] is not None and data[field] < 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{field.replace('_', ' ').title()} cannot be negative",
+            )
+
+    if "entry_date" in data:
+        duplicate = (
+            db.query(models.BreederProductionDailyPerformance)
+            .filter(
+                models.BreederProductionDailyPerformance.flock_id
+                == flock.id,
+                models.BreederProductionDailyPerformance.entry_date
+                == data["entry_date"],
+                models.BreederProductionDailyPerformance.id
+                != entry.id,
+            )
+            .first()
+        )
+
+        if duplicate is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="A daily entry already exists for this flock and date",
+            )
+
+        if flock.hatch_date is not None:
+            data["age_days"] = (
+                data["entry_date"] - flock.hatch_date
+            ).days
+
+    for field, value in data.items():
+        setattr(entry, field, value)
+
+    _recalculate_breeder_production_entry(entry)
+
+    entry.last_saved_by = current_user.full_name
+    entry.last_saved_at = datetime.utcnow()
+
+    db.commit()
+
+    return _breeder_production_daily_response(
+        _get_breeder_production_daily_entry(db, entry.id)
+    )
+
+
+@app.delete(
+    "/api/breeders/production/daily-performance/{entry_id}"
+)
+def delete_breeder_production_daily_performance(
+    entry_id: int,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not (
+        current_user.is_global_admin
+        or current_user.is_company_admin
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Admin access required",
+        )
+
+    entry = _get_breeder_production_daily_entry(
+        db,
+        entry_id,
+    )
+
+    _validate_breeder_production_flock_access(
+        db,
+        current_user,
+        entry.flock_id,
+    )
+
+    deleted_id = entry.id
+    db.delete(entry)
+    db.commit()
+
+    return {
+        "deleted": True,
+        "id": deleted_id,
+    }

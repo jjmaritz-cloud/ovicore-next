@@ -847,3 +847,116 @@ class BreederProductionFlockOut(BaseModel):
 class BreederTransferResult(BaseModel):
     rearing_flock: BreederRearingFlockOut
     production_flock: BreederProductionFlockOut
+
+
+# ---------------------------------------------------------------------
+# Breeder Production Daily House Card
+# ---------------------------------------------------------------------
+
+class BreederProductionDailyPerformanceCreate(BaseModel):
+    company_id: int
+    flock_id: int
+    entry_date: date
+    age_days: Optional[int] = None
+
+    opening_female_birds: Optional[int] = None
+    female_mortality: int = 0
+    female_culls: int = 0
+    closing_female_birds: Optional[int] = None
+
+    opening_male_birds: Optional[int] = None
+    male_mortality: int = 0
+    male_culls: int = 0
+    closing_male_birds: Optional[int] = None
+
+    feed_kg: Optional[float] = None
+    water_litres: Optional[float] = None
+    female_bodyweight_kg: Optional[float] = None
+    male_bodyweight_kg: Optional[float] = None
+
+    total_eggs: int = 0
+    hatching_eggs: int = 0
+    floor_eggs: int = 0
+    rejects: int = 0
+
+    production_standard_pct: Optional[float] = None
+    notes: Optional[str] = None
+
+
+class BreederProductionDailyPerformancePatch(BaseModel):
+    entry_date: Optional[date] = None
+    age_days: Optional[int] = None
+
+    opening_female_birds: Optional[int] = None
+    female_mortality: Optional[int] = None
+    female_culls: Optional[int] = None
+    closing_female_birds: Optional[int] = None
+
+    opening_male_birds: Optional[int] = None
+    male_mortality: Optional[int] = None
+    male_culls: Optional[int] = None
+    closing_male_birds: Optional[int] = None
+
+    feed_kg: Optional[float] = None
+    water_litres: Optional[float] = None
+    female_bodyweight_kg: Optional[float] = None
+    male_bodyweight_kg: Optional[float] = None
+
+    total_eggs: Optional[int] = None
+    hatching_eggs: Optional[int] = None
+    floor_eggs: Optional[int] = None
+    rejects: Optional[int] = None
+
+    production_standard_pct: Optional[float] = None
+    notes: Optional[str] = None
+
+
+class BreederProductionDailyPerformanceOut(BaseModel):
+    id: int
+    company_id: int
+    flock_id: int
+
+    farm_name: str
+    shed_name: str
+    flock_code: str
+    breed: Optional[str] = None
+
+    entry_date: date
+    age_days: Optional[int] = None
+
+    opening_female_birds: Optional[int] = None
+    female_mortality: int = 0
+    female_culls: int = 0
+    closing_female_birds: Optional[int] = None
+
+    opening_male_birds: Optional[int] = None
+    male_mortality: int = 0
+    male_culls: int = 0
+    closing_male_birds: Optional[int] = None
+
+    total_closing_birds: Optional[int] = None
+    male_ratio_pct: Optional[float] = None
+
+    feed_kg: Optional[float] = None
+    water_litres: Optional[float] = None
+    feed_per_bird_g: Optional[float] = None
+
+    female_bodyweight_kg: Optional[float] = None
+    male_bodyweight_kg: Optional[float] = None
+
+    total_eggs: int = 0
+    hatching_eggs: int = 0
+    floor_eggs: int = 0
+    rejects: int = 0
+
+    production_pct: Optional[float] = None
+    production_standard_pct: Optional[float] = None
+    production_variance_pct: Optional[float] = None
+    hatching_egg_pct: Optional[float] = None
+    floor_egg_pct: Optional[float] = None
+
+    notes: Optional[str] = None
+    last_saved_by: Optional[str] = None
+    last_saved_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)

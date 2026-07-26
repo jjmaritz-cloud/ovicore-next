@@ -597,11 +597,82 @@ class BreederProductionFlock(Base):
     )
     farm = relationship("BroilerFarm", foreign_keys=[farm_id])
     shed = relationship("BroilerShed", foreign_keys=[shed_id])
+    daily_performance = relationship(
+        "BreederProductionDailyPerformance",
+        back_populates="flock",
+        cascade="all, delete-orphan",
+    )
 
     __table_args__ = (
         UniqueConstraint(
             "company_id",
             "flock_code",
             name="uq_company_breeder_production_flock_code",
+        ),
+    )
+
+
+class BreederProductionDailyPerformance(Base):
+    __tablename__ = "breeder_production_daily_performance"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(
+        Integer,
+        ForeignKey("companies.id"),
+        nullable=False,
+        index=True,
+    )
+    flock_id = Column(
+        Integer,
+        ForeignKey("breeder_production_flocks.id"),
+        nullable=False,
+        index=True,
+    )
+
+    entry_date = Column(Date, nullable=False)
+    age_days = Column(Integer, nullable=True)
+
+    opening_female_birds = Column(Integer, nullable=True)
+    female_mortality = Column(Integer, nullable=False, default=0)
+    female_culls = Column(Integer, nullable=False, default=0)
+    closing_female_birds = Column(Integer, nullable=True)
+
+    opening_male_birds = Column(Integer, nullable=True)
+    male_mortality = Column(Integer, nullable=False, default=0)
+    male_culls = Column(Integer, nullable=False, default=0)
+    closing_male_birds = Column(Integer, nullable=True)
+
+    feed_kg = Column(Numeric(12, 2), nullable=True)
+    water_litres = Column(Numeric(12, 2), nullable=True)
+
+    female_bodyweight_kg = Column(Numeric(8, 3), nullable=True)
+    male_bodyweight_kg = Column(Numeric(8, 3), nullable=True)
+
+    total_eggs = Column(Integer, nullable=False, default=0)
+    hatching_eggs = Column(Integer, nullable=False, default=0)
+    floor_eggs = Column(Integer, nullable=False, default=0)
+    rejects = Column(Integer, nullable=False, default=0)
+
+    production_standard_pct = Column(Numeric(7, 3), nullable=True)
+
+    notes = Column(Text, nullable=True)
+    last_saved_by = Column(String(255), nullable=True)
+    last_saved_at = Column(
+        DateTime,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+    created_at = Column(DateTime, server_default=func.now())
+
+    flock = relationship(
+        "BreederProductionFlock",
+        back_populates="daily_performance",
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "flock_id",
+            "entry_date",
+            name="uq_breeder_production_flock_entry_date",
         ),
     )
