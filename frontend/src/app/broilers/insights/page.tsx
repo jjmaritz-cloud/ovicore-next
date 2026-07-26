@@ -475,36 +475,36 @@ export default function BroilerInsightsPage() {
           .compare-page { min-width: 0; }
           .compare-description { max-width: 760px; margin: 5px 0 0; color: #64736b; }
           .compare-toolbar, .compare-card, .flock-picker {
-            margin-bottom: 12px; padding: 13px; border: 1px solid #dce7e1;
+            margin-bottom: 6px; padding: 8px; border: 1px solid #dce7e1;
             border-radius: 14px; background: #fff;
           }
           .compare-toolbar { display: flex; align-items: end; gap: 12px; justify-content: space-between; }
           .compare-toolbar label { display: grid; gap: 5px; flex: 1; min-width: 260px; font-size: 12px; font-weight: 800; color: #405148; }
-          .compare-toolbar select { min-height: 40px; padding: 0 10px; border: 1px solid #cbd8d1; border-radius: 9px; background: #fff; }
+          .compare-toolbar select { min-height: 34px; padding: 0 9px; border: 1px solid #cbd8d1; border-radius: 9px; background: #fff; }
           .quick-buttons, .metric-tabs, .legend { display: flex; flex-wrap: wrap; gap: 7px; }
           .quick-buttons button, .metric-tabs button, .picker-header button, .legend button {
-            min-height: 36px; padding: 0 11px; border: 1px solid #cbd8d1;
+            min-height: 32px; padding: 0 10px; border: 1px solid #cbd8d1;
             border-radius: 9px; background: #fff; color: #174a33; font-weight: 800; cursor: pointer;
           }
-          .metric-tabs { margin-bottom: 12px; }
+          .metric-tabs { margin-bottom: 6px; }
           .metric-tabs button.active { border-color: #0f6b43; background: #0f6b43; color: #fff; }
-          .picker-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+          .picker-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 7px; }
           .picker-header div, .picker-row span { display: grid; gap: 2px; }
           .picker-header span, .picker-row small { color: #68776f; font-size: 12px; }
-          .picker-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(245px, 1fr)); gap: 8px; }
-          .picker-row { display: flex; gap: 9px; align-items: center; padding: 10px; border: 1px solid #dce7e1; border-radius: 10px; }
+          .picker-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 6px; }
+          .picker-row { display: flex; gap: 9px; align-items: center; padding: 8px; border: 1px solid #dce7e1; border-radius: 10px; }
           .picker-row.selected { border-color: #0f6b43; background: #eff8f3; }
           .compare-message { padding: 10px 12px; border-radius: 10px; background: #fff3e6; color: #8b4c12; font-weight: 800; }
-          .compare-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
-          .compare-kpis article { display: grid; gap: 4px; padding: 12px; border: 1px solid #dce7e1; border-radius: 13px; background: #fff; }
+          .compare-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 6px; }
+          .compare-kpis article { display: grid; gap: 4px; padding: 9px 10px; border: 1px solid #dce7e1; border-radius: 13px; background: #fff; }
           .compare-kpis span { color: #66766d; font-size: 11px; font-weight: 800; text-transform: uppercase; }
-          .compare-kpis strong { color: #123f2b; font-size: 20px; }
+          .compare-kpis strong { color: #123f2b; font-size: 17px; }
           .compare-kpis small { color: #68776f; }
-          .compare-card-head { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+          .compare-card-head { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
           .compare-card-head h3 { margin: 2px 0; color: #123f2b; }
           .compare-card-head p { margin: 0; color: #68776f; font-size: 13px; }
           .age-pill { padding: 7px 10px; border-radius: 999px; background: #edf7f1; color: #0f6b43; font-weight: 800; white-space: nowrap; }
-          .empty { min-height: 320px; display: grid; place-items: center; color: #718078; }
+          .empty { min-height: 250px; display: grid; place-items: center; color: #718078; }
           .legend { margin-top: 8px; }
           .legend button { display: inline-flex; align-items: center; gap: 7px; min-height: 31px; border-radius: 999px; font-size: 12px; }
           .legend button.hidden { opacity: 0.4; text-decoration: line-through; }
@@ -538,17 +538,14 @@ function ComparisonSvg({
   }>;
   metric: { label: string; unit: string; decimals: number };
 }) {
-  const [hovered, setHovered] = useState<{
-    seriesIndex: number;
-    pointIndex: number;
-  } | null>(null);
+  const [hoverAge, setHoverAge] = useState<number | null>(null);
 
   const width = 1200;
-  const height = 430;
-  const left = 75;
-  const right = 25;
-  const top = 25;
-  const bottom = 50;
+  const height = 330;
+  const left = 70;
+  const right = 24;
+  const top = 18;
+  const bottom = 42;
   const plotWidth = width - left - right;
   const plotHeight = height - top - bottom;
 
@@ -563,18 +560,84 @@ function ComparisonSvg({
     .filter((value, index, values) => value <= maxAge && values.indexOf(value) === index)
     .sort((a, b) => a - b);
 
-  const hoveredSeries = hovered ? series[hovered.seriesIndex] : null;
-  const hoveredPoint = hoveredSeries && hovered ? hoveredSeries.points[hovered.pointIndex] : null;
+  const availableAges = Array.from(
+    new Set(allPoints.map((point) => point.age)),
+  ).sort((a, b) => a - b);
+
+  function nearestAge(rawAge: number) {
+    return availableAges.reduce((best, age) =>
+      Math.abs(age - rawAge) < Math.abs(best - rawAge) ? age : best,
+      availableAges[0] ?? 0,
+    );
+  }
+
+  function handlePointer(event: React.MouseEvent<SVGRectElement>) {
+    const svg = event.currentTarget.ownerSVGElement;
+    if (!svg) return;
+
+    const bounds = svg.getBoundingClientRect();
+    const scaleX = width / bounds.width;
+    const svgX = (event.clientX - bounds.left) * scaleX;
+    const clampedX = Math.max(left, Math.min(left + plotWidth, svgX));
+    const rawAge = ((clampedX - left) / plotWidth) * maxAge;
+
+    setHoverAge(nearestAge(rawAge));
+  }
+
+  const tooltipRows =
+    hoverAge === null
+      ? []
+      : series
+          .map((item, index) => {
+            const point = item.points.find((candidate) => candidate.age === hoverAge);
+            return point ? { item, point, index } : null;
+          })
+          .filter(
+            (
+              row,
+            ): row is {
+              item: (typeof series)[number];
+              point: { age: number; date: string; value: number };
+              index: number;
+            } => Boolean(row),
+          );
+
+  const tooltipX = hoverAge === null ? 0 : x(hoverAge);
+  const tooltipWidth = 360;
+  const tooltipHeight = 42 + tooltipRows.length * 23;
+  const tooltipBoxX = Math.min(
+    Math.max(left + 8, tooltipX + 16),
+    width - right - tooltipWidth,
+  );
+  const tooltipBoxY = top + 12;
 
   return (
     <div className="chart-scroll">
-      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${metric.label} comparison by age`}>
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label={`${metric.label} comparison by age`}
+        onMouseLeave={() => setHoverAge(null)}
+      >
         <rect x={left} y={top} width={plotWidth} height={plotHeight} rx="8" fill="#fbfdfc" />
 
-        {Array.from({ length: 6 }, (_, index) => (maxValue / 5) * index).map((tick) => (
+        {Array.from({ length: 5 }, (_, index) => (maxValue / 4) * index).map((tick) => (
           <g key={tick}>
-            <line x1={left} x2={width - right} y1={y(tick)} y2={y(tick)} stroke="#dfe8e3" strokeDasharray="4 4" />
-            <text x={left - 10} y={y(tick) + 4} textAnchor="end" fill="#66756d" fontSize="12">
+            <line
+              x1={left}
+              x2={width - right}
+              y1={y(tick)}
+              y2={y(tick)}
+              stroke="#dfe8e3"
+              strokeDasharray="4 4"
+            />
+            <text
+              x={left - 10}
+              y={y(tick) + 4}
+              textAnchor="end"
+              fill="#66756d"
+              fontSize="11"
+            >
               {tick.toFixed(metric.decimals)}
             </text>
           </g>
@@ -583,7 +646,9 @@ function ComparisonSvg({
         {xTicks.map((tick) => (
           <g key={tick}>
             <line x1={x(tick)} x2={x(tick)} y1={top} y2={top + plotHeight} stroke="#edf2ef" />
-            <text x={x(tick)} y={height - 20} textAnchor="middle" fill="#66756d" fontSize="12">D{tick}</text>
+            <text x={x(tick)} y={height - 16} textAnchor="middle" fill="#66756d" fontSize="11">
+              D{tick}
+            </text>
           </g>
         ))}
 
@@ -593,57 +658,119 @@ function ComparisonSvg({
               points={item.points.map((point) => `${x(point.age)},${y(point.value)}`).join(" ")}
               fill="none"
               stroke={COLOURS[seriesIndex % COLOURS.length]}
-              strokeWidth="4"
+              strokeWidth="3.2"
               strokeLinecap="round"
               strokeLinejoin="round"
             />
-            {item.points.map((point, pointIndex) => (
-              <g key={`${item.plan.id}-${point.age}`}>
-                <circle cx={x(point.age)} cy={y(point.value)} r="4" fill={COLOURS[seriesIndex % COLOURS.length]} />
-                <circle
-                  cx={x(point.age)}
-                  cy={y(point.value)}
-                  r="14"
-                  fill="transparent"
-                  onMouseEnter={() => setHovered({ seriesIndex, pointIndex })}
-                  onClick={() => setHovered({ seriesIndex, pointIndex })}
-                />
-              </g>
+            {item.points.map((point) => (
+              <circle
+                key={`${item.plan.id}-${point.age}`}
+                cx={x(point.age)}
+                cy={y(point.value)}
+                r={hoverAge === point.age ? "4.5" : "3.2"}
+                fill={COLOURS[seriesIndex % COLOURS.length]}
+              />
             ))}
           </g>
         ))}
 
-        {hoveredSeries && hoveredPoint && (
-          <g>
-            <line x1={x(hoveredPoint.age)} x2={x(hoveredPoint.age)} y1={top} y2={top + plotHeight} stroke="#718078" strokeDasharray="5 5" />
+        <rect
+          x={left}
+          y={top}
+          width={plotWidth}
+          height={plotHeight}
+          fill="transparent"
+          style={{ cursor: "crosshair" }}
+          onMouseMove={handlePointer}
+          onClick={handlePointer}
+        />
+
+        {hoverAge !== null && tooltipRows.length > 0 && (
+          <g pointerEvents="none">
+            <line
+              x1={tooltipX}
+              x2={tooltipX}
+              y1={top}
+              y2={top + plotHeight}
+              stroke="#718078"
+              strokeDasharray="5 5"
+            />
+
             <rect
-              x={Math.min(x(hoveredPoint.age) + 14, width - 320)}
-              y={Math.max(top + 8, y(hoveredPoint.value) - 88)}
-              width="300"
-              height="84"
+              x={tooltipBoxX}
+              y={tooltipBoxY}
+              width={tooltipWidth}
+              height={tooltipHeight}
               rx="10"
               fill="#103f2d"
             />
-            <text x={Math.min(x(hoveredPoint.age) + 28, width - 306)} y={Math.max(top + 31, y(hoveredPoint.value) - 65)} fill="#fff" fontSize="13" fontWeight="700">
-              Day {hoveredPoint.age} · {hoveredPoint.date}
+
+            <text
+              x={tooltipBoxX + 14}
+              y={tooltipBoxY + 22}
+              fill="#fff"
+              fontSize="13"
+              fontWeight="700"
+            >
+              Day {hoverAge}
             </text>
-            <text x={Math.min(x(hoveredPoint.age) + 28, width - 306)} y={Math.max(top + 52, y(hoveredPoint.value) - 44)} fill="#d8eee3" fontSize="12">
-              {hoveredSeries.label}
-            </text>
-            <text x={Math.min(x(hoveredPoint.age) + 28, width - 306)} y={Math.max(top + 73, y(hoveredPoint.value) - 23)} fill="#fff" fontSize="14" fontWeight="800">
-              {metric.label}: {hoveredPoint.value.toFixed(metric.decimals)}{metric.unit ? ` ${metric.unit}` : ""}
-            </text>
+
+            {tooltipRows.map(({ item, point, index }, rowIndex) => (
+              <g key={item.plan.id}>
+                <circle
+                  cx={tooltipBoxX + 17}
+                  cy={tooltipBoxY + 42 + rowIndex * 23}
+                  r="4"
+                  fill={COLOURS[index % COLOURS.length]}
+                />
+                <text
+                  x={tooltipBoxX + 29}
+                  y={tooltipBoxY + 46 + rowIndex * 23}
+                  fill="#d8eee3"
+                  fontSize="11.5"
+                >
+                  {item.label}
+                </text>
+                <text
+                  x={tooltipBoxX + tooltipWidth - 14}
+                  y={tooltipBoxY + 46 + rowIndex * 23}
+                  textAnchor="end"
+                  fill="#fff"
+                  fontSize="12"
+                  fontWeight="700"
+                >
+                  {point.value.toFixed(metric.decimals)}
+                  {metric.unit ? ` ${metric.unit}` : ""}
+                </text>
+              </g>
+            ))}
           </g>
         )}
 
-        <text x={left + plotWidth / 2} y={height - 2} textAnchor="middle" fill="#53645b" fontSize="13" fontWeight="700">
+        <text
+          x={left + plotWidth / 2}
+          y={height - 1}
+          textAnchor="middle"
+          fill="#53645b"
+          fontSize="12"
+          fontWeight="700"
+        >
           Age (days)
         </text>
       </svg>
 
       <style jsx>{`
-        .chart-scroll { width: 100%; overflow-x: auto; }
-        svg { display: block; width: 100%; min-width: 760px; height: auto; }
+        .chart-scroll {
+          width: 100%;
+          overflow-x: auto;
+        }
+
+        svg {
+          display: block;
+          width: 100%;
+          min-width: 720px;
+          height: auto;
+        }
       `}</style>
     </div>
   );
