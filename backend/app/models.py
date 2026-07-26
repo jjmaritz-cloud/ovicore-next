@@ -700,7 +700,7 @@ class CommercialLayerFlock(Base):
     source_rearing_flock_id = Column(
         Integer,
         ForeignKey("layer_rearing_flocks.id"),
-        nullable=False,
+        nullable=True,
         unique=True,
         index=True,
     )

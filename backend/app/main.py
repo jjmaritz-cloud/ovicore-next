@@ -281,6 +281,59 @@ def ensure_module_access_schema() -> None:
         )
 
 
+def ensure_commercial_layer_transfer_schema() -> None:
+    """
+    Upgrade an existing commercial_layer_flocks table created by the
+    performance-graph foundation.
+
+    SQLAlchemy create_all() creates new tables but does not add columns to
+    an existing table, so the source rearing link must be added explicitly.
+    The column remains nullable for any historical/manual commercial-layer
+    rows that predate the transfer workflow.
+    """
+    inspector = inspect(engine)
+    table_names = set(inspector.get_table_names())
+
+    if "commercial_layer_flocks" not in table_names:
+        return
+
+    columns = {
+        column["name"]
+        for column in inspector.get_columns("commercial_layer_flocks")
+    }
+
+    with engine.begin() as connection:
+        if "source_rearing_flock_id" not in columns:
+            connection.execute(
+                text(
+                    "ALTER TABLE commercial_layer_flocks "
+                    "ADD COLUMN source_rearing_flock_id INTEGER"
+                )
+            )
+
+        # PostgreSQL supports a partial unique index, which protects
+        # transferred flocks while still allowing older rows with NULL.
+        if engine.dialect.name == "postgresql":
+            connection.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS "
+                    "uq_commercial_layer_source_rearing_flock "
+                    "ON commercial_layer_flocks "
+                    "(source_rearing_flock_id) "
+                    "WHERE source_rearing_flock_id IS NOT NULL"
+                )
+            )
+        elif engine.dialect.name == "sqlite":
+            connection.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS "
+                    "uq_commercial_layer_source_rearing_flock "
+                    "ON commercial_layer_flocks "
+                    "(source_rearing_flock_id)"
+                )
+            )
+
+
 def ensure_layer_transfer_schema() -> None:
     inspector = inspect(engine)
     table_names = set(inspector.get_table_names())
@@ -396,6 +449,7 @@ def repair_shed_company_links(db: Session) -> int:
 def startup():
     Base.metadata.create_all(bind=engine)
     ensure_module_access_schema()
+    ensure_commercial_layer_transfer_schema()
     ensure_layer_transfer_schema()
     ensure_breeder_transfer_schema()
 

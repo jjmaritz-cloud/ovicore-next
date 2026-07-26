@@ -974,7 +974,7 @@ class BreederProductionDailyPerformanceOut(BaseModel):
 
 class CommercialLayerFlockOut(BaseModel):
     id: int
-    source_rearing_flock_id: int
+    source_rearing_flock_id: Optional[int] = None
     company_id: int
     farm_id: int
     shed_id: int
