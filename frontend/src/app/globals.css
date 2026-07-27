@@ -8945,3 +8945,122 @@ body:has(.daily-house-card)
   max-width: none !important;
   padding: 12px 12px 24px !important;
 }
+
+/* =========================================================
+   FINAL: Dynamic full-height Daily House Card
+   Lets the shared input screen use all available viewport space.
+   Keep this block at the very end of globals.css.
+   ========================================================= */
+
+.house-sheet-panel,
+.input-page-panel {
+  min-height: 100dvh !important;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.house-sheet-header,
+.input-page-header,
+.house-sheet-control-row,
+.input-control-row,
+.house-sheet-kpi-strip,
+.input-kpi-strip {
+  flex: 0 0 auto;
+}
+
+.house-sheet-table-card,
+.input-table-card {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.house-sheet-table-titlebar,
+.input-table-titlebar,
+.house-sheet-message,
+.input-message-strip,
+.house-sheet-table-footer,
+.input-table-footer {
+  flex: 0 0 auto;
+}
+
+.house-sheet-table-scroll,
+.input-table-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto !important;
+  max-height: none !important;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+/* Keep the two table header rows visible while the body scrolls. */
+.house-sheet-table thead tr:first-child th,
+.input-data-table thead tr:first-child th {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.house-sheet-table thead tr:nth-child(2) th,
+.input-data-table thead tr:nth-child(2) th {
+  position: sticky;
+  top: 28px;
+  z-index: 5;
+}
+
+/* Compact short screens without giving up the dynamic layout. */
+@media (max-height: 760px) {
+  .house-sheet-panel,
+  .input-page-panel {
+    padding-bottom: 10px !important;
+  }
+
+  .house-sheet-header,
+  .input-page-header {
+    min-height: 76px !important;
+    padding-top: 11px !important;
+    padding-bottom: 11px !important;
+  }
+
+  .house-sheet-kpi,
+  .input-kpi-card {
+    min-height: 66px !important;
+    padding-top: 9px !important;
+    padding-bottom: 9px !important;
+  }
+
+  .house-sheet-table-titlebar,
+  .input-table-titlebar {
+    min-height: 48px !important;
+    padding-top: 9px !important;
+    padding-bottom: 9px !important;
+  }
+}
+
+/* On narrow/mobile layouts, allow normal page scrolling instead. */
+@media (max-width: 900px) {
+  .house-sheet-panel,
+  .input-page-panel {
+    height: auto;
+    min-height: 100dvh !important;
+    overflow: visible;
+  }
+
+  .house-sheet-table-card,
+  .input-table-card {
+    min-height: 420px;
+  }
+
+  .house-sheet-table-scroll,
+  .input-table-scroll {
+    min-height: 340px;
+    max-height: 65dvh !important;
+  }
+}
+
