@@ -48,7 +48,7 @@ const modules: ModuleCard[] = [
     description:
       "Placements, growth, bodyweight, uniformity, feed, mortality and transfer readiness.",
     tags: ["Growth", "Uniformity", "Transfers"],
-    href: "/rearing",
+    href: "/layers/rearing/flocks",
     status: "Core",
     statusClass: "home-status-foundation",
     icon: Sprout,
@@ -451,3 +451,4 @@ export default function HomePage() {
     </main>
   );
 }
+
