@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import BroilerSidebar from "@/components/BroilerSidebar";
 import styles from "./DailyHouseCard.module.css";
 import type {
   DailyHouseCardAction,
@@ -58,8 +57,6 @@ export default function DailyHouseCard({
 }: DailyHouseCardProps) {
   return (
     <div className={styles.shell}>
-      <BroilerSidebar />
-
       <div className={styles.content}>
         <main className={styles.page}>
       <section className={styles.header}>
