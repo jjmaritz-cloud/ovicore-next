@@ -26,8 +26,12 @@ export const breedersMenu: SidebarMenuConfig = {
       title: "Production",
       items: [
         {
-          label: "Daily House Card",
+          label: "Production Flock Register",
           href: "/breeders/production",
+        },
+        {
+          label: "Daily House Card",
+          href: "/breeders/production/daily-house-card",
         },
         {
           label: "Egg Forecast",
@@ -35,7 +39,7 @@ export const breedersMenu: SidebarMenuConfig = {
         },
         {
           label: "Fertility & Hatch",
-          href: "/breeders/fertility",
+          href: "/breeders/fertility-hatch",
         },
       ],
     },
