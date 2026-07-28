@@ -1087,8 +1087,15 @@ function BreederProductionDailyHouseCardContent() {
     );
   }
 
-  return (
-    <DailyHouseCard
+	return (
+		<div
+			style={{
+				width: "calc(100% - 12px)",
+				marginLeft: "12px",
+				minWidth: 0,
+			}}
+		>
+			<DailyHouseCard
       moduleLabel="Breeder Production"
       description="Daily breeder entry for female and male bird position, feed, water, bodyweight and egg production."
       homeAction={{
@@ -1590,9 +1597,10 @@ function BreederProductionDailyHouseCardContent() {
             ))
           )}
         </tbody>
-      </table>
-    </DailyHouseCard>
-  );
+				</table>
+			</DailyHouseCard>
+		</div>
+	);
 }
 
 export default function BreederProductionDailyHouseCardPage() {
