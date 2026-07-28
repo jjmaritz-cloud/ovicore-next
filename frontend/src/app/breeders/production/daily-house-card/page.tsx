@@ -355,6 +355,9 @@ function BreederProductionDailyHouseCardContent() {
   const [saving, setSaving] =
     useState(false);
 
+  const [buildingRows, setBuildingRows] =
+    useState(false);
+
   const [message, setMessage] =
     useState("All rows saved");
 
@@ -425,7 +428,7 @@ function BreederProductionDailyHouseCardContent() {
     setError(null);
 
     try {
-      const response =
+      const loadResponse =
         await authenticatedFetch(
           `${API_BASE}/api/breeders/production/daily-performance?company_id=${activeCompanyId}&flock_id=${selectedFlockId}`,
           {
@@ -433,16 +436,89 @@ function BreederProductionDailyHouseCardContent() {
           },
         );
 
-      if (!response.ok) {
+      if (!loadResponse.ok) {
         throw new Error(
           await readApiError(
-            response,
+            loadResponse,
             "Could not load the Daily House Card.",
           ),
         );
       }
 
-      const data = await response.json();
+      let data = await loadResponse.json();
+
+      const selected = flocks.find(
+        (flock) => flock.id === selectedFlockId,
+      );
+
+      const todayIso = new Date()
+        .toLocaleDateString("en-CA");
+
+      const latestIso =
+        data.length > 0
+          ? String(
+              data[data.length - 1]?.entry_date ?? "",
+            ).slice(0, 10)
+          : selected?.transfer_date?.slice(0, 10) ?? "";
+
+      const rowsNeeded =
+        latestIso && latestIso < todayIso;
+
+      if (rowsNeeded) {
+        setBuildingRows(true);
+        setMessage("Preparing daily rows…");
+
+        let nextDate = latestIso;
+
+        while (nextDate < todayIso) {
+          const createResponse =
+            await authenticatedFetch(
+              `${API_BASE}/api/breeders/production/daily-performance/new-row?flock_id=${selectedFlockId}`,
+              {
+                method: "POST",
+              },
+            );
+
+          if (!createResponse.ok) {
+            throw new Error(
+              await readApiError(
+                createResponse,
+                "Could not prepare the next Daily House Card row.",
+              ),
+            );
+          }
+
+          const created = await createResponse.json();
+          nextDate = String(
+            created.entry_date ?? "",
+          ).slice(0, 10);
+
+          if (!nextDate) {
+            throw new Error(
+              "OviCore could not determine the next Daily House Card date.",
+            );
+          }
+        }
+
+        const refreshedResponse =
+          await authenticatedFetch(
+            `${API_BASE}/api/breeders/production/daily-performance?company_id=${activeCompanyId}&flock_id=${selectedFlockId}`,
+            {
+              cache: "no-store",
+            },
+          );
+
+        if (!refreshedResponse.ok) {
+          throw new Error(
+            await readApiError(
+              refreshedResponse,
+              "Could not reload the prepared Daily House Card.",
+            ),
+          );
+        }
+
+        data = await refreshedResponse.json();
+      }
 
       setRows(data.map(mapRow));
       dirtyRowIds.current.clear();
@@ -454,10 +530,12 @@ function BreederProductionDailyHouseCardContent() {
           : "Could not load the Daily House Card.",
       );
     } finally {
+      setBuildingRows(false);
       setLoading(false);
     }
   }, [
     activeCompanyId,
+    flocks,
     selectedFlockId,
   ]);
 
@@ -514,57 +592,6 @@ function BreederProductionDailyHouseCardContent() {
     [],
   );
 
-  const addDailyRow = useCallback(async () => {
-    if (!selectedFlockId) {
-      alert("Select an active Breeder Production flock.");
-      return;
-    }
-
-    try {
-      const response =
-        await authenticatedFetch(
-          `${API_BASE}/api/breeders/production/daily-performance/new-row?flock_id=${selectedFlockId}`,
-          {
-            method: "POST",
-          },
-        );
-
-      if (!response.ok) {
-        throw new Error(
-          await readApiError(
-            response,
-            "Could not add a Daily House Card row.",
-          ),
-        );
-      }
-
-      const created = mapRow(
-        await response.json(),
-      );
-
-      setRows((current) => [
-        ...current,
-        created,
-      ]);
-
-      dirtyRowIds.current.clear();
-      setMessage("All rows saved");
-
-      setTimeout(() => {
-        gridRef.current?.api
-          .ensureIndexVisible(
-            rows.length,
-            "bottom",
-          );
-      }, 50);
-    } catch (addError) {
-      alert(
-        addError instanceof Error
-          ? addError.message
-          : "Could not add a daily row.",
-      );
-    }
-  }, [rows.length, selectedFlockId]);
 
   const saveDirtyRows = useCallback(async () => {
     const ids = Array.from(
@@ -702,10 +729,9 @@ function BreederProductionDailyHouseCardContent() {
             field: "entryDate",
             headerName: "Date",
             pinned: "left",
-            editable: true,
             minWidth: 125,
             cellClass:
-              "editable-cell identity-cell",
+              "calculated-cell identity-cell",
           },
           {
             field: "ageDays",
@@ -730,7 +756,8 @@ function BreederProductionDailyHouseCardContent() {
             minWidth: 120,
             valueFormatter:
               numberFormatter,
-            ...editableNumber,
+            cellClass:
+              "calculated-cell number-cell",
           },
           {
             field:
@@ -774,7 +801,8 @@ function BreederProductionDailyHouseCardContent() {
             minWidth: 115,
             valueFormatter:
               numberFormatter,
-            ...editableNumber,
+            cellClass:
+              "calculated-cell number-cell",
           },
           {
             field:
@@ -1073,24 +1101,9 @@ function BreederProductionDailyHouseCardContent() {
               onClick={() =>
                 void loadRows()
               }
-              disabled={loading}
+              disabled={loading || buildingRows}
             >
-              Reload
-            </button>
-
-            <button
-              type="button"
-              className="ovicore-btn"
-              onClick={() =>
-                void addDailyRow()
-              }
-              disabled={
-                !selectedFlockId ||
-                loading ||
-                saving
-              }
-            >
-              Add next day
+              {buildingRows ? "Preparing rows…" : "Reload"}
             </button>
 
             <button
@@ -1099,7 +1112,7 @@ function BreederProductionDailyHouseCardContent() {
               onClick={() =>
                 void saveDirtyRows()
               }
-              disabled={saving}
+              disabled={saving || loading || buildingRows}
             >
               {saving
                 ? "Saving..."
@@ -1141,7 +1154,7 @@ function BreederProductionDailyHouseCardContent() {
             headerHeight={40}
             groupHeaderHeight={34}
             loading={
-              loading || loadingUser
+              loading || loadingUser || buildingRows
             }
             stopEditingWhenCellsLoseFocus
             onCellValueChanged={
