@@ -315,15 +315,77 @@ class BroilerFarmCreate(BaseModel):
     company_id: int = 1
     farm_name: str
     farm_code: Optional[str] = None
+    common_name: Optional[str] = None
     farm_type: str = "broiler"
+    region: Optional[str] = None
+    farm_manager: Optional[str] = None
+    address_line_1: Optional[str] = None
+    address_line_2: Optional[str] = None
+    suburb: Optional[str] = None
+    state: Optional[str] = None
+    postcode: Optional[str] = None
+    country: Optional[str] = "Australia"
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    time_zone: Optional[str] = "Australia/Sydney"
+    total_bird_capacity: Optional[int] = None
+    licensed_bird_capacity: Optional[int] = None
+    water_source: Optional[str] = None
+    water_storage_litres: Optional[int] = None
+    power_supply: Optional[str] = None
+    backup_generator: Optional[bool] = None
+    generator_capacity_kva: Optional[float] = None
+    feed_delivery_access: Optional[str] = None
+    truck_restrictions: Optional[str] = None
+    biosecurity_classification: Optional[str] = None
+    shower_in_shower_out: Optional[bool] = None
+    visitor_approval_required: Optional[bool] = None
+    mortality_disposal_method: Optional[str] = None
+    manure_disposal_method: Optional[str] = None
+    environmental_licence_number: Optional[str] = None
+    free_range_area_ha: Optional[float] = None
+    emergency_contact: Optional[str] = None
+    emergency_phone: Optional[str] = None
     active: bool = True
+    notes: Optional[str] = None
 
 
 class BroilerFarmPatch(BaseModel):
     farm_name: Optional[str] = None
     farm_code: Optional[str] = None
+    common_name: Optional[str] = None
     farm_type: Optional[str] = None
+    region: Optional[str] = None
+    farm_manager: Optional[str] = None
+    address_line_1: Optional[str] = None
+    address_line_2: Optional[str] = None
+    suburb: Optional[str] = None
+    state: Optional[str] = None
+    postcode: Optional[str] = None
+    country: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    time_zone: Optional[str] = None
+    total_bird_capacity: Optional[int] = None
+    licensed_bird_capacity: Optional[int] = None
+    water_source: Optional[str] = None
+    water_storage_litres: Optional[int] = None
+    power_supply: Optional[str] = None
+    backup_generator: Optional[bool] = None
+    generator_capacity_kva: Optional[float] = None
+    feed_delivery_access: Optional[str] = None
+    truck_restrictions: Optional[str] = None
+    biosecurity_classification: Optional[str] = None
+    shower_in_shower_out: Optional[bool] = None
+    visitor_approval_required: Optional[bool] = None
+    mortality_disposal_method: Optional[str] = None
+    manure_disposal_method: Optional[str] = None
+    environmental_licence_number: Optional[str] = None
+    free_range_area_ha: Optional[float] = None
+    emergency_contact: Optional[str] = None
+    emergency_phone: Optional[str] = None
     active: Optional[bool] = None
+    notes: Optional[str] = None
 
 
 class BroilerFarmOut(BaseModel):
@@ -331,11 +393,41 @@ class BroilerFarmOut(BaseModel):
     company_id: int
     farm_name: str
     farm_code: Optional[str] = None
+    common_name: Optional[str] = None
     farm_type: str = "broiler"
-    active: bool
+    region: Optional[str] = None
+    farm_manager: Optional[str] = None
+    address_line_1: Optional[str] = None
+    address_line_2: Optional[str] = None
+    suburb: Optional[str] = None
+    state: Optional[str] = None
+    postcode: Optional[str] = None
+    country: Optional[str] = "Australia"
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    time_zone: Optional[str] = "Australia/Sydney"
+    total_bird_capacity: Optional[int] = None
+    licensed_bird_capacity: Optional[int] = None
+    water_source: Optional[str] = None
+    water_storage_litres: Optional[int] = None
+    power_supply: Optional[str] = None
+    backup_generator: Optional[bool] = None
+    generator_capacity_kva: Optional[float] = None
+    feed_delivery_access: Optional[str] = None
+    truck_restrictions: Optional[str] = None
+    biosecurity_classification: Optional[str] = None
+    shower_in_shower_out: Optional[bool] = None
+    visitor_approval_required: Optional[bool] = None
+    mortality_disposal_method: Optional[str] = None
+    manure_disposal_method: Optional[str] = None
+    environmental_licence_number: Optional[str] = None
+    free_range_area_ha: Optional[float] = None
+    emergency_contact: Optional[str] = None
+    emergency_phone: Optional[str] = None
+    active: bool = True
+    notes: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class BroilerShedCreate(BaseModel):
@@ -343,40 +435,108 @@ class BroilerShedCreate(BaseModel):
     farm_id: int
     shed_name: str
     shed_code: Optional[str] = None
-    floor_area_m2: float
+    shed_type: str = "Broiler"
+    housing_system: Optional[str] = None
+    capacity_birds: Optional[int] = None
+    length_m: Optional[float] = None
+    width_m: Optional[float] = None
+    floor_area_m2: float = 0
+    number_of_levels: Optional[int] = None
+    number_of_sections: Optional[int] = None
+    ventilation_type: Optional[str] = None
+    cooling_system: Optional[str] = None
+    heating_system: Optional[str] = None
+    lighting_system: Optional[str] = None
+    water_system: Optional[str] = None
+    feeder_system: Optional[str] = None
+    nest_type: Optional[str] = None
+    egg_collection_system: Optional[str] = None
+    manure_system: Optional[str] = None
+    year_commissioned: Optional[int] = None
+    male_female_support: Optional[str] = None
+    environmental_controller: Optional[str] = None
+    controller_id: Optional[str] = None
+    water_meter_id: Optional[str] = None
+    power_meter_id: Optional[str] = None
     default_density_kg_m2: float = 38
     default_target_lw_kg: float = 2.4
     default_growout_days: int = 42
     active: bool = True
+    notes: Optional[str] = None
 
 
 class BroilerShedPatch(BaseModel):
     farm_id: Optional[int] = None
     shed_name: Optional[str] = None
     shed_code: Optional[str] = None
+    shed_type: Optional[str] = None
+    housing_system: Optional[str] = None
+    capacity_birds: Optional[int] = None
+    length_m: Optional[float] = None
+    width_m: Optional[float] = None
     floor_area_m2: Optional[float] = None
+    number_of_levels: Optional[int] = None
+    number_of_sections: Optional[int] = None
+    ventilation_type: Optional[str] = None
+    cooling_system: Optional[str] = None
+    heating_system: Optional[str] = None
+    lighting_system: Optional[str] = None
+    water_system: Optional[str] = None
+    feeder_system: Optional[str] = None
+    nest_type: Optional[str] = None
+    egg_collection_system: Optional[str] = None
+    manure_system: Optional[str] = None
+    year_commissioned: Optional[int] = None
+    male_female_support: Optional[str] = None
+    environmental_controller: Optional[str] = None
+    controller_id: Optional[str] = None
+    water_meter_id: Optional[str] = None
+    power_meter_id: Optional[str] = None
     default_density_kg_m2: Optional[float] = None
     default_target_lw_kg: Optional[float] = None
     default_growout_days: Optional[int] = None
     active: Optional[bool] = None
+    notes: Optional[str] = None
 
 
 class BroilerShedOut(BaseModel):
     id: int
     company_id: int
-    farm_id: int
     farm_name: Optional[str] = None
+    farm_id: int
     shed_name: str
     shed_code: Optional[str] = None
-    floor_area_m2: float
-    default_density_kg_m2: float
-    default_target_lw_kg: float
-    default_growout_days: int
-    active: bool
+    shed_type: str = "Broiler"
+    housing_system: Optional[str] = None
+    capacity_birds: Optional[int] = None
+    length_m: Optional[float] = None
+    width_m: Optional[float] = None
+    floor_area_m2: float = 0
+    number_of_levels: Optional[int] = None
+    number_of_sections: Optional[int] = None
+    ventilation_type: Optional[str] = None
+    cooling_system: Optional[str] = None
+    heating_system: Optional[str] = None
+    lighting_system: Optional[str] = None
+    water_system: Optional[str] = None
+    feeder_system: Optional[str] = None
+    nest_type: Optional[str] = None
+    egg_collection_system: Optional[str] = None
+    manure_system: Optional[str] = None
+    year_commissioned: Optional[int] = None
+    male_female_support: Optional[str] = None
+    environmental_controller: Optional[str] = None
+    controller_id: Optional[str] = None
+    water_meter_id: Optional[str] = None
+    power_meter_id: Optional[str] = None
+    default_density_kg_m2: float = 38
+    default_target_lw_kg: float = 2.4
+    default_growout_days: int = 42
+    active: bool = True
+    notes: Optional[str] = None
 
-    class Config:
-        from_attributes = True
-        
+    model_config = ConfigDict(from_attributes=True)
+
 
 class BroilerDailyPerformanceCreate(BaseModel):
     company_id: int = 1

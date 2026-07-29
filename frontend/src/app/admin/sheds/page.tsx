@@ -1,876 +1,209 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AgGridReact } from "ag-grid-react";
-import {
-  AllCommunityModule,
-  ModuleRegistry,
-  type ColDef,
-  type GridReadyEvent,
-  type ValueFormatterParams,
-} from "ag-grid-community";
-
-ModuleRegistry.registerModules([AllCommunityModule]);
-
-import "ag-grid-community/styles/ag-grid.css";
-import "ag-grid-community/styles/ag-theme-quartz.css";
-
+import { useCallback, useEffect, useMemo, useState } from "react";
 import OviCoreActionBar from "@/components/ovicore/OviCoreActionBar";
 import OviCoreKpiStrip from "@/components/ovicore/OviCoreKpiStrip";
 import OviCorePageHeader from "@/components/ovicore/OviCorePageHeader";
 import OviCoreShell from "@/components/ovicore/OviCoreShell";
 import OviCoreTableCard from "@/components/ovicore/OviCoreTableCard";
 
-type CompanyRow = {
-  id: number;
-  company_name: string;
-  trading_name: string | null;
-  active: boolean;
-  created_at: string | null;
+type CompanyRow={id:number;company_name:string;active:boolean};
+type FarmRow={id:number;company_id:number;farm_name:string;farm_code:string|null;farm_type:string;active:boolean};
+type ShedRow={
+  id:number;company_id:number;farm_id:number;farm_name:string|null;shed_name:string;shed_code:string|null;
+  shed_type:string;housing_system:string|null;capacity_birds:number|null;length_m:number|null;width_m:number|null;
+  floor_area_m2:number;number_of_levels:number|null;number_of_sections:number|null;ventilation_type:string|null;
+  cooling_system:string|null;heating_system:string|null;lighting_system:string|null;water_system:string|null;
+  feeder_system:string|null;nest_type:string|null;egg_collection_system:string|null;manure_system:string|null;
+  year_commissioned:number|null;male_female_support:string|null;environmental_controller:string|null;
+  controller_id:string|null;water_meter_id:string|null;power_meter_id:string|null;
+  default_density_kg_m2:number;default_target_lw_kg:number;default_growout_days:number;
+  active:boolean;notes:string|null;
 };
 
-type FarmRow = {
-  id: number;
-  company_id: number;
-  farm_name: string;
-  farm_code: string | null;
-  farm_type: string;
-  active: boolean;
+const API_BASE="";
+const COMPANIES_ENDPOINT=`${API_BASE}/api/access/companies`;
+const FARMS_ENDPOINT=`${API_BASE}/api/broilers/farms`;
+const SHEDS_ENDPOINT=`${API_BASE}/api/broilers/sheds`;
+
+const SHED_TYPES:[string,string][]=[["Broiler","Broiler"],["Breeder Rearing","Breeder Rearing"],["Breeder Production","Breeder Production"],["Commercial Rearing","Commercial Rearing"],["Commercial Layers","Commercial Layers"],["Hatchery","Hatchery"],["Feed Mill","Feed Mill"],["Grading","Grading"],["Processing","Processing"]];
+const HOUSING:[string,string][]=[["Floor","Floor"],["Cage","Cage"],["Barn","Barn"],["Free Range","Free Range"],["Aviary","Aviary"],["Other","Other"]];
+
+const EMPTY_SHED:Omit<ShedRow,"id"|"company_id"|"farm_name">={
+  farm_id:0,shed_name:"",shed_code:"",shed_type:"Broiler",housing_system:"Floor",capacity_birds:null,
+  length_m:null,width_m:null,floor_area_m2:0,number_of_levels:1,number_of_sections:null,
+  ventilation_type:"",cooling_system:"",heating_system:"",lighting_system:"",water_system:"",
+  feeder_system:"",nest_type:"",egg_collection_system:"",manure_system:"",year_commissioned:null,
+  male_female_support:"",environmental_controller:"",controller_id:"",water_meter_id:"",power_meter_id:"",
+  default_density_kg_m2:38,default_target_lw_kg:2.4,default_growout_days:42,active:true,notes:""
 };
 
-type ShedRow = {
-  id: number;
-  company_id: number;
-  farm_id: number;
-  farm_name: string | null;
-  shed_name: string;
-  shed_code: string | null;
-  floor_area_m2: number;
-  default_density_kg_m2: number;
-  default_target_lw_kg: number;
-  default_growout_days: number;
-  active: boolean;
-};
+async function authenticatedFetch(input:RequestInfo|URL,init:RequestInit={}){
+  const r=await fetch(input,{...init,credentials:"include"});
+  if(r.status===401){const next=`${window.location.pathname}${window.location.search}`;window.location.href=`/login?next=${encodeURIComponent(next)}`;throw new Error("Your login session has expired.");}
+  return r;
+}
+async function apiError(r:Response,fallback:string){try{const d=await r.json();return d?.detail||fallback;}catch{return fallback;}}
 
-const API_BASE = '';
+type FieldDef={key:keyof ShedRow;label:string;type?:"text"|"number"|"select"|"textarea"|"boolean";options?:[string,string][];section:string};
+const FIELDS:FieldDef[]=[
+  {key:"shed_code",label:"Shed Code *",section:"Identity"},{key:"shed_name",label:"Shed Name *",section:"Identity"},
+  {key:"shed_type",label:"Shed Type *",type:"select",options:SHED_TYPES,section:"Identity"},
+  {key:"housing_system",label:"Housing System",type:"select",options:HOUSING,section:"Identity"},
+  {key:"capacity_birds",label:"Capacity Birds *",type:"number",section:"Dimensions & capacity"},
+  {key:"length_m",label:"Length m",type:"number",section:"Dimensions & capacity"},
+  {key:"width_m",label:"Width m",type:"number",section:"Dimensions & capacity"},
+  {key:"floor_area_m2",label:"Usable Floor Area m²",type:"number",section:"Dimensions & capacity"},
+  {key:"number_of_levels",label:"Number of Levels",type:"number",section:"Dimensions & capacity"},
+  {key:"number_of_sections",label:"Number of Sections",type:"number",section:"Dimensions & capacity"},
+  {key:"ventilation_type",label:"Ventilation Type",section:"Systems"},{key:"cooling_system",label:"Cooling System",section:"Systems"},
+  {key:"heating_system",label:"Heating System",section:"Systems"},{key:"lighting_system",label:"Lighting System",section:"Systems"},
+  {key:"water_system",label:"Water System",section:"Systems"},{key:"feeder_system",label:"Feeder System",section:"Systems"},
+  {key:"nest_type",label:"Nest Type",section:"Production equipment"},{key:"egg_collection_system",label:"Egg Collection System",section:"Production equipment"},
+  {key:"manure_system",label:"Manure System",section:"Production equipment"},{key:"male_female_support",label:"Male Female Support",section:"Production equipment"},
+  {key:"year_commissioned",label:"Year Commissioned",type:"number",section:"Controls & meters"},
+  {key:"environmental_controller",label:"Environmental Controller",section:"Controls & meters"},
+  {key:"controller_id",label:"Controller ID",section:"Controls & meters"},{key:"water_meter_id",label:"Water Meter ID",section:"Controls & meters"},
+  {key:"power_meter_id",label:"Power Meter ID",section:"Controls & meters"},
+  {key:"default_density_kg_m2",label:"Broiler Default kg/m²",type:"number",section:"Broiler planning defaults"},
+  {key:"default_target_lw_kg",label:"Broiler Target LW kg",type:"number",section:"Broiler planning defaults"},
+  {key:"default_growout_days",label:"Broiler Growout Days",type:"number",section:"Broiler planning defaults"},
+  {key:"active",label:"Active *",type:"boolean",section:"Status & notes"},{key:"notes",label:"Notes",type:"textarea",section:"Status & notes"},
+];
 
-const COMPANIES_ENDPOINT = `${API_BASE}/api/access/companies`;
-const FARMS_ENDPOINT = `${API_BASE}/api/broilers/farms`;
-const SHEDS_ENDPOINT = `${API_BASE}/api/broilers/sheds`;
+export default function AdminShedRegisterPage(){
+  const [companies,setCompanies]=useState<CompanyRow[]>([]);
+  const [farms,setFarms]=useState<FarmRow[]>([]);
+  const [rows,setRows]=useState<ShedRow[]>([]);
+  const [selectedCompanyId,setSelectedCompanyId]=useState<number|null>(null);
+  const [selectedFarmId,setSelectedFarmId]=useState<number|null>(null);
+  const [loading,setLoading]=useState(true);
+  const [saving,setSaving]=useState(false);
+  const [editorOpen,setEditorOpen]=useState(false);
+  const [editingId,setEditingId]=useState<number|null>(null);
+  const [form,setForm]=useState<any>({...EMPTY_SHED});
 
-async function authenticatedFetch(
-  input: RequestInfo | URL,
-  init: RequestInit = {}
-) {
-  const response = await fetch(input, {
-    ...init,
-    credentials: "include",
-  });
+  const selectedCompany=useMemo(()=>companies.find(c=>c.id===selectedCompanyId)??null,[companies,selectedCompanyId]);
+  const selectedFarm=useMemo(()=>farms.find(f=>f.id===selectedFarmId)??null,[farms,selectedFarmId]);
 
-  if (response.status === 401) {
-    const nextPath =
-      `${window.location.pathname}${window.location.search}`;
+  const loadCompanies=useCallback(async()=>{
+    const r=await authenticatedFetch(COMPANIES_ENDPOINT,{cache:"no-store"});if(!r.ok)throw new Error(await apiError(r,"Could not load companies."));
+    const data:CompanyRow[]=await r.json();setCompanies(data);setSelectedCompanyId(current=>current&&data.some(c=>c.id===current)?current:(data.find(c=>c.active)??data[0])?.id??null);
+  },[]);
+  const loadFarms=useCallback(async(companyId:number|null)=>{
+    if(!companyId){setFarms([]);setSelectedFarmId(null);return;}
+    const r=await authenticatedFetch(`${FARMS_ENDPOINT}?company_id=${companyId}`,{cache:"no-store"});if(!r.ok)throw new Error(await apiError(r,"Could not load farms."));
+    const data:FarmRow[]=await r.json();setFarms(data);setSelectedFarmId(current=>current&&data.some(f=>f.id===current)?current:(data.find(f=>f.active)??data[0])?.id??null);
+  },[]);
+  const loadSheds=useCallback(async(companyId:number|null,farmId:number|null)=>{
+    if(!companyId||!farmId){setRows([]);setLoading(false);return;}
+    setLoading(true);try{
+      const r=await authenticatedFetch(`${SHEDS_ENDPOINT}?company_id=${companyId}&farm_id=${farmId}`,{cache:"no-store"});if(!r.ok)throw new Error(await apiError(r,"Could not load sheds."));
+      setRows(await r.json());
+    }finally{setLoading(false);}
+  },[]);
+  useEffect(()=>{loadCompanies().catch(e=>alert(e.message));},[loadCompanies]);
+  useEffect(()=>{loadFarms(selectedCompanyId).catch(e=>alert(e.message));},[selectedCompanyId,loadFarms]);
+  useEffect(()=>{void loadSheds(selectedCompanyId,selectedFarmId);},[selectedCompanyId,selectedFarmId,loadSheds]);
 
-    window.location.href =
-      `/login?next=${encodeURIComponent(nextPath)}`;
-
-    throw new Error("Your login session has expired.");
+  function openNew(){
+    if(!selectedFarmId)return alert("Select a farm first.");
+    const farmType=selectedFarm?.farm_type;
+    const shedType=farmType==="broiler"?"Broiler":farmType==="breeder_rearing"?"Breeder Rearing":farmType==="breeder_layers"?"Breeder Production":farmType==="layer_rearing"?"Commercial Rearing":farmType==="commercial_layers"?"Commercial Layers":"Broiler";
+    setEditingId(null);setForm({...EMPTY_SHED,farm_id:selectedFarmId,shed_type:shedType});setEditorOpen(true);
+  }
+  function openEdit(row:ShedRow){setEditingId(row.id);setForm({...row});setEditorOpen(true);}
+  function update(key:keyof ShedRow,value:any){
+    setForm((current:any)=>{
+      const next={...current,[key]:value};
+      if((key==="length_m"||key==="width_m")&&Number(next.length_m)>0&&Number(next.width_m)>0){next.floor_area_m2=Number((Number(next.length_m)*Number(next.width_m)).toFixed(2));}
+      return next;
+    });
   }
 
-  return response;
-}
-
-function numberFormatter(params: ValueFormatterParams) {
-  if (params.value === null || params.value === undefined || params.value === "") {
-    return "";
+  async function saveShed(){
+    if(!selectedCompanyId||!selectedFarmId)return alert("Select a company and farm.");
+    if(!String(form.shed_code??"").trim())return alert("Shed Code is required.");
+    if(!String(form.shed_name??"").trim())return alert("Shed Name is required.");
+    if(!Number(form.capacity_birds||0))return alert("Capacity Birds is required.");
+    if(!Number(form.floor_area_m2||0))return alert("Usable Floor Area is required.");
+    setSaving(true);
+    try{
+      const payload={...form,company_id:selectedCompanyId,farm_id:selectedFarmId};
+      if(editingId){
+        const r=await authenticatedFetch(`${SHEDS_ENDPOINT}/${editingId}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+        if(!r.ok)throw new Error(await apiError(r,"Could not save shed."));
+      }else{
+        const create=await authenticatedFetch(SHEDS_ENDPOINT,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+          company_id:selectedCompanyId,farm_id:selectedFarmId,shed_name:payload.shed_name,shed_code:payload.shed_code,
+          floor_area_m2:payload.floor_area_m2,default_density_kg_m2:payload.default_density_kg_m2,
+          default_target_lw_kg:payload.default_target_lw_kg,default_growout_days:payload.default_growout_days,active:payload.active
+        })});
+        if(!create.ok)throw new Error(await apiError(create,"Could not create shed."));
+        const created=await create.json();
+        const patch=await authenticatedFetch(`${SHEDS_ENDPOINT}/${created.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+        if(!patch.ok)throw new Error(await apiError(patch,"Shed created, but additional details could not be saved."));
+      }
+      setEditorOpen(false);await loadSheds(selectedCompanyId,selectedFarmId);
+    }catch(e){alert(e instanceof Error?e.message:"Could not save shed.");}finally{setSaving(false);}
   }
 
-  const value = Number(params.value);
-  if (Number.isNaN(value)) return params.value;
+  const activeCount=rows.filter(r=>r.active).length;
+  const totalCapacity=rows.reduce((s,r)=>s+Number(r.capacity_birds??0),0);
+  const totalArea=rows.reduce((s,r)=>s+Number(r.floor_area_m2??0),0);
 
-  return value.toLocaleString();
+  return <OviCoreShell module="admin">
+    <OviCorePageHeader title="Shed Register" subtitle="Shed setup aligned to the approved OviCore master import template."><span className="ovicore-pill ovicore-pill-green">Global Admin</span></OviCorePageHeader>
+    <OviCoreKpiStrip items={[
+      {label:"Selected Company",value:selectedCompany?.company_name??"None"},{label:"Selected Farm",value:selectedFarm?.farm_name??"None"},
+      {label:"Total Sheds",value:rows.length},{label:"Active",value:activeCount},
+      {label:"Bird Capacity",value:totalCapacity.toLocaleString("en-AU")},{label:"Floor Area m²",value:totalArea.toLocaleString("en-AU")}
+    ]}/>
+    <OviCoreActionBar left={<>
+      <label style={{display:"flex",alignItems:"center",gap:8,fontWeight:800,fontSize:12}}>Company
+        <select className="ovicore-select" value={selectedCompanyId??""} onChange={e=>setSelectedCompanyId(Number(e.target.value))}>{companies.map(c=><option key={c.id} value={c.id}>{c.company_name}</option>)}</select>
+      </label>
+      <label style={{display:"flex",alignItems:"center",gap:8,fontWeight:800,fontSize:12}}>Farm
+        <select className="ovicore-select" value={selectedFarmId??""} onChange={e=>setSelectedFarmId(Number(e.target.value))}>{farms.map(f=><option key={f.id} value={f.id}>{f.farm_name}</option>)}</select>
+      </label>
+      <button className="ovicore-btn ovicore-btn-primary" onClick={openNew}>New shed</button>
+    </>} right={<button className="ovicore-btn" onClick={()=>loadSheds(selectedCompanyId,selectedFarmId)}>Reload</button>}/>
+    <OviCoreTableCard title="Sheds" subtitle="Select Edit to maintain all building, equipment and meter fields.">
+      <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+        <thead><tr>{["Shed Code","Shed Name","Shed Type","Housing","Capacity","Floor Area","Status",""].map(h=><th key={h} style={th}>{h}</th>)}</tr></thead>
+        <tbody>{loading?<tr><td colSpan={8} style={td}>Loading sheds...</td></tr>:rows.map(row=><tr key={row.id}>
+          <td style={td}>{row.shed_code}</td><td style={tdStrong}>{row.shed_name}</td><td style={td}>{row.shed_type}</td><td style={td}>{row.housing_system||"—"}</td>
+          <td style={td}>{Number(row.capacity_birds??0).toLocaleString("en-AU")}</td><td style={td}>{Number(row.floor_area_m2??0).toLocaleString("en-AU")}</td>
+          <td style={td}>{row.active?"Active":"Inactive"}</td><td style={td}><button className="ovicore-btn" onClick={()=>openEdit(row)}>Edit</button></td>
+        </tr>)}</tbody>
+      </table></div>
+    </OviCoreTableCard>
+    {editorOpen&&<div style={overlay}><div style={modal}>
+      <div style={modalHeader}><div><strong style={{fontSize:20}}>{editingId?"Edit Shed":"New Shed"}</strong><div style={{fontSize:12,color:"#55716b"}}>Fields match the Sheds import sheet.</div></div><button className="ovicore-btn" onClick={()=>setEditorOpen(false)}>Close</button></div>
+      <div style={{overflowY:"auto",padding:18}}>
+        {Array.from(new Set(FIELDS.map(f=>f.section))).map(section=><section key={section} style={{marginBottom:18}}>
+          <h3 style={sectionTitle}>{section}</h3><div style={formGrid}>
+            {FIELDS.filter(f=>f.section===section).map(field=><label key={String(field.key)} style={labelStyle}><span>{field.label}</span>
+              {field.type==="textarea"?<textarea style={inputStyle} rows={3} value={form[field.key]??""} onChange={e=>update(field.key,e.target.value)}/>:
+              field.type==="select"?<select style={inputStyle} value={form[field.key]??""} onChange={e=>update(field.key,e.target.value)}>{field.options?.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>:
+              field.type==="boolean"?<select style={inputStyle} value={form[field.key]===true?"true":form[field.key]===false?"false":""} onChange={e=>update(field.key,e.target.value===""?null:e.target.value==="true")}><option value="">Not set</option><option value="true">Yes</option><option value="false">No</option></select>:
+              <input style={inputStyle} type={field.type==="number"?"number":"text"} step="any" value={form[field.key]??""} onChange={e=>update(field.key,field.type==="number"?(e.target.value===""?null:Number(e.target.value)):e.target.value)}/>}
+            </label>)}
+          </div>
+        </section>)}
+      </div>
+      <div style={modalFooter}><button className="ovicore-btn" onClick={()=>setEditorOpen(false)}>Cancel</button><button className="ovicore-btn ovicore-btn-primary" disabled={saving} onClick={saveShed}>{saving?"Saving...":"Save shed"}</button></div>
+    </div></div>}
+  </OviCoreShell>;
 }
-
-function decimalFormatter(params: ValueFormatterParams) {
-  if (params.value === null || params.value === undefined || params.value === "") {
-    return "";
-  }
-
-  const value = Number(params.value);
-  if (Number.isNaN(value)) return params.value;
-
-  return value.toFixed(2);
-}
-
-function activeFormatter(params: ValueFormatterParams) {
-  return params.value ? "Active" : "Inactive";
-}
-
-function isBroilerFarm(farm: FarmRow | null | undefined) {
-  return farm?.farm_type === "broiler";
-}
-
-function farmTypeLabel(value?: string | null) {
-  const labels: Record<string, string> = {
-    broiler: "Broiler",
-    breeder_rearing: "Breeder Rearing",
-    breeder_layers: "Breeder Production",
-    layer_rearing: "Commercial Rearing",
-    commercial_layers: "Commercial Layers",
-    hatchery: "Hatchery",
-    feed_mill: "Feed Mill",
-    grading: "Grading",
-    processing: "Processing",
-  };
-
-  return value ? labels[value] ?? value : "Not classified";
-}
-
-export default function AdminShedRegisterPage() {
-  const gridRef = useRef<AgGridReact<ShedRow>>(null);
-
-  const [rows, setRows] = useState<ShedRow[]>([]);
-  const [companies, setCompanies] = useState<CompanyRow[]>([]);
-  const [farms, setFarms] = useState<FarmRow[]>([]);
-
-  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
-  const [selectedFarmId, setSelectedFarmId] = useState<number | null>(null);
-
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-
-  const dirtyRowIds = useRef<Set<number>>(new Set());
-
-  const selectedCompany = useMemo(() => {
-    return companies.find((company) => company.id === selectedCompanyId) ?? null;
-  }, [companies, selectedCompanyId]);
-
-  const selectedFarm = useMemo(() => {
-    return farms.find((farm) => farm.id === selectedFarmId) ?? null;
-  }, [farms, selectedFarmId]);
-
-  const showBroilerFields = isBroilerFarm(selectedFarm);
-
-  const fetchCompanies = useCallback(async () => {
-    const response = await authenticatedFetch(COMPANIES_ENDPOINT, {
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Could not load companies. ${response.status}: ${errorText}`);
-    }
-
-    const data: CompanyRow[] = await response.json();
-    setCompanies(data);
-
-    return data;
-  }, []);
-
-  const fetchFarmsForCompany = useCallback(async (companyId: number) => {
-    const response = await authenticatedFetch(`${FARMS_ENDPOINT}?company_id=${companyId}`, {
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Could not load farms. ${response.status}: ${errorText}`);
-    }
-
-    const data: FarmRow[] = await response.json();
-    setFarms(data);
-
-    const firstActiveFarm = data.find((farm) => farm.active) ?? data[0] ?? null;
-    setSelectedFarmId(firstActiveFarm?.id ?? null);
-
-    return data;
-  }, []);
-
-  const fetchShedsForCompany = useCallback(async (
-    companyId: number,
-    farmId?: number | null,
-  ) => {
-    const params = new URLSearchParams({
-      company_id: String(companyId),
-    });
-
-    if (farmId) {
-      params.set("farm_id", String(farmId));
-    }
-
-    const response = await authenticatedFetch(
-      `${SHEDS_ENDPOINT}?${params.toString()}`,
-      {
-        cache: "no-store",
-      },
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Could not load sheds. ${response.status}: ${errorText}`);
-    }
-
-    const data: ShedRow[] = await response.json();
-    setRows(data);
-    dirtyRowIds.current.clear();
-
-    return data;
-  }, []);
-
-  const loadCompanyData = useCallback(
-    async (companyId: number) => {
-      setLoading(true);
-
-      try {
-        const loadedFarms =
-          await fetchFarmsForCompany(companyId);
-
-        const firstActiveFarm =
-          loadedFarms.find((farm) => farm.active)
-          ?? loadedFarms[0]
-          ?? null;
-
-        await fetchShedsForCompany(
-          companyId,
-          firstActiveFarm?.id ?? null,
-        );
-      } catch (error) {
-        console.error(error);
-        alert("Could not load sheds/farms. Check that the backend is running.");
-      } finally {
-        setLoading(false);
-      }
-    },
-    [fetchFarmsForCompany, fetchShedsForCompany]
-  );
-
-  useEffect(() => {
-    async function loadInitialData() {
-      setLoading(true);
-
-      try {
-        const loadedCompanies = await fetchCompanies();
-        const firstActiveCompany =
-          loadedCompanies.find((company) => company.active) ?? loadedCompanies[0];
-
-        if (!firstActiveCompany) {
-          setRows([]);
-          setFarms([]);
-          setSelectedCompanyId(null);
-          setSelectedFarmId(null);
-          return;
-        }
-
-        setSelectedCompanyId(firstActiveCompany.id);
-        await loadCompanyData(firstActiveCompany.id);
-      } catch (error) {
-        console.error(error);
-        alert("Could not load companies/sheds. Check that the backend is running.");
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadInitialData();
-  }, [fetchCompanies, loadCompanyData]);
-
-  const activeShedCount = useMemo(
-    () => rows.filter((row) => row.active).length,
-    [rows]
-  );
-
-  const inactiveShedCount = useMemo(
-    () => rows.filter((row) => !row.active).length,
-    [rows]
-  );
-
-  const totalFloorArea = useMemo(
-    () => rows.reduce((sum, row) => sum + Number(row.floor_area_m2 ?? 0), 0),
-    [rows]
-  );
-
-  const averageDefaultDensity = useMemo(() => {
-    if (!showBroilerFields || rows.length === 0) return "Not applicable";
-
-    return (
-      rows.reduce((sum, row) => sum + Number(row.default_density_kg_m2 ?? 0), 0) /
-      rows.length
-    ).toFixed(2);
-  }, [rows, showBroilerFields]);
-
-  const defaultColDef = useMemo<ColDef<ShedRow>>(
-    () => ({
-      resizable: true,
-      sortable: true,
-      filter: true,
-      minWidth: 130,
-      cellClass: "center-cell",
-      headerClass: "center-header",
-    }),
-    []
-  );
-
-  const farmNameOptions = useMemo(() => {
-    return farms.map((farm) => farm.farm_name);
-  }, [farms]);
-
-  const columnDefs = useMemo<ColDef<ShedRow>[]>(
-    () => {
-      const columns: ColDef<ShedRow>[] = [
-        {
-          field: "farm_name",
-          headerName: "Farm",
-          editable: true,
-          minWidth: 220,
-          cellEditor: "agSelectCellEditor",
-          cellEditorParams: {
-            values: farmNameOptions,
-          },
-          cellClass: "editable-cell",
-        },
-        {
-          field: "shed_name",
-          headerName: "Shed Name",
-          editable: true,
-          minWidth: 190,
-          cellClass: "editable-cell",
-        },
-        {
-          field: "shed_code",
-          headerName: "Shed Code",
-          editable: true,
-          minWidth: 145,
-          cellClass: "editable-cell",
-        },
-        {
-          field: "floor_area_m2",
-          headerName: "Floor Area m²",
-          editable: true,
-          minWidth: 155,
-          valueFormatter: numberFormatter,
-          cellClass: "editable-cell",
-        },
-      ];
-
-      if (showBroilerFields) {
-        columns.push(
-          {
-            field: "default_density_kg_m2",
-            headerName: "Default kg/m²",
-            editable: true,
-            minWidth: 155,
-            valueFormatter: decimalFormatter,
-            cellClass: "editable-cell",
-          },
-          {
-            field: "default_target_lw_kg",
-            headerName: "Target LW kg",
-            editable: true,
-            minWidth: 155,
-            valueFormatter: decimalFormatter,
-            cellClass: "editable-cell",
-          },
-          {
-            field: "default_growout_days",
-            headerName: "Growout Days",
-            editable: true,
-            minWidth: 150,
-            valueFormatter: numberFormatter,
-            cellClass: "editable-cell",
-          },
-        );
-      }
-
-      columns.push(
-        {
-          field: "company_id",
-          headerName: "Company ID",
-          editable: false,
-          minWidth: 135,
-        },
-        {
-          field: "active",
-          headerName: "Status",
-          editable: true,
-          minWidth: 135,
-          valueFormatter: activeFormatter,
-          cellEditor: "agSelectCellEditor",
-          cellEditorParams: {
-            values: [true, false],
-          },
-          cellClass: "editable-cell",
-        },
-      );
-
-      return columns;
-    },
-    [farmNameOptions, showBroilerFields]
-  );
-
-  const onGridReady = useCallback((params: GridReadyEvent) => {
-    setTimeout(() => {
-      params.api.sizeColumnsToFit();
-    }, 100);
-  }, []);
-
-  const handleCompanyChange = useCallback(
-    async (nextCompanyId: number) => {
-      setSelectedCompanyId(nextCompanyId);
-      setSelectedFarmId(null);
-      await loadCompanyData(nextCompanyId);
-    },
-    [loadCompanyData]
-  );
-
-  const handleFarmChange = useCallback(
-    async (nextFarmId: number) => {
-      setSelectedFarmId(nextFarmId);
-
-      if (!selectedCompanyId) {
-        setRows([]);
-        return;
-      }
-
-      setLoading(true);
-
-      try {
-        await fetchShedsForCompany(
-          selectedCompanyId,
-          nextFarmId,
-        );
-      } catch (error) {
-        console.error(error);
-        alert("Could not load sheds for the selected farm.");
-      } finally {
-        setLoading(false);
-      }
-    },
-    [fetchShedsForCompany, selectedCompanyId],
-  );
-
-  const addShed = useCallback(async () => {
-    if (!selectedCompanyId) {
-      alert("Select a company before creating a shed.");
-      return;
-    }
-
-    const targetFarm =
-      farms.find((farm) => farm.id === selectedFarmId)
-      ?? null;
-
-    if (!targetFarm) {
-      alert("Create a farm for this company before adding sheds.");
-      return;
-    }
-
-    setSaving(true);
-
-    try {
-      const response = await authenticatedFetch(SHEDS_ENDPOINT, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          company_id: selectedCompanyId,
-          farm_id: targetFarm.id,
-          shed_name: "New Shed",
-          shed_code: "",
-          floor_area_m2: 2000,
-
-          // These fields remain required by the shared shed table.
-          // They are operational only for Broiler farms and are hidden
-          // elsewhere until module-specific shed settings are added.
-          default_density_kg_m2:
-            targetFarm.farm_type === "broiler" ? 38 : 1,
-          default_target_lw_kg:
-            targetFarm.farm_type === "broiler" ? 2.4 : 1,
-          default_growout_days:
-            targetFarm.farm_type === "broiler" ? 42 : 1,
-
-          active: true,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Could not create shed. ${response.status}: ${errorText}`);
-      }
-
-      await response.json();
-      await fetchShedsForCompany(
-        selectedCompanyId,
-        targetFarm.id,
-      );
-    } catch (error) {
-      console.error(error);
-      alert(
-        error instanceof Error
-          ? error.message
-          : "Could not create shed."
-      );
-    } finally {
-      setSaving(false);
-    }
-  }, [farms, loadCompanyData, selectedCompanyId, selectedFarmId]);
-
-  const saveDirtyRows = useCallback(async () => {
-    const api = gridRef.current?.api;
-    if (!api) return;
-
-    api.stopEditing();
-
-    const dirtyIds = Array.from(dirtyRowIds.current);
-
-    if (dirtyIds.length === 0) {
-      alert("No changes to save.");
-      return;
-    }
-
-    const rowMap = new Map<number, ShedRow>();
-
-    api.forEachNode((node) => {
-      if (node.data) rowMap.set(node.data.id, node.data);
-    });
-
-    setSaving(true);
-
-    try {
-      for (const id of dirtyIds) {
-        const row = rowMap.get(id);
-        if (!row) continue;
-
-        const selectedRowFarm = farms.find(
-          (farm) => farm.farm_name === row.farm_name
-        );
-
-        if (!selectedRowFarm) {
-          alert(`Please select a valid farm for shed ${row.shed_name}.`);
-          setSaving(false);
-          return;
-        }
-
-        if (!row.shed_name || row.shed_name.trim() === "") {
-          alert("Shed name is required.");
-          setSaving(false);
-          return;
-        }
-
-        if (!row.floor_area_m2 || Number(row.floor_area_m2) <= 0) {
-          alert(`Floor area must be greater than 0 for ${row.shed_name}.`);
-          setSaving(false);
-          return;
-        }
-
-        if (selectedRowFarm.farm_type === "broiler") {
-          if (
-            !row.default_density_kg_m2 ||
-            Number(row.default_density_kg_m2) <= 0
-          ) {
-            alert(`Default density must be greater than 0 for ${row.shed_name}.`);
-            setSaving(false);
-            return;
-          }
-
-          if (
-            !row.default_target_lw_kg ||
-            Number(row.default_target_lw_kg) <= 0
-          ) {
-            alert(`Target liveweight must be greater than 0 for ${row.shed_name}.`);
-            setSaving(false);
-            return;
-          }
-
-          if (
-            !row.default_growout_days ||
-            Number(row.default_growout_days) <= 0
-          ) {
-            alert(`Growout days must be greater than 0 for ${row.shed_name}.`);
-            setSaving(false);
-            return;
-          }
-        }
-
-        const response = await authenticatedFetch(`${SHEDS_ENDPOINT}/${id}`, {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            farm_id: selectedRowFarm.id,
-            shed_name: row.shed_name,
-            shed_code: row.shed_code ?? "",
-            floor_area_m2: Number(row.floor_area_m2),
-            default_density_kg_m2:
-              selectedRowFarm.farm_type === "broiler"
-                ? Number(row.default_density_kg_m2)
-                : 1,
-            default_target_lw_kg:
-              selectedRowFarm.farm_type === "broiler"
-                ? Number(row.default_target_lw_kg)
-                : 1,
-            default_growout_days:
-              selectedRowFarm.farm_type === "broiler"
-                ? Number(row.default_growout_days)
-                : 1,
-            active: row.active,
-          }),
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(
-            `Could not save shed ${row.shed_name}. ${response.status}: ${errorText}`
-          );
-        }
-      }
-
-      dirtyRowIds.current.clear();
-
-      if (selectedCompanyId && selectedFarmId) {
-        await fetchShedsForCompany(
-          selectedCompanyId,
-          selectedFarmId,
-        );
-      }
-
-      alert("Sheds saved.");
-    } catch (error) {
-      console.error(error);
-      alert(
-        error instanceof Error
-          ? error.message
-          : "Could not save sheds."
-      );
-    } finally {
-      setSaving(false);
-    }
-  }, [farms, loadCompanyData, selectedCompanyId]);
-
-  const deleteSelectedShed = useCallback(async () => {
-    const api = gridRef.current?.api;
-    if (!api) return;
-
-    const selectedRows = api.getSelectedRows();
-
-    if (selectedRows.length === 0) {
-      alert("Select a shed to delete.");
-      return;
-    }
-
-    const row = selectedRows[0];
-
-    const confirmed = window.confirm(
-      `Delete ${row.shed_name}? If this shed has linked placement plans, cycles or flock records, the backend will block deletion.`
-    );
-
-    if (!confirmed) return;
-
-    setSaving(true);
-
-    try {
-      const response = await authenticatedFetch(`${SHEDS_ENDPOINT}/${row.id}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText);
-      }
-
-      if (selectedCompanyId && selectedFarmId) {
-        await fetchShedsForCompany(
-          selectedCompanyId,
-          selectedFarmId,
-        );
-      }
-    } catch (error) {
-      console.error(error);
-      alert(
-        "Could not delete shed. If it has linked records, set it inactive instead."
-      );
-    } finally {
-      setSaving(false);
-    }
-  }, [loadCompanyData, selectedCompanyId]);
-
-  return (
-    <OviCoreShell module="admin">
-      <OviCorePageHeader
-        title="Shed Register"
-        subtitle="Global Admin setup screen for shared shed master data used by Broilers, Breeders, Layers and future modules."
-      >
-        <span className="ovicore-pill ovicore-pill-green">Global Admin</span>
-      </OviCorePageHeader>
-
-      <OviCoreKpiStrip
-        items={[
-          {
-            label: "Selected Company",
-            value: selectedCompany?.company_name ?? "None",
-          },
-          {
-            label: "Selected Farm",
-            value: selectedFarm?.farm_name ?? "Auto",
-          },
-          { label: "Total Sheds", value: rows.length },
-          { label: "Active", value: activeShedCount },
-          { label: "Inactive", value: inactiveShedCount },
-          { label: "Total Floor Area", value: totalFloorArea.toLocaleString() },
-          {
-            label: showBroilerFields ? "Avg Density" : "Farm Type",
-            value: showBroilerFields
-              ? averageDefaultDensity
-              : farmTypeLabel(selectedFarm?.farm_type),
-          },
-        ]}
-      />
-
-      <OviCoreActionBar
-        left={
-          <>
-            <label
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                fontSize: 12,
-                fontWeight: 800,
-                color: "var(--ovicore-green-900)",
-              }}
-            >
-              Company
-              <select
-                className="ovicore-select"
-                value={selectedCompanyId ?? ""}
-                onChange={(event) => {
-                  const nextCompanyId = Number(event.target.value);
-                  if (!Number.isNaN(nextCompanyId)) {
-                    handleCompanyChange(nextCompanyId);
-                  }
-                }}
-                disabled={saving || companies.length === 0}
-              >
-                {companies.map((company) => (
-                  <option key={company.id} value={company.id}>
-                    {company.company_name}
-                    {company.active ? "" : " (Inactive)"}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                fontSize: 12,
-                fontWeight: 800,
-                color: "var(--ovicore-green-900)",
-              }}
-            >
-              Selected farm
-              <select
-                className="ovicore-select"
-                value={selectedFarmId ?? ""}
-                onChange={(event) => {
-                  const nextFarmId = Number(event.target.value);
-
-                  if (!Number.isNaN(nextFarmId)) {
-                    handleFarmChange(nextFarmId);
-                  }
-                }}
-                disabled={saving || farms.length === 0}
-              >
-                {farms.map((farm) => (
-                  <option key={farm.id} value={farm.id}>
-                    {farm.farm_name}
-                    {farm.active ? "" : " (Inactive)"}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <button
-              type="button"
-              className="ovicore-btn ovicore-btn-primary"
-              onClick={addShed}
-              disabled={saving || !selectedCompanyId || farms.length === 0}
-            >
-              New shed
-            </button>
-
-            <button
-              type="button"
-              className="ovicore-btn ovicore-btn-danger"
-              onClick={deleteSelectedShed}
-              disabled={saving}
-            >
-              Delete selected
-            </button>
-          </>
-        }
-        right={
-          <>
-            <button
-              type="button"
-              className="ovicore-btn"
-              onClick={() => {
-                if (selectedCompanyId && selectedFarmId) {
-                  fetchShedsForCompany(
-                    selectedCompanyId,
-                    selectedFarmId,
-                  ).catch(console.error);
-                }
-              }}
-              disabled={saving || !selectedCompanyId}
-            >
-              Reload
-            </button>
-
-            <button
-              type="button"
-              className="ovicore-btn ovicore-btn-primary"
-              onClick={saveDirtyRows}
-              disabled={saving}
-            >
-              {saving ? "Saving..." : "Save changes"}
-            </button>
-          </>
-        }
-      />
-
-      <OviCoreTableCard
-        title="Sheds"
-        subtitle={
-          showBroilerFields
-            ? "Broiler sheds include density, target liveweight and growout defaults."
-            : "This farm uses module-specific flock settings. Broiler density, target liveweight and growout fields are hidden."
-        }
-      >
-        <div className="ag-theme-quartz broiler-grid">
-          <AgGridReact<ShedRow>
-            ref={gridRef}
-            rowData={rows}
-            columnDefs={columnDefs}
-            defaultColDef={defaultColDef}
-            getRowId={(params) => String(params.data.id)}
-            rowSelection="single"
-            suppressRowClickSelection={false}
-            animateRows
-            rowHeight={38}
-            headerHeight={38}
-            loading={loading}
-            onGridReady={onGridReady}
-            onCellValueChanged={(event) => {
-              if (event.data?.id) {
-                dirtyRowIds.current.add(event.data.id);
-              }
-            }}
-          />
-        </div>
-      </OviCoreTableCard>
-    </OviCoreShell>
-  );
-}
+const th:React.CSSProperties={textAlign:"left",padding:"10px 12px",background:"#eaf4ef",borderBottom:"1px solid #cadfd6",whiteSpace:"nowrap"};
+const td:React.CSSProperties={padding:"10px 12px",borderBottom:"1px solid #e3ece8",verticalAlign:"middle"};
+const tdStrong:React.CSSProperties={...td,fontWeight:800,color:"#083c34"};
+const overlay:React.CSSProperties={position:"fixed",inset:0,background:"rgba(3,32,27,.5)",zIndex:1000,display:"flex",justifyContent:"flex-end"};
+const modal:React.CSSProperties={width:"min(980px,96vw)",height:"100vh",background:"#f8fbf9",display:"grid",gridTemplateRows:"auto 1fr auto",boxShadow:"-18px 0 50px rgba(0,0,0,.2)"};
+const modalHeader:React.CSSProperties={display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 18px",borderBottom:"1px solid #d8e6e0",background:"#fff"};
+const modalFooter:React.CSSProperties={display:"flex",justifyContent:"flex-end",gap:8,padding:"14px 18px",borderTop:"1px solid #d8e6e0",background:"#fff"};
+const formGrid:React.CSSProperties={display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12};
+const labelStyle:React.CSSProperties={display:"grid",gap:5,fontSize:11,fontWeight:800,color:"#173f38"};
+const inputStyle:React.CSSProperties={width:"100%",minHeight:38,border:"1px solid #bfd4cc",borderRadius:8,padding:"8px 10px",background:"#fff",color:"#082f2a"};
+const sectionTitle:React.CSSProperties={margin:"0 0 10px",paddingBottom:6,borderBottom:"1px solid #d5e6df",fontSize:13,color:"#07624f",textTransform:"uppercase",letterSpacing:".08em"};

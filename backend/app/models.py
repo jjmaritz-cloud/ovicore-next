@@ -157,11 +157,11 @@ class BroilerFarm(Base):
     __tablename__ = "broiler_farms"
 
     id = Column(Integer, primary_key=True, index=True)
-
     company_id = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
 
     farm_name = Column(Text, nullable=False)
     farm_code = Column(Text)
+    common_name = Column(Text)
     farm_type = Column(
         String(50),
         nullable=False,
@@ -169,6 +169,37 @@ class BroilerFarm(Base):
         server_default="broiler",
         index=True,
     )
+    region = Column(Text)
+    farm_manager = Column(Text)
+    address_line_1 = Column(Text)
+    address_line_2 = Column(Text)
+    suburb = Column(Text)
+    state = Column(String(80))
+    postcode = Column(String(20))
+    country = Column(String(80), default="Australia")
+    latitude = Column(Numeric(10, 7))
+    longitude = Column(Numeric(10, 7))
+    time_zone = Column(String(100), default="Australia/Sydney")
+    total_bird_capacity = Column(Integer)
+    licensed_bird_capacity = Column(Integer)
+    water_source = Column(Text)
+    water_storage_litres = Column(Integer)
+    power_supply = Column(Text)
+    backup_generator = Column(Boolean)
+    generator_capacity_kva = Column(Numeric(10, 2))
+    feed_delivery_access = Column(Text)
+    truck_restrictions = Column(Text)
+    biosecurity_classification = Column(String(80))
+    shower_in_shower_out = Column(Boolean)
+    visitor_approval_required = Column(Boolean)
+    mortality_disposal_method = Column(Text)
+    manure_disposal_method = Column(Text)
+    environmental_licence_number = Column(Text)
+    free_range_area_ha = Column(Numeric(10, 2))
+    emergency_contact = Column(Text)
+    emergency_phone = Column(Text)
+    notes = Column(Text)
+
     active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime, server_default=func.now())
 
@@ -182,6 +213,7 @@ class BroilerFarm(Base):
 
     __table_args__ = (
         UniqueConstraint("company_id", "farm_name", name="uq_company_broiler_farm_name"),
+        UniqueConstraint("company_id", "farm_code", name="uq_company_broiler_farm_code"),
     )
 
 
@@ -190,18 +222,50 @@ class BroilerShed(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     company_id = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
-    farm_id = Column(Integer, ForeignKey("broiler_farms.id"), nullable=False)
+    farm_id = Column(Integer, ForeignKey("broiler_farms.id"), nullable=False, index=True)
+
     shed_name = Column(Text, nullable=False)
     shed_code = Column(Text)
+    shed_type = Column(String(80), nullable=False, default="Broiler")
+    housing_system = Column(String(80))
+    capacity_birds = Column(Integer)
+    length_m = Column(Numeric(10, 2))
+    width_m = Column(Numeric(10, 2))
     floor_area_m2 = Column(Numeric(10, 2), nullable=False)
+    number_of_levels = Column(Integer)
+    number_of_sections = Column(Integer)
+    ventilation_type = Column(Text)
+    cooling_system = Column(Text)
+    heating_system = Column(Text)
+    lighting_system = Column(Text)
+    water_system = Column(Text)
+    feeder_system = Column(Text)
+    nest_type = Column(Text)
+    egg_collection_system = Column(Text)
+    manure_system = Column(Text)
+    year_commissioned = Column(Integer)
+    male_female_support = Column(String(80))
+    environmental_controller = Column(Text)
+    controller_id = Column(Text)
+    water_meter_id = Column(Text)
+    power_meter_id = Column(Text)
+    notes = Column(Text)
+
+    # Existing broiler planning defaults remain supported.
     default_density_kg_m2 = Column(Numeric(6, 2), nullable=False, default=38.00)
     default_target_lw_kg = Column(Numeric(6, 2), nullable=False, default=2.40)
     default_growout_days = Column(Integer, nullable=False, default=42)
+
     active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime, server_default=func.now())
 
     farm = relationship("BroilerFarm", back_populates="sheds")
     plans = relationship("BroilerPlacementPlan", back_populates="shed")
+
+    __table_args__ = (
+        UniqueConstraint("farm_id", "shed_code", name="uq_farm_shed_code"),
+    )
+
 
 from sqlalchemy import Column, Integer, String, Float, Date, Text, ForeignKey
 from sqlalchemy.orm import relationship
