@@ -1470,22 +1470,9 @@ def update_broiler_shed(
         shed.farm_id,
     )
 
-    return BroilerShedOut(
-        id=shed.id,
-        company_id=shed.company_id,
-        farm_id=shed.farm_id,
+    return build_shed_response(
+        shed,
         farm_name=farm.farm_name,
-        shed_name=shed.shed_name,
-        shed_code=shed.shed_code,
-        floor_area_m2=float(shed.floor_area_m2),
-        default_density_kg_m2=float(
-            shed.default_density_kg_m2
-        ),
-        default_target_lw_kg=float(
-            shed.default_target_lw_kg
-        ),
-        default_growout_days=shed.default_growout_days,
-        active=shed.active,
     )
 
 
