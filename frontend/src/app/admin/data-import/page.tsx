@@ -378,7 +378,7 @@ export default function DataImportPage() {
 							{importMode === "master" && (
 								<a
 									className="ovicore-btn ovicore-btn-primary"
-									href="/templates/OviCore_Company_Setup_Template.xlsx"
+									href="/templates/OviCore_Master_Data_Import_Templates.xlsx"
 									download
 								>
 									Download Company Setup Template
