@@ -367,15 +367,48 @@ export default function DataImportPage() {
           }
         >
           <div style={{ display: "grid", gap: 14, maxWidth: 900 }}>
-            {importMode === "daily" && availableModules.length > 0 && (
-              <a
-                className="ovicore-btn"
-                href={`${API_BASE}/api/admin/daily-data-template/${productionModule}`}
-                style={{ justifySelf: "start" }}
-              >
-                Download {MODULE_OPTIONS.find((item) => item.value === productionModule)?.label} template
-              </a>
-            )}
+						<div
+							style={{
+								display: "flex",
+								alignItems: "center",
+								gap: 10,
+								flexWrap: "wrap",
+							}}
+						>
+							{importMode === "master" && (
+								<a
+									className="ovicore-btn ovicore-btn-primary"
+									href="/templates/OviCore_Company_Setup_Template.xlsx"
+									download
+								>
+									Download Company Setup Template
+								</a>
+							)}
+
+							{importMode === "daily" && availableModules.length > 0 && (
+								<a
+									className="ovicore-btn ovicore-btn-primary"
+									href={`${API_BASE}/api/admin/daily-data-template/${productionModule}`}
+								>
+									Download{" "}
+									{
+										MODULE_OPTIONS.find(
+											(item) => item.value === productionModule,
+										)?.label
+									}{" "}
+									Template
+								</a>
+							)}
+
+							<span
+								style={{
+									color: "#52655d",
+									fontSize: 13,
+								}}
+							>
+								Download the template, complete it in Excel, then upload it below.
+							</span>
+						</div>
 
             <label style={{ display: "grid", gap: 8, padding: 18, border: "1px dashed #91aa9f", borderRadius: 12, background: "#f7fbf9" }}>
               <strong>
