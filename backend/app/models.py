@@ -838,6 +838,11 @@ class CommercialLayerFlock(Base):
     hatch_date = Column(Date, nullable=True)
     housed_date = Column(Date, nullable=True)
     birds_housed = Column(Integer, nullable=True)
+    
+    planned_depletion_date = Column(
+        Date,
+        nullable=True,
+    )
 
     status = Column(String(40), nullable=False, default="Active")
     notes = Column(Text, nullable=True)
@@ -897,11 +902,55 @@ class CommercialLayerDailyPerformance(Base):
     cull_birds = Column(Integer, nullable=False, default=0)
     closing_birds = Column(Integer, nullable=True)
 
-    total_eggs = Column(Integer, nullable=False, default=0)
-    egg_weight_g = Column(Numeric(8, 3), nullable=True)
-    feed_kg = Column(Numeric(12, 2), nullable=True)
-    water_litres = Column(Numeric(12, 2), nullable=True)
-    bodyweight_g = Column(Numeric(10, 2), nullable=True)
+    total_eggs = Column(
+        Integer,
+        nullable=False,
+        default=0,
+    )
+
+    saleable_eggs = Column(
+        Integer,
+        nullable=False,
+        default=0,
+    )
+
+    seconds = Column(
+        Integer,
+        nullable=False,
+        default=0,
+    )
+
+    cracks = Column(
+        Integer,
+        nullable=False,
+        default=0,
+    )
+
+    rejects = Column(
+        Integer,
+        nullable=False,
+        default=0,
+    )
+
+    egg_weight_g = Column(
+        Numeric(8, 3),
+        nullable=True,
+    )
+
+    feed_kg = Column(
+        Numeric(12, 2),
+        nullable=True,
+    )
+
+    water_litres = Column(
+        Numeric(12, 2),
+        nullable=True,
+    )
+
+    bodyweight_g = Column(
+        Numeric(10, 2),
+        nullable=True,
+    )
 
     production_standard_pct = Column(Numeric(7, 3), nullable=True)
     mortality_standard_pct = Column(Numeric(7, 3), nullable=True)

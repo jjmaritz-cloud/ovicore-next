@@ -1129,28 +1129,138 @@ class BreederProductionDailyPerformanceOut(BaseModel):
 
 
 # ---------------------------------------------------------------------
-# Commercial Layer Performance
+# Commercial Layers
 # ---------------------------------------------------------------------
+
+class CommercialLayerFlockCreate(BaseModel):
+    company_id: int
+    farm_id: int
+    shed_id: int
+
+    flock_code: str
+    breed: Optional[str] = None
+
+    hatch_date: Optional[date] = None
+    housed_date: Optional[date] = None
+    birds_housed: Optional[int] = None
+    planned_depletion_date: Optional[date] = None
+
+    status: str = "Draft"
+    notes: Optional[str] = None
+
+
+class CommercialLayerFlockPatch(BaseModel):
+    farm_id: Optional[int] = None
+    shed_id: Optional[int] = None
+
+    flock_code: Optional[str] = None
+    breed: Optional[str] = None
+
+    hatch_date: Optional[date] = None
+    housed_date: Optional[date] = None
+    birds_housed: Optional[int] = None
+    planned_depletion_date: Optional[date] = None
+
+    status: Optional[str] = None
+    notes: Optional[str] = None
+
 
 class CommercialLayerFlockOut(BaseModel):
     id: int
     source_rearing_flock_id: Optional[int] = None
+    source_rearing_flock_code: Optional[str] = None
+
     company_id: int
     farm_id: int
     shed_id: int
+
     farm_name: str
     shed_name: str
+
     flock_code: str
     breed: Optional[str] = None
+
     hatch_date: Optional[date] = None
     housed_date: Optional[date] = None
     birds_housed: Optional[int] = None
+    planned_depletion_date: Optional[date] = None
+
+    current_age_weeks: Optional[float] = None
+    current_birds: Optional[int] = None
+    latest_production_pct: Optional[float] = None
+    latest_feed_g_bird_day: Optional[float] = None
+    cumulative_mortality_pct: Optional[float] = None
+    production_status: str = "Not started"
+
     status: str
     notes: Optional[str] = None
+
     last_saved_by: Optional[str] = None
     last_saved_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class CommercialLayerDailyPerformanceCreate(BaseModel):
+    company_id: int
+    flock_id: int
+    entry_date: date
+    age_days: Optional[int] = None
+
+    opening_birds: Optional[int] = None
+
+    mortality: int = 0
+    culls: int = 0
+
+    feed_kg: Optional[float] = None
+    water_litres: Optional[float] = None
+    bodyweight_kg: Optional[float] = None
+    egg_weight_g: Optional[float] = None
+
+    total_eggs: int = 0
+    saleable_eggs: int = 0
+    seconds: int = 0
+    cracks: int = 0
+    rejects: int = 0
+
+    production_standard_pct: Optional[float] = None
+    mortality_standard_pct: Optional[float] = None
+    egg_weight_standard_g: Optional[float] = None
+    feed_standard_g_bird_day: Optional[float] = None
+    eggs_per_bird_standard: Optional[float] = None
+    bodyweight_standard_g: Optional[float] = None
+
+    notes: Optional[str] = None
+
+
+class CommercialLayerDailyPerformancePatch(BaseModel):
+    entry_date: Optional[date] = None
+    age_days: Optional[int] = None
+
+    opening_birds: Optional[int] = None
+
+    mortality: Optional[int] = None
+    culls: Optional[int] = None
+
+    feed_kg: Optional[float] = None
+    water_litres: Optional[float] = None
+    bodyweight_kg: Optional[float] = None
+    egg_weight_g: Optional[float] = None
+
+    total_eggs: Optional[int] = None
+    saleable_eggs: Optional[int] = None
+    seconds: Optional[int] = None
+    cracks: Optional[int] = None
+    rejects: Optional[int] = None
+
+    production_standard_pct: Optional[float] = None
+    mortality_standard_pct: Optional[float] = None
+    egg_weight_standard_g: Optional[float] = None
+    feed_standard_g_bird_day: Optional[float] = None
+    eggs_per_bird_standard: Optional[float] = None
+    bodyweight_standard_g: Optional[float] = None
+
+    notes: Optional[str] = None
 
 
 class CommercialLayerPerformanceOut(BaseModel):
@@ -1168,11 +1278,20 @@ class CommercialLayerPerformanceOut(BaseModel):
     age_weeks: Optional[float] = None
 
     opening_birds: Optional[int] = None
+
+    mortality: int = 0
+    culls: int = 0
+
     mortality_birds: int = 0
     cull_birds: int = 0
     closing_birds: Optional[int] = None
 
     total_eggs: int = 0
+    saleable_eggs: int = 0
+    seconds: int = 0
+    cracks: int = 0
+    rejects: int = 0
+
     production_pct: Optional[float] = None
     cumulative_mortality_pct: Optional[float] = None
     egg_weight_g: Optional[float] = None
@@ -1180,7 +1299,11 @@ class CommercialLayerPerformanceOut(BaseModel):
     eggs_per_bird_cumulative: Optional[float] = None
     bodyweight_g: Optional[float] = None
 
+    saleable_pct: Optional[float] = None
+    feed_per_dozen_kg: Optional[float] = None
+
     production_standard_pct: Optional[float] = None
+    production_variance_pct: Optional[float] = None
     mortality_standard_pct: Optional[float] = None
     egg_weight_standard_g: Optional[float] = None
     feed_standard_g_bird_day: Optional[float] = None

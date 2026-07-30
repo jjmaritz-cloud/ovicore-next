@@ -51,7 +51,11 @@ from .schemas import (
     BreederProductionDailyPerformanceCreate,
     BreederProductionDailyPerformancePatch,
     BreederProductionDailyPerformanceOut,
+    CommercialLayerFlockCreate,
+    CommercialLayerFlockPatch,
     CommercialLayerFlockOut,
+    CommercialLayerDailyPerformanceCreate,
+    CommercialLayerDailyPerformancePatch,
     CommercialLayerPerformanceOut,
     LayerRearingTransferCreate,
     LayerRearingTransferResult,
@@ -354,6 +358,66 @@ def ensure_commercial_layer_transfer_schema() -> None:
                 )
             )
 
+def ensure_commercial_layer_operational_schema() -> None:
+    """
+    Add Commercial Layers flock-planning and egg-quality columns to
+    existing databases.
+
+    Base.metadata.create_all() creates new tables, but it does not add
+    columns to existing tables.
+    """
+    inspector = inspect(engine)
+    table_names = set(inspector.get_table_names())
+
+    with engine.begin() as connection:
+        if "commercial_layer_flocks" in table_names:
+            flock_columns = {
+                column["name"]
+                for column in inspector.get_columns(
+                    "commercial_layer_flocks"
+                )
+            }
+
+            if "planned_depletion_date" not in flock_columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE commercial_layer_flocks "
+                        "ADD COLUMN planned_depletion_date DATE"
+                    )
+                )
+
+        if "commercial_layer_daily_performance" in table_names:
+            performance_columns = {
+                column["name"]
+                for column in inspector.get_columns(
+                    "commercial_layer_daily_performance"
+                )
+            }
+
+            column_sql = {
+                "saleable_eggs": (
+                    "INTEGER NOT NULL DEFAULT 0"
+                ),
+                "seconds": (
+                    "INTEGER NOT NULL DEFAULT 0"
+                ),
+                "cracks": (
+                    "INTEGER NOT NULL DEFAULT 0"
+                ),
+                "rejects": (
+                    "INTEGER NOT NULL DEFAULT 0"
+                ),
+            }
+
+            for column_name, sql_type in column_sql.items():
+                if column_name not in performance_columns:
+                    connection.execute(
+                        text(
+                            "ALTER TABLE "
+                            "commercial_layer_daily_performance "
+                            f"ADD COLUMN {column_name} {sql_type}"
+                        )
+                    )
 
 def ensure_layer_transfer_schema() -> None:
     inspector = inspect(engine)
@@ -471,6 +535,7 @@ def startup():
     Base.metadata.create_all(bind=engine)
     ensure_module_access_schema()
     ensure_commercial_layer_transfer_schema()
+    ensure_commercial_layer_operational_schema()
     ensure_layer_transfer_schema()
     ensure_breeder_transfer_schema()
 
@@ -5060,27 +5125,737 @@ def delete_breeder_production_daily_performance(
 # Commercial Layer Performance
 # ---------------------------------------------------------------------
 
+
+# ---------------------------------------------------------------------
+# Commercial Layer Flock Register CRUD
+# ---------------------------------------------------------------------
+
+def _get_commercial_layer_flock(
+    db: Session,
+    flock_id: int,
+) -> models.CommercialLayerFlock:
+    flock = (
+        db.query(models.CommercialLayerFlock)
+        .options(
+            joinedload(models.CommercialLayerFlock.farm),
+            joinedload(models.CommercialLayerFlock.shed),
+            joinedload(models.CommercialLayerFlock.source_rearing_flock),
+            joinedload(models.CommercialLayerFlock.daily_performance),
+        )
+        .filter(
+            models.CommercialLayerFlock.id == flock_id
+        )
+        .first()
+    )
+
+    if flock is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Commercial Layer flock not found",
+        )
+
+    return flock
+
+
+def _validate_commercial_layer_location(
+    db: Session,
+    current_user: models.AppUser,
+    company_id: int,
+    farm_id: int,
+    shed_id: int,
+) -> tuple[BroilerFarm, BroilerShed]:
+    farm = (
+        db.query(BroilerFarm)
+        .filter(
+            BroilerFarm.id == farm_id,
+            BroilerFarm.company_id == company_id,
+            BroilerFarm.active == True,
+            BroilerFarm.farm_type == "commercial_layers",
+        )
+        .first()
+    )
+
+    if farm is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "The selected farm must be an active "
+                "Commercial Layers farm."
+            ),
+        )
+
+    if not access.user_has_farm_access(
+        db,
+        current_user,
+        farm.id,
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "You do not have access to this "
+                "Commercial Layers farm."
+            ),
+        )
+
+    shed = (
+        db.query(BroilerShed)
+        .filter(
+            BroilerShed.id == shed_id,
+            BroilerShed.company_id == company_id,
+            BroilerShed.farm_id == farm.id,
+            BroilerShed.active == True,
+        )
+        .first()
+    )
+
+    if shed is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "The selected shed does not belong to the "
+                "selected Commercial Layers farm and company."
+            ),
+        )
+
+    return farm, shed
+
+
+def _commercial_layer_current_values(
+    flock: models.CommercialLayerFlock,
+) -> dict:
+    entries = sorted(
+        list(flock.daily_performance or []),
+        key=lambda item: (
+            item.entry_date or date.min,
+            item.id or 0,
+        ),
+    )
+
+    latest = entries[-1] if entries else None
+
+    cumulative_mortality = sum(
+        int(entry.mortality_birds or 0)
+        for entry in entries
+    )
+
+    housed_birds = int(flock.birds_housed or 0)
+
+    current_birds = (
+        int(latest.closing_birds or 0)
+        if latest is not None
+        else housed_birds
+    )
+
+    latest_production_pct = None
+    latest_feed_g_bird_day = None
+
+    if latest is not None:
+        opening_birds = int(latest.opening_birds or 0)
+        total_eggs = int(latest.total_eggs or 0)
+        feed_kg = (
+            float(latest.feed_kg)
+            if latest.feed_kg is not None
+            else None
+        )
+
+        if opening_birds > 0:
+            latest_production_pct = round(
+                (total_eggs / opening_birds) * 100,
+                3,
+            )
+
+        if (
+            feed_kg is not None
+            and current_birds > 0
+        ):
+            latest_feed_g_bird_day = round(
+                (feed_kg * 1000) / current_birds,
+                3,
+            )
+
+    cumulative_mortality_pct = (
+        round(
+            (cumulative_mortality / housed_birds) * 100,
+            3,
+        )
+        if housed_birds > 0
+        else None
+    )
+
+    start_date = flock.hatch_date or flock.housed_date
+
+    current_age_weeks = (
+        round(
+            (date.today() - start_date).days / 7,
+            2,
+        )
+        if start_date is not None
+        else None
+    )
+
+    status = (flock.status or "").strip().lower()
+
+    if status in {"depleted", "closed"}:
+        production_status = "Closed"
+    elif latest_production_pct is None:
+        production_status = "Not started"
+    elif latest_production_pct >= 85:
+        production_status = "Peak production"
+    elif latest_production_pct >= 50:
+        production_status = "In production"
+    else:
+        production_status = "Review"
+
+    return {
+        "current_age_weeks": current_age_weeks,
+        "current_birds": current_birds,
+        "latest_production_pct": latest_production_pct,
+        "latest_feed_g_bird_day":
+            latest_feed_g_bird_day,
+        "cumulative_mortality_pct":
+            cumulative_mortality_pct,
+        "production_status": production_status,
+    }
+
+
 def _commercial_layer_flock_response(
     flock: models.CommercialLayerFlock,
 ) -> CommercialLayerFlockOut:
+    calculated = _commercial_layer_current_values(
+        flock
+    )
+
     return CommercialLayerFlockOut(
         id=flock.id,
-        source_rearing_flock_id=flock.source_rearing_flock_id,
+        source_rearing_flock_id=(
+            flock.source_rearing_flock_id
+        ),
+        source_rearing_flock_code=(
+            flock.source_rearing_flock.flock_code
+            if flock.source_rearing_flock
+            else None
+        ),
         company_id=flock.company_id,
         farm_id=flock.farm_id,
         shed_id=flock.shed_id,
-        farm_name=flock.farm.farm_name if flock.farm else "",
-        shed_name=flock.shed.shed_name if flock.shed else "",
+        farm_name=(
+            flock.farm.farm_name
+            if flock.farm
+            else ""
+        ),
+        shed_name=(
+            flock.shed.shed_name
+            if flock.shed
+            else ""
+        ),
         flock_code=flock.flock_code,
         breed=flock.breed,
         hatch_date=flock.hatch_date,
         housed_date=flock.housed_date,
         birds_housed=flock.birds_housed,
+        planned_depletion_date=(
+            flock.planned_depletion_date
+        ),
+        current_age_weeks=(
+            calculated["current_age_weeks"]
+        ),
+        current_birds=calculated["current_birds"],
+        latest_production_pct=(
+            calculated["latest_production_pct"]
+        ),
+        latest_feed_g_bird_day=(
+            calculated["latest_feed_g_bird_day"]
+        ),
+        cumulative_mortality_pct=(
+            calculated["cumulative_mortality_pct"]
+        ),
+        production_status=(
+            calculated["production_status"]
+        ),
         status=flock.status,
         notes=flock.notes,
         last_saved_by=flock.last_saved_by,
         last_saved_at=flock.last_saved_at,
     )
+
+
+@app.post(
+    "/api/layers/commercial/flocks/new-row",
+    response_model=CommercialLayerFlockOut,
+)
+def create_commercial_layer_flock_new_row(
+    company_id: int | None = None,
+    current_user: models.AppUser = Depends(
+        get_current_user
+    ),
+    db: Session = Depends(get_db),
+):
+    resolved_company_id = resolve_company_id(
+        current_user,
+        company_id,
+    )
+
+    query = (
+        db.query(BroilerShed)
+        .join(
+            BroilerFarm,
+            BroilerFarm.id == BroilerShed.farm_id,
+        )
+        .filter(
+            BroilerShed.company_id
+            == resolved_company_id,
+            BroilerShed.active == True,
+            BroilerFarm.company_id
+            == resolved_company_id,
+            BroilerFarm.active == True,
+            BroilerFarm.farm_type
+            == "commercial_layers",
+        )
+    )
+
+    if not (
+        current_user.is_global_admin
+        or current_user.is_company_admin
+    ):
+        permitted_farm_ids = (
+            db.query(models.UserFarmAccess.farm_id)
+            .filter(
+                models.UserFarmAccess.user_id
+                == current_user.id
+            )
+        )
+
+        query = query.filter(
+            BroilerShed.farm_id.in_(
+                permitted_farm_ids
+            )
+        )
+
+    shed = (
+        query
+        .order_by(
+            BroilerFarm.farm_name.asc(),
+            BroilerShed.shed_name.asc(),
+        )
+        .first()
+    )
+
+    if shed is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "No active Commercial Layers shed is "
+                "available for this user and company."
+            ),
+        )
+
+    next_number = (
+        db.query(models.CommercialLayerFlock)
+        .filter(
+            models.CommercialLayerFlock.company_id
+            == resolved_company_id
+        )
+        .count()
+        + 1
+    )
+
+    flock_code = f"CL-NEW-{next_number:03d}"
+
+    while (
+        db.query(models.CommercialLayerFlock)
+        .filter(
+            models.CommercialLayerFlock.company_id
+            == resolved_company_id,
+            models.CommercialLayerFlock.flock_code
+            == flock_code,
+        )
+        .first()
+        is not None
+    ):
+        next_number += 1
+        flock_code = f"CL-NEW-{next_number:03d}"
+
+    flock = models.CommercialLayerFlock(
+        company_id=resolved_company_id,
+        source_rearing_flock_id=None,
+        farm_id=shed.farm_id,
+        shed_id=shed.id,
+        flock_code=flock_code,
+        breed=None,
+        hatch_date=None,
+        housed_date=None,
+        birds_housed=None,
+        planned_depletion_date=None,
+        status="Draft",
+        notes="",
+        last_saved_by=current_user.full_name,
+        last_saved_at=datetime.utcnow(),
+    )
+
+    db.add(flock)
+    db.commit()
+
+    return _commercial_layer_flock_response(
+        _get_commercial_layer_flock(
+            db,
+            flock.id,
+        )
+    )
+
+
+@app.post(
+    "/api/layers/commercial/flocks",
+    response_model=CommercialLayerFlockOut,
+)
+def create_commercial_layer_flock(
+    payload: CommercialLayerFlockCreate,
+    current_user: models.AppUser = Depends(
+        get_current_user
+    ),
+    db: Session = Depends(get_db),
+):
+    resolved_company_id = resolve_company_id(
+        current_user,
+        payload.company_id,
+    )
+
+    _validate_commercial_layer_location(
+        db,
+        current_user,
+        resolved_company_id,
+        payload.farm_id,
+        payload.shed_id,
+    )
+
+    flock_code = payload.flock_code.strip()
+
+    if not flock_code:
+        raise HTTPException(
+            status_code=400,
+            detail="Flock code is required",
+        )
+
+    duplicate = (
+        db.query(models.CommercialLayerFlock)
+        .filter(
+            models.CommercialLayerFlock.company_id
+            == resolved_company_id,
+            models.CommercialLayerFlock.flock_code
+            == flock_code,
+        )
+        .first()
+    )
+
+    if duplicate is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Flock code already exists for "
+                "this company."
+            ),
+        )
+
+    flock = models.CommercialLayerFlock(
+        company_id=resolved_company_id,
+        source_rearing_flock_id=None,
+        farm_id=payload.farm_id,
+        shed_id=payload.shed_id,
+        flock_code=flock_code,
+        breed=(
+            payload.breed.strip()
+            if payload.breed
+            else None
+        ),
+        hatch_date=payload.hatch_date,
+        housed_date=payload.housed_date,
+        birds_housed=payload.birds_housed,
+        planned_depletion_date=(
+            payload.planned_depletion_date
+        ),
+        status=payload.status.strip() or "Draft",
+        notes=(
+            payload.notes.strip()
+            if payload.notes
+            else ""
+        ),
+        last_saved_by=current_user.full_name,
+        last_saved_at=datetime.utcnow(),
+    )
+
+    db.add(flock)
+
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Flock code already exists for "
+                "this company."
+            ),
+        )
+
+    return _commercial_layer_flock_response(
+        _get_commercial_layer_flock(
+            db,
+            flock.id,
+        )
+    )
+
+
+@app.patch(
+    "/api/layers/commercial/flocks/{flock_id}",
+    response_model=CommercialLayerFlockOut,
+)
+def update_commercial_layer_flock(
+    flock_id: int,
+    payload: CommercialLayerFlockPatch,
+    current_user: models.AppUser = Depends(
+        get_current_user
+    ),
+    db: Session = Depends(get_db),
+):
+    flock = _get_commercial_layer_flock(
+        db,
+        flock_id,
+    )
+
+    if (
+        not current_user.is_global_admin
+        and flock.company_id
+        != current_user.company_id
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "You do not have access to "
+                "this company."
+            ),
+        )
+
+    if not access.user_has_farm_access(
+        db,
+        current_user,
+        flock.farm_id,
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "You do not have access to this "
+                "Commercial Layers farm."
+            ),
+        )
+
+    data = payload.model_dump(
+        exclude_unset=True
+    )
+
+    target_farm_id = data.get(
+        "farm_id",
+        flock.farm_id,
+    )
+    target_shed_id = data.get(
+        "shed_id",
+        flock.shed_id,
+    )
+
+    _validate_commercial_layer_location(
+        db,
+        current_user,
+        flock.company_id,
+        target_farm_id,
+        target_shed_id,
+    )
+
+    if "flock_code" in data:
+        flock_code = (
+            data["flock_code"] or ""
+        ).strip()
+
+        if not flock_code:
+            raise HTTPException(
+                status_code=400,
+                detail="Flock code is required",
+            )
+
+        duplicate = (
+            db.query(models.CommercialLayerFlock)
+            .filter(
+                models.CommercialLayerFlock.company_id
+                == flock.company_id,
+                models.CommercialLayerFlock.flock_code
+                == flock_code,
+                models.CommercialLayerFlock.id
+                != flock.id,
+            )
+            .first()
+        )
+
+        if duplicate is not None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Flock code already exists for "
+                    "this company."
+                ),
+            )
+
+        data["flock_code"] = flock_code
+
+    if "breed" in data:
+        data["breed"] = (
+            data["breed"].strip()
+            if data["breed"]
+            else None
+        )
+
+    if "status" in data:
+        data["status"] = (
+            data["status"].strip()
+            if data["status"]
+            else "Draft"
+        )
+
+    if "notes" in data:
+        data["notes"] = (
+            data["notes"].strip()
+            if data["notes"]
+            else ""
+        )
+
+    data["farm_id"] = target_farm_id
+    data["shed_id"] = target_shed_id
+
+    for field, value in data.items():
+        setattr(flock, field, value)
+
+    flock.last_saved_by = current_user.full_name
+    flock.last_saved_at = datetime.utcnow()
+
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Flock code already exists for "
+                "this company."
+            ),
+        )
+
+    return _commercial_layer_flock_response(
+        _get_commercial_layer_flock(
+            db,
+            flock.id,
+        )
+    )
+
+
+@app.delete(
+    "/api/layers/commercial/flocks/{flock_id}"
+)
+def delete_commercial_layer_flock(
+    flock_id: int,
+    current_user: models.AppUser = Depends(
+        get_current_user
+    ),
+    db: Session = Depends(get_db),
+):
+    flock = _get_commercial_layer_flock(
+        db,
+        flock_id,
+    )
+
+    if not (
+        current_user.is_global_admin
+        or current_user.is_company_admin
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Admin access required",
+        )
+
+    if (
+        not current_user.is_global_admin
+        and flock.company_id
+        != current_user.company_id
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "You do not have access to "
+                "this company."
+            ),
+        )
+
+    if not access.user_has_farm_access(
+        db,
+        current_user,
+        flock.farm_id,
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "You do not have access to this "
+                "Commercial Layers farm."
+            ),
+        )
+
+    if flock.source_rearing_flock_id is not None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "A transferred flock cannot be deleted. "
+                "Use Depleted or Closed to preserve the "
+                "flock lifecycle."
+            ),
+        )
+
+    linked_entries = (
+        db.query(
+            models.CommercialLayerDailyPerformance
+        )
+        .filter(
+            models.CommercialLayerDailyPerformance.flock_id
+            == flock.id
+        )
+        .count()
+    )
+
+    if linked_entries > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "This flock has Daily House Card records "
+                "and cannot be deleted."
+            ),
+        )
+
+    if (flock.status or "").strip().lower() not in {
+        "draft",
+        "planned",
+    }:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Only Draft or Planned flocks can be "
+                "deleted."
+            ),
+        )
+
+    deleted_id = flock.id
+    deleted_code = flock.flock_code
+
+    db.delete(flock)
+    db.commit()
+
+    return {
+        "deleted": True,
+        "id": deleted_id,
+        "flock_code": deleted_code,
+    }
 
 
 @app.get(
@@ -5102,6 +5877,12 @@ def list_commercial_layer_flocks(
         .options(
             joinedload(models.CommercialLayerFlock.farm),
             joinedload(models.CommercialLayerFlock.shed),
+            joinedload(
+                models.CommercialLayerFlock.source_rearing_flock
+            ),
+            joinedload(
+                models.CommercialLayerFlock.daily_performance
+            ),
         )
         .filter(
             models.CommercialLayerFlock.company_id
