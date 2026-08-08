@@ -1115,15 +1115,11 @@ function MobileStylePerformanceChart({
               />
             ) : null}
 
-            {selectedPoint ? (
-              <circle
-                cx={selectedPoint.x}
-                cy={selectedPoint.y}
-                r="2.2"
-                className="bi-mobile-point-selected"
-                vectorEffect="non-scaling-stroke"
-              />
-            ) : null}
+            {/* Keep the hover interaction clean:
+                the vertical guide line shows the selected day,
+                while the values are shown in the summary above.
+                No SVG point marker is used here because preserveAspectRatio="none"
+                stretches circles on this wide chart. */}
           </svg>
 
           <div
@@ -3129,12 +3125,6 @@ function BroilerIntelligenceContent() {
           stroke-width: .8;
           stroke-dasharray: 2 2;
           opacity: .72;
-        }
-
-        .bi-mobile-point-selected {
-          fill: #0b6a51;
-          stroke: #ffffff;
-          stroke-width: 1.15;
         }
 
         .bi-mobile-axis {
