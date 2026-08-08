@@ -2698,71 +2698,57 @@ function BroilerIntelligenceContent() {
                 </div>
 
                 {historicalComparison.previous.length === 0 ? (
-                  <div className="bi-history-empty bi-history-baseline">
-                    <div className="bi-history-empty-copy">
+                  <div className="bi-history-empty bi-history-strip">
+                    <div>
                       <span>No previous shed history yet</span>
                       <strong>
-                        OviCore is establishing the baseline for{" "}
-                        {focusStory.farmName} / {focusStory.shedName}.
+                        {focusStory.farmName} / {focusStory.shedName}
                       </strong>
-                      <p>
-                        When the next flock reaches day {focusStory.age},
-                        OviCore will automatically compare it with this flock
-                        at the same age.
-                      </p>
                     </div>
 
-                    <div className="bi-baseline-grid">
-                      <div>
-                        <span>Bodyweight</span>
-                        <strong>
+                    <div className="bi-history-strip-metrics">
+                      <span>
+                        BW{" "}
+                        <b>
                           {focusStory.bodyweightKg > 0
                             ? `${fmt(focusStory.bodyweightKg, 2)} kg`
                             : "—"}
-                        </strong>
-                      </div>
+                        </b>
+                      </span>
 
-                      <div>
-                        <span>BW vs Std</span>
-                        <strong>
-                          {focusStory.bwVariancePct !== undefined
-                            ? signed(
-                                focusStory.bwVariancePct,
-                                1,
-                                "%",
-                              )
-                            : "—"}
-                        </strong>
-                      </div>
-
-                      <div>
-                        <span>Mortality</span>
-                        <strong>
+                      <span>
+                        Mort{" "}
+                        <b>
                           {pct(
                             focusStory.cumulativeMortalityPct,
                             2,
                           )}
-                        </strong>
-                      </div>
+                        </b>
+                      </span>
 
-                      <div>
-                        <span>Feed / Bird</span>
-                        <strong>
+                      <span>
+                        Feed{" "}
+                        <b>
                           {focusStory.feedGBird > 0
                             ? `${fmt(focusStory.feedGBird, 1)} g`
                             : "—"}
-                        </strong>
-                      </div>
+                        </b>
+                      </span>
 
-                      <div>
-                        <span>Water : Feed</span>
-                        <strong>
+                      <span>
+                        W:F{" "}
+                        <b>
                           {focusStory.waterFeed > 0
                             ? fmt(focusStory.waterFeed, 2)
                             : "—"}
-                        </strong>
-                      </div>
+                        </b>
+                      </span>
                     </div>
+
+                    <p>
+                      OviCore will benchmark the next flock automatically
+                      when it reaches day {focusStory.age}.
+                    </p>
                   </div>
                 ) : (
                   <>
@@ -2927,7 +2913,7 @@ function BroilerIntelligenceContent() {
                       </table>
                     </div>
 
-                    <div className="bi-history-summary">
+                    <div className="bi-history-summary bi-history-summary-compact">
                       <span>OviCore readout</span>
                       <p>
                         {(() => {
@@ -2948,22 +2934,22 @@ function BroilerIntelligenceContent() {
                             previousBwAvg !== null &&
                             focusStory.bodyweightKg > 0
                               ? focusStory.bodyweightKg < previousBwAvg
-                                ? `Current bodyweight is ${Math.abs(
+                                ? `Growth is ${Math.abs(
                                     ((focusStory.bodyweightKg -
                                       previousBwAvg) /
                                       previousBwAvg) *
                                       100,
                                   ).toFixed(
                                     1,
-                                  )}% behind the previous-flock average at the same age.`
-                                : `Current bodyweight is ${Math.abs(
+                                  )}% behind previous shed history.`
+                                : `Growth is ${Math.abs(
                                     ((focusStory.bodyweightKg -
                                       previousBwAvg) /
                                       previousBwAvg) *
                                       100,
                                   ).toFixed(
                                     1,
-                                  )}% ahead of the previous-flock average at the same age.`
+                                  )}% ahead of previous shed history.`
                               : "Growth history is still limited.";
 
                           const mortalityMessage =
@@ -2975,24 +2961,18 @@ function BroilerIntelligenceContent() {
                                     previousMortAvg
                                   ).toFixed(
                                     2,
-                                  )} points above shed history.`
+                                  )} pts above history.`
                                 : ` Mortality is ${Math.abs(
                                     focusStory.cumulativeMortalityPct -
                                       previousMortAvg,
                                   ).toFixed(
                                     2,
-                                  )} points better than shed history.`
+                                  )} pts better than history.`
                               : "";
 
                           return `${growthMessage}${mortalityMessage}`;
                         })()}
                       </p>
-                    </div>
-
-                    <div className="bi-history-caption">
-                      Previous flocks are automatically matched from the same
-                      farm and shed, then compared at the nearest available age
-                      up to day {focusStory.age}.
                     </div>
                   </>
                 )}
@@ -3602,6 +3582,10 @@ function BroilerIntelligenceContent() {
           line-height: 1.35;
         }
 
+        .bi-intelligence-grid + .bi-lower-grid {
+          margin-top: 0;
+        }
+
         .bi-lower-grid {
           display: grid;
           grid-template-columns: 1.25fr 0.8fr 1fr;
@@ -3766,27 +3750,22 @@ function BroilerIntelligenceContent() {
 
         .bi-intelligence-grid {
           display: grid;
-          grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
-          gap: 8px;
+          grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+          gap: 7px;
         }
 
         .bi-history-panel {
           grid-column: 1 / -1;
-          padding: 10px 11px;
-          background:
-            linear-gradient(
-              90deg,
-              #fbfefd 0%,
-              #f4faf7 100%
-            );
+          padding: 8px 9px;
+          background: #ffffff;
         }
 
         .bi-history-panel .bi-panel-head {
-          margin-bottom: 8px;
+          margin-bottom: 6px;
         }
 
         .bi-history-panel .bi-panel-head h3 {
-          font-size: 14px;
+          font-size: 12.5px;
         }
 
         .bi-history-table-wrap {
@@ -3845,95 +3824,91 @@ function BroilerIntelligenceContent() {
           line-height: 1.35;
         }
 
-        .bi-history-baseline {
+        .bi-history-strip {
           display: grid;
-          grid-template-columns: minmax(250px, .9fr) minmax(0, 1.8fr);
-          gap: 14px;
-          align-items: stretch;
-        }
-
-        .bi-history-empty-copy {
-          display: grid;
-          align-content: center;
-          gap: 4px;
-          padding: 4px 2px;
-        }
-
-        .bi-history-empty-copy > span {
-          font-size: 7.5px;
-          font-weight: 900;
-          text-transform: uppercase;
-          letter-spacing: .11em;
-          color: #1f6d56;
-        }
-
-        .bi-history-empty-copy > strong {
-          font-size: 11px;
-          line-height: 1.3;
-          color: #173f35;
-        }
-
-        .bi-history-empty-copy > p {
-          margin: 0;
-          font-size: 8.5px;
-          line-height: 1.35;
-          color: #6c8179;
-        }
-
-        .bi-baseline-grid {
-          display: grid;
-          grid-template-columns: repeat(5, minmax(0, 1fr));
-          gap: 6px;
-        }
-
-        .bi-baseline-grid > div {
-          min-height: 72px;
-          display: grid;
-          align-content: center;
-          gap: 3px;
+          grid-template-columns: minmax(180px, .8fr) minmax(0, 1.6fr) minmax(220px, 1fr);
+          gap: 8px;
+          align-items: center;
           padding: 8px 9px;
-          border: 1px solid #d9e7e1;
-          border-radius: 8px;
+          min-height: 0;
+        }
+
+        .bi-history-strip > div:first-child {
+          display: grid;
+          gap: 1px;
+        }
+
+        .bi-history-strip > div:first-child span {
+          font-size: 7px;
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: .09em;
+          color: #2d6b57;
+        }
+
+        .bi-history-strip > div:first-child strong {
+          font-size: 9.5px;
+          color: #163f34;
+        }
+
+        .bi-history-strip-metrics {
+          display: flex;
+          gap: 5px;
+          flex-wrap: wrap;
+          align-items: center;
+        }
+
+        .bi-history-strip-metrics span {
+          display: inline-flex;
+          gap: 3px;
+          align-items: center;
+          padding: 4px 6px;
+          border: 1px solid #dbe8e3;
+          border-radius: 999px;
           background: #fff;
+          color: #6a7f77;
+          font-size: 7.5px;
+          white-space: nowrap;
         }
 
-        .bi-baseline-grid span {
-          font-size: 7px;
-          font-weight: 900;
-          letter-spacing: .08em;
-          text-transform: uppercase;
-          color: #6e817a;
+        .bi-history-strip-metrics b {
+          color: #18483b;
+          font-size: 8px;
         }
 
-        .bi-baseline-grid strong {
-          font-size: 15px;
-          line-height: 1;
-          color: #123f34;
-        }
-
-        .bi-history-summary {
-          margin-top: 8px;
-          padding: 7px 8px;
-          border-left: 3px solid #0b6a51;
-          border-radius: 6px;
-          background: #eef8f3;
-        }
-
-        .bi-history-summary > span {
-          display: block;
-          margin-bottom: 2px;
-          font-size: 7px;
-          font-weight: 900;
-          letter-spacing: .1em;
-          text-transform: uppercase;
-          color: #146047;
-        }
-
-        .bi-history-summary p {
+        .bi-history-strip > p {
           margin: 0;
-          font-size: 9px;
-          line-height: 1.35;
-          color: #315e50;
+          text-align: right;
+          font-size: 7.5px;
+          line-height: 1.25;
+          color: #75877f;
+        }
+
+        .bi-history-summary-compact {
+          margin-top: 6px;
+          display: flex;
+          gap: 7px;
+          align-items: center;
+          padding: 6px 7px;
+          border-left: 2px solid #0b6a51;
+          border-radius: 5px;
+          background: #f1f8f5;
+        }
+
+        .bi-history-summary-compact > span {
+          flex: 0 0 auto;
+          font-size: 6.5px;
+          font-weight: 900;
+          letter-spacing: .09em;
+          text-transform: uppercase;
+          color: #176049;
+        }
+
+        .bi-history-summary-compact p {
+          margin: 0;
+          font-size: 8px;
+          line-height: 1.25;
+          color: #42675b;
         }
 
         .bi-anomaly-list,
@@ -3944,13 +3919,13 @@ function BroilerIntelligenceContent() {
         }
 
         .bi-intelligence-grid > .bi-panel:not(.bi-history-panel) {
-          min-height: 190px;
-          padding: 10px 11px;
+          min-height: 0;
+          padding: 8px 9px;
         }
 
         .bi-intelligence-grid > .bi-panel:not(.bi-history-panel)
         .bi-panel-head h3 {
-          font-size: 13.5px;
+          font-size: 12.5px;
         }
 
         .bi-anomaly {
@@ -3958,8 +3933,8 @@ function BroilerIntelligenceContent() {
           grid-template-columns: 44px 1fr;
           gap: 6px;
           align-items: start;
-          padding: 8px;
-          border-radius: 8px;
+          padding: 6px 7px;
+          border-radius: 7px;
           border: 1px solid #e1ebe7;
           background: #fbfdfc;
         }
@@ -4019,7 +3994,7 @@ function BroilerIntelligenceContent() {
           grid-template-columns: 8px 1fr;
           gap: 6px;
           align-items: start;
-          padding: 8px 2px;
+          padding: 5px 1px;
           border-bottom: 1px solid #e7efec;
         }
 
@@ -4306,12 +4281,12 @@ function BroilerIntelligenceContent() {
             grid-column: 1 / -1;
           }
 
-          .bi-history-baseline {
+          .bi-history-strip {
             grid-template-columns: 1fr;
           }
 
-          .bi-baseline-grid {
-            grid-template-columns: repeat(5, 1fr);
+          .bi-history-strip > p {
+            text-align: left;
           }
 
           .bi-lower-grid > article:last-child {
@@ -4350,12 +4325,12 @@ function BroilerIntelligenceContent() {
             grid-column: auto;
           }
 
-          .bi-history-baseline {
+          .bi-history-strip {
             grid-template-columns: 1fr;
           }
 
-          .bi-baseline-grid {
-            grid-template-columns: repeat(2, 1fr);
+          .bi-history-strip > p {
+            text-align: left;
           }
 
           .bi-lower-grid > article:last-child {
