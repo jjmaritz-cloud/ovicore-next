@@ -3,7 +3,7 @@ import type { SidebarMenuConfig } from "../OviCoreSidebar.types";
 export const broilersMenu: SidebarMenuConfig = {
   module: "broilers",
   title: "OviCore",
-  subtitle: "Broiler Planning",
+  subtitle: "Broiler Production",
   sections: [
     {
       title: "Broiler Command",
@@ -13,12 +13,29 @@ export const broilersMenu: SidebarMenuConfig = {
           href: "/home",
         },
         {
-          label: "Broiler Home",
+          label: "Broiler Overview",
           href: "/broilers",
         },
+      ],
+    },
+    {
+      title: "Flock Management",
+      items: [
         {
-          label: "Demand Planner",
+          label: "Placement Demand Planner",
           href: "/broilers/demand-planner",
+        },
+        {
+          label: "Production Cycles",
+          href: "/broilers/cycles",
+        },
+        {
+          label: "Farm Overview",
+          href: "/broilers/farms",
+        },
+        {
+          label: "Shed Overview",
+          href: "/broilers/sheds",
         },
       ],
     },
@@ -26,15 +43,15 @@ export const broilersMenu: SidebarMenuConfig = {
       title: "Production",
       items: [
         {
-          label: "Daily House Sheet",
+          label: "Daily House Card",
           href: "/broilers/performance",
         },
         {
-          label: "Broiler Insights",
+          label: "Performance",
           href: "/broilers/insights",
         },
         {
-          label: "Processing",
+          label: "Processing Readiness",
           href: "/broilers/processing",
         },
       ],
@@ -45,10 +62,6 @@ export const broilersMenu: SidebarMenuConfig = {
         {
           label: "Chick Supply",
           href: "/broilers/chick-supply",
-        },
-        {
-          label: "Build Notes",
-          href: "/broilers/notes",
         },
       ],
     },

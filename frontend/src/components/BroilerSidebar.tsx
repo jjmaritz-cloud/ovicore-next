@@ -25,6 +25,13 @@ function resolveSidebarModule(
   }
 
   if (
+    pathname === "/broilers" ||
+    pathname.startsWith("/broilers/")
+  ) {
+    return "broilers";
+  }
+
+  if (
     pathname === "/hatchery" ||
     pathname.startsWith("/hatchery/")
   ) {
@@ -36,6 +43,13 @@ function resolveSidebarModule(
     pathname.startsWith("/layers/")
   ) {
     return "layers";
+  }
+
+  if (
+    pathname === "/planning" ||
+    pathname.startsWith("/planning/")
+  ) {
+    return "planning";
   }
 
   if (
@@ -59,24 +73,32 @@ export default function BroilerSidebar() {
   const pathname = usePathname();
   const router = useRouter();
 
-  const module = resolveSidebarModule(pathname);
-  const menu = getSidebarMenu(module);
+  const module =
+    resolveSidebarModule(pathname);
+
+  const menu =
+    getSidebarMenu(module);
 
   useEffect(() => {
     if (module === "admin") {
       return;
     }
 
-    const searchParams = new URLSearchParams(
-      window.location.search
-    );
+    const searchParams =
+      new URLSearchParams(
+        window.location.search
+      );
 
     const companyIdFromUrl =
-      searchParams.get("company_id");
+      searchParams.get(
+        "company_id"
+      );
 
     if (
       companyIdFromUrl &&
-      Number.isInteger(Number(companyIdFromUrl)) &&
+      Number.isInteger(
+        Number(companyIdFromUrl)
+      ) &&
       Number(companyIdFromUrl) > 0
     ) {
       window.localStorage.setItem(
@@ -94,7 +116,9 @@ export default function BroilerSidebar() {
 
     if (
       !rememberedCompanyId ||
-      !Number.isInteger(Number(rememberedCompanyId)) ||
+      !Number.isInteger(
+        Number(rememberedCompanyId)
+      ) ||
       Number(rememberedCompanyId) <= 0
     ) {
       return;
@@ -114,5 +138,9 @@ export default function BroilerSidebar() {
     router,
   ]);
 
-  return <OviCoreSidebar menu={menu} />;
+  return (
+    <OviCoreSidebar
+      menu={menu}
+    />
+  );
 }

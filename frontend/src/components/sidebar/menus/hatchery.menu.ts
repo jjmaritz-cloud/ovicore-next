@@ -3,7 +3,7 @@ import type { SidebarMenuConfig } from "../OviCoreSidebar.types";
 export const hatcheryMenu: SidebarMenuConfig = {
   module: "hatchery",
   title: "OviCore",
-  subtitle: "Hatchery Command",
+  subtitle: "Hatchery",
   sections: [
     {
       title: "Hatchery Command",
@@ -13,7 +13,7 @@ export const hatcheryMenu: SidebarMenuConfig = {
           href: "/home",
         },
         {
-          label: "Hatchery Home",
+          label: "Hatchery Overview",
           href: "/hatchery",
         },
       ],
@@ -26,13 +26,13 @@ export const hatcheryMenu: SidebarMenuConfig = {
           href: "/hatchery/egg-receiving",
         },
         {
-          label: "Setter Planner",
-          href: "/hatchery/setter-planner",
+          label: "Setter Program",
+          href: "/hatchery/setter-program",
         },
       ],
     },
     {
-      title: "Hatch Results",
+      title: "Hatch & Chick Supply",
       items: [
         {
           label: "Hatch Results",

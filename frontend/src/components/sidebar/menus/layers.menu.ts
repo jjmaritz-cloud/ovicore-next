@@ -6,7 +6,7 @@ export const layersMenu: SidebarMenuConfig = {
   subtitle: "Egg Production",
   sections: [
     {
-      title: "Layer Command",
+      title: "Egg Production Command",
       items: [
         {
           label: "OviCore Home",
@@ -19,7 +19,7 @@ export const layersMenu: SidebarMenuConfig = {
       ],
     },
     {
-      title: "Layer Rearing",
+      title: "Commercial Rearing",
       items: [
         {
           label: "Rearing Overview",
@@ -30,16 +30,8 @@ export const layersMenu: SidebarMenuConfig = {
           href: "/layers/rearing/flocks",
         },
         {
-          label: "Daily Entry",
+          label: "Daily House Card",
           href: "/layers/rearing/daily-entry",
-        },
-        {
-          label: "Performance",
-          href: "/layers/rearing/performance",
-        },
-        {
-          label: "Transfer Readiness",
-          href: "/layers/rearing/transfer-readiness",
         },
       ],
     },
@@ -56,32 +48,11 @@ export const layersMenu: SidebarMenuConfig = {
         },
         {
           label: "Daily House Card",
-          href: "/layers/commercial/daily-entry",
-        },
-        {
-          label: "Egg Production",
-          href: "/layers/commercial/egg-production",
-        },
-        {
-          label: "Feed Performance",
-          href: "/layers/commercial/feed-performance",
+          href: "/layers/commercial/daily-house-card",
         },
         {
           label: "Performance",
           href: "/layers/commercial/performance",
-        },
-      ],
-    },
-    {
-      title: "Transfers & Planning",
-      items: [
-        {
-          label: "Pullet Transfers",
-          href: "/layers/transfers",
-        },
-        {
-          label: "Shed Turnaround",
-          href: "/layers/shed-turnaround",
         },
       ],
     },

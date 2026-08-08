@@ -13,25 +13,8 @@ export const planningMenu: SidebarMenuConfig = {
           href: "/home",
         },
         {
-          label: "Planning Home",
+          label: "Planning Overview",
           href: "/planning",
-        },
-      ],
-    },
-    {
-      title: "Planning",
-      items: [
-        {
-          label: "Production Plan",
-          href: "/planning/production",
-        },
-        {
-          label: "Placement Plan",
-          href: "/planning/placements",
-        },
-        {
-          label: "Forecast",
-          href: "/planning/forecast",
         },
       ],
     },

@@ -1,5 +1,7 @@
 "use client";
 
+import OviCoreShell from "@/components/ovicore/OviCoreShell";
+
 import {
   Suspense,
   useCallback,
@@ -1064,9 +1066,11 @@ function LayerRearingDailyHouseCardContent() {
 
 export default function LayerRearingDailyHouseCardPage() {
   return (
-    <Suspense fallback={null}>
-      <LayerRearingDailyHouseCardContent />
-    </Suspense>
+    <OviCoreShell module="layers">
+      <Suspense fallback={null}>
+        <LayerRearingDailyHouseCardContent />
+      </Suspense>
+    </OviCoreShell>
   );
 }
 

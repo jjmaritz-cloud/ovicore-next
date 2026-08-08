@@ -3,7 +3,7 @@ import type { SidebarMenuConfig } from "../OviCoreSidebar.types";
 export const breedersMenu: SidebarMenuConfig = {
   module: "breeders",
   title: "OviCore",
-  subtitle: "Breeder Planning",
+  subtitle: "Breeder Operations",
   sections: [
     {
       title: "Breeder Command",
@@ -13,20 +13,25 @@ export const breedersMenu: SidebarMenuConfig = {
           href: "/home",
         },
         {
-          label: "Breeder Home",
+          label: "Breeder Overview",
           href: "/breeders",
         },
+      ],
+    },
+    {
+      title: "Breeder Rearing",
+      items: [
         {
-          label: "Flock Register",
+          label: "Rearing Flocks",
           href: "/breeders/flocks",
         },
       ],
     },
     {
-      title: "Production",
+      title: "Breeder Production",
       items: [
         {
-          label: "Production Flock Register",
+          label: "Production Flocks",
           href: "/breeders/production",
         },
         {
@@ -38,25 +43,8 @@ export const breedersMenu: SidebarMenuConfig = {
           href: "/breeders/egg-forecast",
         },
         {
-          label: "Fertility & Hatch",
+          label: "Fertility & Hatchability",
           href: "/breeders/fertility-hatch",
-        },
-      ],
-    },
-    {
-      title: "Integration",
-      items: [
-        {
-          label: "Egg Receiving",
-          href: "/hatchery/egg-receiving",
-        },
-        {
-          label: "Chick Availability",
-          href: "/hatchery/chick-availability",
-        },
-        {
-          label: "Build Notes",
-          href: "/breeders/notes",
         },
       ],
     },

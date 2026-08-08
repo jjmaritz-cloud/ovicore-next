@@ -13,25 +13,8 @@ export const processingMenu: SidebarMenuConfig = {
           href: "/home",
         },
         {
-          label: "Processing Home",
+          label: "Processing Overview",
           href: "/processing",
-        },
-      ],
-    },
-    {
-      title: "Operations",
-      items: [
-        {
-          label: "Processing Plan",
-          href: "/processing/planning",
-        },
-        {
-          label: "Processing Results",
-          href: "/processing/results",
-        },
-        {
-          label: "Yield Review",
-          href: "/processing/yield",
         },
       ],
     },
