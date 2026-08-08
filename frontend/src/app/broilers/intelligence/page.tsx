@@ -719,26 +719,19 @@ function MobileStylePerformanceChart({
       };
     }
 
-    const latestAge = Math.max(
-      ...fullChart.data.map(
-        (item) => item.age,
-      ),
-    );
-
-    // A "7D" view at Day 14 should show Day 7 through Day 14,
-    // not Day 8 through Day 14. The range represents the previous
-    // N flock-days plus the current day, matching the age axis.
-    const startAge = Math.max(
-      0,
-      latestAge - range,
-    );
-
+    // Range buttons are flock-age windows from placement:
+    // 7D  = Day 0 through Day 7
+    // 14D = Day 0 through Day 14
+    // 30D = Day 0 through Day 30
+    //
+    // If the flock has not yet reached the selected end day,
+    // show all available records up to its current age.
     return {
       ...fullChart,
       data: fullChart.data.filter(
         (item) =>
-          item.age >= startAge &&
-          item.age <= latestAge,
+          item.age >= 0 &&
+          item.age <= range,
       ),
     };
   }, [fullChart, range]);
