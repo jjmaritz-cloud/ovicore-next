@@ -20,6 +20,7 @@ type DemandPlan = {
   farm_name?: string | null;
   shed_name?: string | null;
   cycle_code?: string | null;
+  placement_date?: string | null;
   processing_date?: string | null;
   planned_birds?: number | null;
   target_lw_kg?: number | null;
@@ -123,6 +124,30 @@ type ChartDatum = {
   label: string;
   actual: number | null;
   standard: number | null;
+};
+
+type HistoricalSnapshot = {
+  planId: number;
+  cycleCode: string;
+  placementDate: string | null;
+  age: number;
+  bodyweightKg: number | null;
+  bwVariancePct: number | null;
+  cumulativeMortalityPct: number | null;
+  feedGBird: number | null;
+  waterFeed: number | null;
+};
+
+type IntelligenceAnomaly = {
+  severity: "high" | "watch" | "normal";
+  title: string;
+  detail: string;
+};
+
+type RecentChange = {
+  tone: "good" | "watch" | "bad" | "neutral";
+  title: string;
+  detail: string;
 };
 
 const performanceMetricOptions: {
@@ -1508,6 +1533,582 @@ function buildStory(
   };
 }
 
+function snapshotAtAge(
+  story: Story,
+  targetAge: number,
+  standards: StandardRow[],
+): HistoricalSnapshot | null {
+  const eligible = story.records.filter(
+    (row) => num(row.age_days) <= targetAge,
+  );
+
+  if (eligible.length === 0) return null;
+
+  const latest = eligible[eligible.length - 1];
+  const age = num(latest.age_days);
+
+  const placedBirds =
+    num(story.records[0]?.opening_birds) ||
+    num(story.plan.planned_birds);
+
+  const cumulativeMortality = eligible.reduce(
+    (sum, row) => sum + getMort(row),
+    0,
+  );
+
+  const cumulativeMortalityPct =
+    placedBirds > 0
+      ? (cumulativeMortality / placedBirds) * 100
+      : null;
+
+  const bodyweightKg = getWeight(latest) || null;
+  const feedGBird = feedPerBird(latest) || null;
+
+  const waterFeed =
+    num(latest.feed_kg) > 0 &&
+    num(latest.water_litres) > 0
+      ? num(latest.water_litres) /
+        num(latest.feed_kg)
+      : null;
+
+  const standard = standardForAge(
+    standards,
+    age,
+  );
+
+  const standardWeightKg =
+    standard?.body_weight_g != null
+      ? num(standard.body_weight_g) / 1000
+      : null;
+
+  const bwVariancePct =
+    bodyweightKg !== null &&
+    standardWeightKg !== null &&
+    standardWeightKg > 0
+      ? ((bodyweightKg -
+          standardWeightKg) /
+          standardWeightKg) *
+        100
+      : null;
+
+  return {
+    planId: story.plan.id,
+    cycleCode: story.cycleCode,
+    placementDate:
+      story.plan.placement_date ?? null,
+    age,
+    bodyweightKg,
+    bwVariancePct,
+    cumulativeMortalityPct,
+    feedGBird,
+    waterFeed,
+  };
+}
+
+function averageValid(
+  values: Array<number | null>,
+) {
+  const clean = values.filter(
+    (value): value is number =>
+      value !== null &&
+      Number.isFinite(value),
+  );
+
+  if (clean.length === 0) return null;
+
+  return (
+    clean.reduce(
+      (sum, value) => sum + value,
+      0,
+    ) / clean.length
+  );
+}
+
+function formatHistoricalValue(
+  value: number | null,
+  decimals: number,
+  suffix = "",
+) {
+  if (value === null) return "—";
+  return `${fmt(value, decimals)}${suffix}`;
+}
+
+function comparePlacementOrder(
+  left: Story,
+  right: Story,
+) {
+  const leftDate =
+    left.plan.placement_date ?? "";
+  const rightDate =
+    right.plan.placement_date ?? "";
+
+  if (leftDate && rightDate) {
+    return rightDate.localeCompare(
+      leftDate,
+    );
+  }
+
+  return right.plan.id - left.plan.id;
+}
+
+function buildHistoricalComparison(
+  focusStory: Story,
+  stories: Story[],
+  standards: StandardRow[],
+) {
+  const sameShed = stories
+    .filter(
+      (story) =>
+        story.plan.id !==
+          focusStory.plan.id &&
+        story.farmName ===
+          focusStory.farmName &&
+        story.shedName ===
+          focusStory.shedName,
+    )
+    .sort(comparePlacementOrder);
+
+  const focusPlacement =
+    focusStory.plan.placement_date ??
+    "";
+
+  const previousStories =
+    focusPlacement
+      ? sameShed.filter(
+          (story) =>
+            !story.plan.placement_date ||
+            story.plan.placement_date <
+              focusPlacement,
+        )
+      : sameShed;
+
+  const previous = previousStories
+    .map((story) =>
+      snapshotAtAge(
+        story,
+        focusStory.age,
+        standards,
+      ),
+    )
+    .filter(
+      (
+        row,
+      ): row is HistoricalSnapshot =>
+        row !== null,
+    )
+    .slice(0, 3);
+
+  const current = snapshotAtAge(
+    focusStory,
+    focusStory.age,
+    standards,
+  );
+
+  const allComparable = [
+    current,
+    ...previous,
+  ].filter(
+    (
+      row,
+    ): row is HistoricalSnapshot =>
+      row !== null,
+  );
+
+  const best =
+    allComparable.length > 0
+      ? {
+          bodyweightKg:
+            Math.max(
+              ...allComparable
+                .map(
+                  (row) =>
+                    row.bodyweightKg,
+                )
+                .filter(
+                  (
+                    value,
+                  ): value is number =>
+                    value !== null,
+                ),
+            ) || null,
+
+          bwVariancePct:
+            Math.max(
+              ...allComparable
+                .map(
+                  (row) =>
+                    row.bwVariancePct,
+                )
+                .filter(
+                  (
+                    value,
+                  ): value is number =>
+                    value !== null,
+                ),
+            ) || null,
+
+          cumulativeMortalityPct:
+            Math.min(
+              ...allComparable
+                .map(
+                  (row) =>
+                    row.cumulativeMortalityPct,
+                )
+                .filter(
+                  (
+                    value,
+                  ): value is number =>
+                    value !== null,
+                ),
+            ) || null,
+
+          feedGBird:
+            Math.max(
+              ...allComparable
+                .map(
+                  (row) =>
+                    row.feedGBird,
+                )
+                .filter(
+                  (
+                    value,
+                  ): value is number =>
+                    value !== null,
+                ),
+            ) || null,
+
+          waterFeed:
+            averageValid(
+              allComparable.map(
+                (row) => row.waterFeed,
+              ),
+            ),
+        }
+      : null;
+
+  return {
+    current,
+    previous,
+    best,
+  };
+}
+
+function buildAnomalies(
+  focusStory: Story,
+  previous: HistoricalSnapshot[],
+) {
+  const anomalies: IntelligenceAnomaly[] =
+    [];
+
+  const previousBwAvg =
+    averageValid(
+      previous.map(
+        (row) => row.bodyweightKg,
+      ),
+    );
+
+  const previousMortAvg =
+    averageValid(
+      previous.map(
+        (row) =>
+          row.cumulativeMortalityPct,
+      ),
+    );
+
+  const previousFeedAvg =
+    averageValid(
+      previous.map(
+        (row) => row.feedGBird,
+      ),
+    );
+
+  const previousWaterFeedAvg =
+    averageValid(
+      previous.map(
+        (row) => row.waterFeed,
+      ),
+    );
+
+  if (
+    previousBwAvg !== null &&
+    focusStory.bodyweightKg > 0
+  ) {
+    const differencePct =
+      ((focusStory.bodyweightKg -
+        previousBwAvg) /
+        previousBwAvg) *
+      100;
+
+    if (differencePct <= -7) {
+      anomalies.push({
+        severity: "high",
+        title:
+          "Growth below previous flocks",
+        detail: `At day ${
+          focusStory.age
+        }, bodyweight is ${Math.abs(
+          differencePct,
+        ).toFixed(
+          1,
+        )}% below the average of the previous ${
+          previous.length
+        } comparable flock${
+          previous.length === 1
+            ? ""
+            : "s"
+        } in this shed.`,
+      });
+    } else if (differencePct <= -3) {
+      anomalies.push({
+        severity: "watch",
+        title:
+          "Growth history watch",
+        detail: `Bodyweight is ${Math.abs(
+          differencePct,
+        ).toFixed(
+          1,
+        )}% behind the previous-flock average at the same age.`,
+      });
+    }
+  }
+
+  if (
+    previousMortAvg !== null &&
+    focusStory.cumulativeMortalityPct >
+      previousMortAvg
+  ) {
+    const gap =
+      focusStory.cumulativeMortalityPct -
+      previousMortAvg;
+
+    anomalies.push({
+      severity:
+        gap >= 0.4
+          ? "high"
+          : gap >= 0.15
+            ? "watch"
+            : "normal",
+      title:
+        "Mortality above shed history",
+      detail: `Cumulative mortality is ${gap.toFixed(
+        2,
+      )} points above the previous-flock average at day ${
+        focusStory.age
+      }.`,
+    });
+  }
+
+  if (
+    previousFeedAvg !== null &&
+    focusStory.feedGBird > 0
+  ) {
+    const feedGap =
+      focusStory.feedGBird -
+      previousFeedAvg;
+
+    if (feedGap <= -5) {
+      anomalies.push({
+        severity: "watch",
+        title:
+          "Feed intake below flock history",
+        detail: `Current feed intake is ${Math.abs(
+          feedGap,
+        ).toFixed(
+          1,
+        )} g/bird/day below the previous-flock average at the same age.`,
+      });
+    }
+  }
+
+  if (
+    previousWaterFeedAvg !== null &&
+    focusStory.waterFeed > 0
+  ) {
+    const ratioGap = Math.abs(
+      focusStory.waterFeed -
+        previousWaterFeedAvg,
+    );
+
+    anomalies.push({
+      severity:
+        ratioGap >= 0.3
+          ? "watch"
+          : "normal",
+      title:
+        ratioGap >= 0.3
+          ? "Water/feed pattern shifted"
+          : "Water/feed remains familiar",
+      detail:
+        ratioGap >= 0.3
+          ? `Water:feed is ${ratioGap.toFixed(
+              2,
+            )} away from the previous-flock average.`
+          : `Water:feed is close to this shed's previous-flock pattern.`,
+    });
+  }
+
+  if (anomalies.length === 0) {
+    anomalies.push({
+      severity: "normal",
+      title:
+        "No historical anomaly detected",
+      detail:
+        "Current flock metrics are broadly consistent with the available same-shed history.",
+    });
+  }
+
+  return anomalies
+    .sort((a, b) => {
+      const rank = {
+        high: 3,
+        watch: 2,
+        normal: 1,
+      };
+
+      return (
+        rank[b.severity] -
+        rank[a.severity]
+      );
+    })
+    .slice(0, 4);
+}
+
+function buildRecentChanges(
+  focusStory: Story,
+): RecentChange[] {
+  const rows =
+    focusStory.records.slice(-7);
+
+  if (rows.length < 2) {
+    return [
+      {
+        tone: "neutral",
+        title:
+          "Not enough recent history",
+        detail:
+          "At least two daily records are needed for a recent-change readout.",
+      },
+    ];
+  }
+
+  const changes: RecentChange[] = [];
+
+  const latest = rows[rows.length - 1];
+  const start = rows[0];
+
+  const latestWeight = getWeight(latest);
+  const startWeight = getWeight(start);
+
+  if (
+    latestWeight > 0 &&
+    startWeight > 0
+  ) {
+    const gainG =
+      (latestWeight - startWeight) *
+      1000;
+
+    changes.push({
+      tone:
+        gainG > 0
+          ? "good"
+          : "bad",
+      title:
+        "Bodyweight movement",
+      detail: `Bodyweight changed by ${signed(
+        gainG,
+        0,
+        " g",
+      )} across the last ${
+        rows.length - 1
+      } recorded days.`,
+    });
+  }
+
+  const feedValues = rows
+    .map(feedPerBird)
+    .filter((value) => value > 0);
+
+  if (feedValues.length >= 2) {
+    const feedChange =
+      feedValues[
+        feedValues.length - 1
+      ] - feedValues[0];
+
+    changes.push({
+      tone:
+        Math.abs(feedChange) < 4
+          ? "neutral"
+          : feedChange < 0
+            ? "watch"
+            : "good",
+      title:
+        "Feed intake direction",
+      detail: `Feed intake moved ${signed(
+        feedChange,
+        1,
+        " g/bird/day",
+      )} over the recent window.`,
+    });
+  }
+
+  const mortFirst = dailyMortPct(start);
+  const mortLast = dailyMortPct(latest);
+  const mortChange =
+    mortLast - mortFirst;
+
+  changes.push({
+    tone:
+      mortChange > 0.08
+        ? "bad"
+        : mortChange > 0.02
+          ? "watch"
+          : "good",
+    title:
+      "Daily mortality direction",
+    detail: `Daily mortality moved ${signed(
+      mortChange,
+      2,
+      " pts",
+    )} from the start of the recent window.`,
+  });
+
+  const waterFeedValues = rows
+    .map((row) =>
+      num(row.feed_kg) > 0 &&
+      num(row.water_litres) > 0
+        ? num(row.water_litres) /
+          num(row.feed_kg)
+        : 0,
+    )
+    .filter((value) => value > 0);
+
+  if (
+    waterFeedValues.length >= 2
+  ) {
+    const ratioChange =
+      waterFeedValues[
+        waterFeedValues.length - 1
+      ] - waterFeedValues[0];
+
+    changes.push({
+      tone:
+        Math.abs(ratioChange) >
+        0.2
+          ? "watch"
+          : "neutral",
+      title:
+        "Water/feed stability",
+      detail: `Water:feed changed ${signed(
+        ratioChange,
+        2,
+      )} across the same period.`,
+    });
+  }
+
+  return changes.slice(0, 4);
+}
+
+
 function BroilerIntelligenceContent() {
   const searchParams = useSearchParams();
   const { currentUser, loadingUser, userError } = useCurrentUser();
@@ -1533,8 +2134,6 @@ function BroilerIntelligenceContent() {
     useState<number | "all">("all");
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
-  const [question, setQuestion] = useState("");
-  const [answer, setAnswer] = useState("");
 
   const loadData = useCallback(async () => {
     if (loadingUser) return;
@@ -1713,57 +2312,32 @@ function BroilerIntelligenceContent() {
     };
   }, [focusStory]);
 
-  function askOviCore() {
-    if (!focusStory) return;
 
-    const clean = question.trim().toLowerCase();
-
-    if (!clean) {
-      setAnswer(
-        "Ask about growth, mortality, feed, water or today's priority.",
-      );
-      return;
+  const historicalComparison = useMemo(() => {
+    if (!focusStory) {
+      return { current: null, previous: [], best: null };
     }
 
-    if (clean.includes("why") || clean.includes("flag")) {
-      setAnswer(
-        `${focusStory.diagnosis} Recommended action: ${focusStory.action}`,
-      );
-      return;
-    }
-
-    if (
-      clean.includes("today") ||
-      clean.includes("priority") ||
-      clean.includes("focus")
-    ) {
-      setAnswer(
-        `${focusStory.farmName} / ${focusStory.shedName} is the first place to focus. ${focusStory.primaryDriver} is the strongest current pressure. ${focusStory.action}`,
-      );
-      return;
-    }
-
-    if (clean.includes("weight") || clean.includes("growth")) {
-      setAnswer(
-        focusStory.bwVariancePct !== undefined
-          ? `Current bodyweight is ${focusStory.bodyweightKg.toFixed(
-              2,
-            )} kg versus ${focusStory.standardWeightKg?.toFixed(
-              2,
-            )} kg standard, a ${focusStory.bwVariancePct.toFixed(
-              1,
-            )}% variance. ${focusStory.diagnosis}`
-          : `Current bodyweight is ${focusStory.bodyweightKg.toFixed(
-              2,
-            )} kg at day ${focusStory.age}. ${focusStory.diagnosis}`,
-      );
-      return;
-    }
-
-    setAnswer(
-      `${focusStory.diagnosis} Most important action: ${focusStory.action}`,
+    return buildHistoricalComparison(
+      focusStory,
+      stories,
+      standards,
     );
-  }
+  }, [focusStory, stories, standards]);
+
+  const anomalies = useMemo(() => {
+    if (!focusStory) return [];
+
+    return buildAnomalies(
+      focusStory,
+      historicalComparison.previous,
+    );
+  }, [focusStory, historicalComparison.previous]);
+
+  const recentChanges = useMemo(() => {
+    if (!focusStory) return [];
+    return buildRecentChanges(focusStory);
+  }, [focusStory]);
 
   return (
     <>
@@ -2234,37 +2808,243 @@ function BroilerIntelligenceContent() {
               </article>
             </section>
 
-            <section className="bi-panel">
-              <div className="bi-panel-head">
-                <div>
-                  <p>Ask OviCore</p>
-                  <h3>Question this flock&apos;s story</h3>
+            <section className="bi-intelligence-grid">
+              <article className="bi-panel bi-history-panel">
+                <div className="bi-panel-head">
+                  <div>
+                    <p>Current vs Previous Flocks</p>
+                    <h3>
+                      Same shed · matched at day {focusStory.age}
+                    </h3>
+                  </div>
                 </div>
-              </div>
 
-              <div className="bi-ask-row">
-                <input
-                  value={question}
-                  onChange={(event) => setQuestion(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      askOviCore();
-                    }
-                  }}
-                  placeholder="Why is this flock falling behind?"
-                />
+                {historicalComparison.previous.length === 0 ? (
+                  <div className="bi-history-empty">
+                    No previous reporting flocks are available yet for{" "}
+                    {focusStory.farmName} / {focusStory.shedName}.
+                    This panel will activate automatically as flock history
+                    builds.
+                  </div>
+                ) : (
+                  <>
+                    <div className="bi-history-table-wrap">
+                      <table className="bi-history-table">
+                        <thead>
+                          <tr>
+                            <th>Measure</th>
+                            <th>Current</th>
+                            {historicalComparison.previous.map(
+                              (snapshot, index) => (
+                                <th key={snapshot.planId}>
+                                  Prev {index + 1}
+                                </th>
+                              ),
+                            )}
+                            <th>Historical best</th>
+                          </tr>
+                        </thead>
 
-                <button type="button" onClick={askOviCore}>
-                  Ask
-                </button>
-              </div>
+                        <tbody>
+                          <tr>
+                            <td>Bodyweight</td>
+                            <td>
+                              {formatHistoricalValue(
+                                historicalComparison.current?.bodyweightKg ??
+                                  null,
+                                2,
+                                " kg",
+                              )}
+                            </td>
+                            {historicalComparison.previous.map((snapshot) => (
+                              <td key={`bw-${snapshot.planId}`}>
+                                {formatHistoricalValue(
+                                  snapshot.bodyweightKg,
+                                  2,
+                                  " kg",
+                                )}
+                              </td>
+                            ))}
+                            <td>
+                              {formatHistoricalValue(
+                                historicalComparison.best?.bodyweightKg ??
+                                  null,
+                                2,
+                                " kg",
+                              )}
+                            </td>
+                          </tr>
 
-              {answer ? (
-                <div className="bi-answer">
-                  <span>OviCore</span>
-                  <p>{answer}</p>
+                          <tr>
+                            <td>BW vs standard</td>
+                            <td>
+                              {formatHistoricalValue(
+                                historicalComparison.current?.bwVariancePct ??
+                                  null,
+                                1,
+                                "%",
+                              )}
+                            </td>
+                            {historicalComparison.previous.map((snapshot) => (
+                              <td key={`bwv-${snapshot.planId}`}>
+                                {formatHistoricalValue(
+                                  snapshot.bwVariancePct,
+                                  1,
+                                  "%",
+                                )}
+                              </td>
+                            ))}
+                            <td>
+                              {formatHistoricalValue(
+                                historicalComparison.best?.bwVariancePct ??
+                                  null,
+                                1,
+                                "%",
+                              )}
+                            </td>
+                          </tr>
+
+                          <tr>
+                            <td>Mortality</td>
+                            <td>
+                              {formatHistoricalValue(
+                                historicalComparison.current
+                                  ?.cumulativeMortalityPct ?? null,
+                                2,
+                                "%",
+                              )}
+                            </td>
+                            {historicalComparison.previous.map((snapshot) => (
+                              <td key={`mort-${snapshot.planId}`}>
+                                {formatHistoricalValue(
+                                  snapshot.cumulativeMortalityPct,
+                                  2,
+                                  "%",
+                                )}
+                              </td>
+                            ))}
+                            <td>
+                              {formatHistoricalValue(
+                                historicalComparison.best
+                                  ?.cumulativeMortalityPct ?? null,
+                                2,
+                                "%",
+                              )}
+                            </td>
+                          </tr>
+
+                          <tr>
+                            <td>Feed / bird</td>
+                            <td>
+                              {formatHistoricalValue(
+                                historicalComparison.current?.feedGBird ??
+                                  null,
+                                1,
+                                " g",
+                              )}
+                            </td>
+                            {historicalComparison.previous.map((snapshot) => (
+                              <td key={`feed-${snapshot.planId}`}>
+                                {formatHistoricalValue(
+                                  snapshot.feedGBird,
+                                  1,
+                                  " g",
+                                )}
+                              </td>
+                            ))}
+                            <td>
+                              {formatHistoricalValue(
+                                historicalComparison.best?.feedGBird ?? null,
+                                1,
+                                " g",
+                              )}
+                            </td>
+                          </tr>
+
+                          <tr>
+                            <td>Water : Feed</td>
+                            <td>
+                              {formatHistoricalValue(
+                                historicalComparison.current?.waterFeed ??
+                                  null,
+                                2,
+                              )}
+                            </td>
+                            {historicalComparison.previous.map((snapshot) => (
+                              <td key={`wf-${snapshot.planId}`}>
+                                {formatHistoricalValue(
+                                  snapshot.waterFeed,
+                                  2,
+                                )}
+                              </td>
+                            ))}
+                            <td>
+                              {formatHistoricalValue(
+                                historicalComparison.best?.waterFeed ?? null,
+                                2,
+                              )}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="bi-history-caption">
+                      Previous flocks are automatically matched from the same
+                      farm and shed, then compared at the nearest available age
+                      up to day {focusStory.age}.
+                    </div>
+                  </>
+                )}
+              </article>
+
+              <article className="bi-panel">
+                <div className="bi-panel-head">
+                  <div>
+                    <p>Anomalies Detected</p>
+                    <h3>What OviCore found automatically</h3>
+                  </div>
                 </div>
-              ) : null}
+
+                <div className="bi-anomaly-list">
+                  {anomalies.map((anomaly, index) => (
+                    <div
+                      key={`${anomaly.title}-${index}`}
+                      className={`bi-anomaly bi-anomaly-${anomaly.severity}`}
+                    >
+                      <span>{anomaly.severity}</span>
+                      <div>
+                        <strong>{anomaly.title}</strong>
+                        <p>{anomaly.detail}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </article>
+
+              <article className="bi-panel">
+                <div className="bi-panel-head">
+                  <div>
+                    <p>What Changed Recently</p>
+                    <h3>Automatic 7-day movement</h3>
+                  </div>
+                </div>
+
+                <div className="bi-change-list">
+                  {recentChanges.map((change, index) => (
+                    <div
+                      key={`${change.title}-${index}`}
+                      className={`bi-change bi-change-${change.tone}`}
+                    >
+                      <i />
+                      <div>
+                        <strong>{change.title}</strong>
+                        <p>{change.detail}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </article>
             </section>
           </>
         )}
@@ -2860,53 +3640,171 @@ function BroilerIntelligenceContent() {
           color: #667c74;
         }
 
-        .bi-ask-row {
+
+        .bi-intelligence-grid {
           display: grid;
-          grid-template-columns: 1fr auto;
+          grid-template-columns: minmax(0, 1.55fr) minmax(260px, .85fr) minmax(260px, .85fr);
+          gap: 7px;
+        }
+
+        .bi-history-table-wrap {
+          overflow-x: auto;
+        }
+
+        .bi-history-table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 8.5px;
+        }
+
+        .bi-history-table th,
+        .bi-history-table td {
+          padding: 6px 7px;
+          border-bottom: 1px solid #e6efeb;
+          text-align: right;
+          white-space: nowrap;
+        }
+
+        .bi-history-table th:first-child,
+        .bi-history-table td:first-child {
+          text-align: left;
+          color: #3f6257;
+          font-weight: 800;
+        }
+
+        .bi-history-table th {
+          font-size: 7.5px;
+          text-transform: uppercase;
+          letter-spacing: .08em;
+          color: #6a8178;
+          background: #f6faf8;
+        }
+
+        .bi-history-table td:nth-child(2) {
+          font-weight: 900;
+          color: #0e5f49;
+          background: #f0f8f4;
+        }
+
+        .bi-history-caption {
+          margin-top: 6px;
+          font-size: 7.5px;
+          line-height: 1.3;
+          color: #75877f;
+        }
+
+        .bi-history-empty {
+          padding: 12px;
+          border: 1px dashed #cadbd4;
+          border-radius: 7px;
+          background: #f8fbfa;
+          color: #687e75;
+          font-size: 9px;
+          line-height: 1.35;
+        }
+
+        .bi-anomaly-list,
+        .bi-change-list {
+          display: grid;
           gap: 5px;
         }
 
-        .bi-ask-row input {
-          min-height: 32px;
-          border: 1px solid #cbdcd5;
-          border-radius: 6px;
-          padding: 0 8px;
-          font-size: 10px;
-        }
-
-        .bi-ask-row button {
-          border: 0;
-          border-radius: 6px;
-          background: #0a664f;
-          color: white;
-          padding: 0 13px;
-          font-size: 9px;
-          font-weight: 900;
-        }
-
-        .bi-answer {
-          margin-top: 6px;
+        .bi-anomaly {
           display: grid;
-          grid-template-columns: auto 1fr;
+          grid-template-columns: 44px 1fr;
           gap: 6px;
-          padding: 7px;
+          align-items: start;
+          padding: 6px;
           border-radius: 7px;
-          background: #edf8f3;
-          border: 1px solid #d1e8de;
+          border: 1px solid #e1ebe7;
+          background: #fbfdfc;
         }
 
-        .bi-answer span {
-          font-size: 8px;
+        .bi-anomaly > span {
+          padding: 3px 4px;
+          border-radius: 999px;
+          text-align: center;
+          font-size: 6.5px;
           font-weight: 900;
           text-transform: uppercase;
-          color: #0d6950;
         }
 
-        .bi-answer p {
+        .bi-anomaly-high {
+          border-color: #edcbc7;
+          background: #fff5f3;
+        }
+
+        .bi-anomaly-high > span {
+          background: #f8d9d5;
+          color: #9d3731;
+        }
+
+        .bi-anomaly-watch {
+          border-color: #eadcae;
+          background: #fffaf0;
+        }
+
+        .bi-anomaly-watch > span {
+          background: #f7e7b5;
+          color: #785707;
+        }
+
+        .bi-anomaly-normal > span {
+          background: #dff1e8;
+          color: #176046;
+        }
+
+        .bi-anomaly strong,
+        .bi-change strong {
+          display: block;
+          font-size: 8.8px;
+          color: #173f35;
+          margin-bottom: 1px;
+        }
+
+        .bi-anomaly p,
+        .bi-change p {
           margin: 0;
-          font-size: 9.5px;
-          line-height: 1.35;
-          color: #315b4e;
+          font-size: 7.8px;
+          line-height: 1.3;
+          color: #647a72;
+        }
+
+        .bi-change {
+          display: grid;
+          grid-template-columns: 8px 1fr;
+          gap: 6px;
+          align-items: start;
+          padding: 5px 0;
+          border-bottom: 1px solid #e7efec;
+        }
+
+        .bi-change:last-child {
+          border-bottom: 0;
+        }
+
+        .bi-change i {
+          width: 7px;
+          height: 7px;
+          margin-top: 3px;
+          border-radius: 999px;
+          background: #7e9b91;
+        }
+
+        .bi-change-good i {
+          background: #3e9a72;
+        }
+
+        .bi-change-watch i {
+          background: #d1a032;
+        }
+
+        .bi-change-bad i {
+          background: #c45b54;
+        }
+
+        .bi-change-neutral i {
+          background: #819b92;
         }
 
         .bi-error,
@@ -3156,6 +4054,14 @@ function BroilerIntelligenceContent() {
             grid-template-columns: 1fr 1fr;
           }
 
+          .bi-intelligence-grid {
+            grid-template-columns: 1fr 1fr;
+          }
+
+          .bi-history-panel {
+            grid-column: 1 / -1;
+          }
+
           .bi-lower-grid > article:last-child {
             grid-column: 1 / -1;
           }
@@ -3183,8 +4089,13 @@ function BroilerIntelligenceContent() {
           }
 
           .bi-core-grid,
-          .bi-lower-grid {
+          .bi-lower-grid,
+          .bi-intelligence-grid {
             grid-template-columns: 1fr;
+          }
+
+          .bi-history-panel {
+            grid-column: auto;
           }
 
           .bi-lower-grid > article:last-child {
