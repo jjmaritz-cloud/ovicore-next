@@ -1115,28 +1115,15 @@ function MobileStylePerformanceChart({
               />
             ) : null}
 
-            {actualCoordinates.map(
-              (point) => (
-                <circle
-                  key={`${point.x}-${point.dataIndex}`}
-                  cx={point.x}
-                  cy={point.y}
-                  r={
-                    point.dataIndex ===
-                    selectedIndex
-                      ? "2.6"
-                      : "1.7"
-                  }
-                  className={
-                    point.dataIndex ===
-                    selectedIndex
-                      ? "bi-mobile-point-selected"
-                      : "bi-mobile-point"
-                  }
-                  vectorEffect="non-scaling-stroke"
-                />
-              ),
-            )}
+            {selectedPoint ? (
+              <circle
+                cx={selectedPoint.x}
+                cy={selectedPoint.y}
+                r="2.2"
+                className="bi-mobile-point-selected"
+                vectorEffect="non-scaling-stroke"
+              />
+            ) : null}
           </svg>
 
           <div
@@ -3119,7 +3106,7 @@ function BroilerIntelligenceContent() {
 
         .bi-mobile-area {
           fill: #dff1e9;
-          opacity: .62;
+          opacity: .34;
         }
 
         .bi-mobile-standard-line {
@@ -3138,22 +3125,16 @@ function BroilerIntelligenceContent() {
         }
 
         .bi-mobile-selection-line {
-          stroke: #66867a;
-          stroke-width: 1;
+          stroke: #789187;
+          stroke-width: .8;
           stroke-dasharray: 2 2;
-          opacity: .9;
-        }
-
-        .bi-mobile-point {
-          fill: #fff;
-          stroke: #0b6a51;
-          stroke-width: 1.25;
+          opacity: .72;
         }
 
         .bi-mobile-point-selected {
           fill: #0b6a51;
-          stroke: #fff;
-          stroke-width: 1.5;
+          stroke: #ffffff;
+          stroke-width: 1.15;
         }
 
         .bi-mobile-axis {
