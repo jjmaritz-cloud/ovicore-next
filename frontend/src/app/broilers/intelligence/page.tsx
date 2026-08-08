@@ -13,7 +13,7 @@ import OviCoreModuleHeader from "@/components/OviCoreModuleHeader";
 import OviCoreShell from "@/components/ovicore/OviCoreShell";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+const API_BASE = "";
 
 type DemandPlan = {
   id: number;
