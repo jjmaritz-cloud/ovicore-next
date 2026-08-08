@@ -712,12 +712,34 @@ function MobileStylePerformanceChart({
   );
 
   const chart = useMemo(() => {
+    if (range === "all" || fullChart.data.length === 0) {
+      return {
+        ...fullChart,
+        data: fullChart.data,
+      };
+    }
+
+    const latestAge = Math.max(
+      ...fullChart.data.map(
+        (item) => item.age,
+      ),
+    );
+
+    // A "7D" view at Day 14 should show Day 7 through Day 14,
+    // not Day 8 through Day 14. The range represents the previous
+    // N flock-days plus the current day, matching the age axis.
+    const startAge = Math.max(
+      0,
+      latestAge - range,
+    );
+
     return {
       ...fullChart,
-      data:
-        range === "all"
-          ? fullChart.data
-          : fullChart.data.slice(-range),
+      data: fullChart.data.filter(
+        (item) =>
+          item.age >= startAge &&
+          item.age <= latestAge,
+      ),
     };
   }, [fullChart, range]);
 
