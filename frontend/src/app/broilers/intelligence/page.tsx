@@ -377,6 +377,7 @@ function GrowthChart({
   standard: { age: number; value: number }[];
 }) {
   const [hoveredAge, setHoveredAge] = useState<number | null>(null);
+  const [hoverX, setHoverX] = useState<number | null>(null);
 
   const width = 760;
   const height = 225;
@@ -445,10 +446,10 @@ function GrowthChart({
   const tooltipWidth = 156;
   const tooltipHeight = 84;
 
-  const tooltipX = hoverActual
+  const tooltipX = hoverActual && hoverX !== null
     ? Math.min(
         width - right - tooltipWidth,
-        Math.max(left + 4, x(hoverActual.age) + 10),
+        Math.max(left + 4, hoverX + 10),
       )
     : 0;
 
@@ -470,6 +471,7 @@ function GrowthChart({
       ((clampedX - left) / Math.max(1, width - left - right)) *
         (maxAge - minAge);
 
+    setHoverX(clampedX);
     setHoveredAge(age);
   }
 
@@ -480,7 +482,10 @@ function GrowthChart({
       role="img"
       aria-label="Actual bodyweight versus standard"
       onMouseMove={handleMouseMove}
-      onMouseLeave={() => setHoveredAge(null)}
+      onMouseLeave={() => {
+        setHoveredAge(null);
+        setHoverX(null);
+      }}
     >
       {[0.25, 0.5, 0.75, 1].map((f) => {
         const value = maxY * f;
@@ -530,8 +535,8 @@ function GrowthChart({
       {hoverActual ? (
         <g className="bi-hover-layer" pointerEvents="none">
           <line
-            x1={x(hoverActual.age)}
-            x2={x(hoverActual.age)}
+            x1={hoverX ?? x(hoverActual.age)}
+            x2={hoverX ?? x(hoverActual.age)}
             y1={top}
             y2={height - bottom}
             className="bi-hover-line"
