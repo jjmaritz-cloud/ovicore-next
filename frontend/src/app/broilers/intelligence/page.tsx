@@ -105,6 +105,44 @@ type Story = {
   action: string;
 };
 
+type PerformanceMetric =
+  | "bodyweight"
+  | "adg"
+  | "fcr"
+  | "pef"
+  | "mortality"
+  | "cumulativeMortality"
+  | "feed"
+  | "water"
+  | "waterFeed";
+
+type PerformanceRange = 7 | 14 | 30 | "all";
+
+type ChartDatum = {
+  key: string;
+  label: string;
+  actual: number | null;
+  standard: number | null;
+};
+
+const performanceMetricOptions: {
+  value: PerformanceMetric;
+  label: string;
+}[] = [
+  { value: "bodyweight", label: "Bodyweight" },
+  { value: "adg", label: "Average daily gain" },
+  { value: "fcr", label: "Feed conversion rate" },
+  { value: "pef", label: "Poultry Efficiency Factor" },
+  { value: "mortality", label: "Daily mortality %" },
+  {
+    value: "cumulativeMortality",
+    label: "Cumulative mortality %",
+  },
+  { value: "feed", label: "Daily feed" },
+  { value: "water", label: "Daily water" },
+  { value: "waterFeed", label: "Water / feed" },
+];
+
 async function authenticatedFetch(
   input: RequestInfo | URL,
   init: RequestInit = {},
@@ -369,286 +407,780 @@ function MetricCard({
   );
 }
 
-function GrowthChart({
-  actual,
-  standard,
+function formatChartDate(value: string) {
+  const parsed = new Date(`${value}T00:00:00`);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+
+  return parsed.toLocaleDateString(undefined, {
+    day: "2-digit",
+    month: "short",
+  });
+}
+
+function buildChartData(
+  story: Story,
+  standards: StandardRow[],
+  metric: PerformanceMetric,
+): {
+  data: ChartDatum[];
+  title: string;
+  unit: string;
+  decimals: number;
+  empty: string;
+  standardName: string | null;
+} {
+  let cumulativeMortality = 0;
+  let cumulativeFeed = 0;
+  let previousWeight: number | null = null;
+  let previousWeightAge: number | null = null;
+
+  const placedBirds =
+    num(story.records[0]?.opening_birds) ||
+    num(story.plan.planned_birds);
+
+  const allData = story.records.map((record) => {
+    const age = num(record.age_days);
+    const mortality = getMort(record);
+    const opening = num(record.opening_birds);
+    const feed = num(record.feed_kg);
+    const water = num(record.water_litres);
+    const birds =
+      num(record.closing_birds) ||
+      num(record.opening_birds);
+
+    cumulativeMortality += mortality;
+    cumulativeFeed += feed;
+
+    const currentWeight = getWeight(record) || null;
+
+    const liveWeightKg =
+      currentWeight !== null && birds > 0
+        ? currentWeight * birds
+        : null;
+
+    const cumulativeFcr =
+      liveWeightKg !== null &&
+      liveWeightKg > 0 &&
+      cumulativeFeed > 0
+        ? cumulativeFeed / liveWeightKg
+        : null;
+
+    const livability =
+      placedBirds > 0 && birds > 0
+        ? (birds / placedBirds) * 100
+        : null;
+
+    const standardRow = standardForAge(
+      standards,
+      age,
+    );
+
+    let actual: number | null = null;
+    let standard: number | null = null;
+
+    switch (metric) {
+      case "bodyweight":
+        actual = currentWeight;
+
+        standard =
+          standardRow?.body_weight_g != null
+            ? num(standardRow.body_weight_g) / 1000
+            : null;
+        break;
+
+      case "adg":
+        actual =
+          currentWeight !== null &&
+          previousWeight !== null &&
+          previousWeightAge !== null &&
+          age > previousWeightAge
+            ? ((currentWeight - previousWeight) * 1000) /
+              (age - previousWeightAge)
+            : null;
+        break;
+
+      case "fcr":
+        actual = cumulativeFcr;
+        standard =
+          standardRow?.feed_conversion != null
+            ? num(standardRow.feed_conversion)
+            : null;
+        break;
+
+      case "pef":
+        actual =
+          livability !== null &&
+          currentWeight !== null &&
+          cumulativeFcr !== null &&
+          cumulativeFcr > 0 &&
+          age > 0
+            ? (livability * currentWeight * 100) /
+              (age * cumulativeFcr)
+            : null;
+        break;
+
+      case "mortality":
+        actual =
+          opening > 0
+            ? (mortality / opening) * 100
+            : null;
+        break;
+
+      case "cumulativeMortality":
+        actual =
+          placedBirds > 0
+            ? (cumulativeMortality / placedBirds) * 100
+            : null;
+
+        standard =
+          standardRow?.mortality_pct != null
+            ? num(standardRow.mortality_pct)
+            : null;
+        break;
+
+      case "feed":
+        actual =
+          birds > 0 && feed > 0
+            ? (feed * 1000) / birds
+            : null;
+
+        standard =
+          standardRow?.feed_avg_g_bird_day != null
+            ? num(standardRow.feed_avg_g_bird_day)
+            : null;
+        break;
+
+      case "water":
+        actual =
+          birds > 0 && water > 0
+            ? (water * 1000) / birds
+            : null;
+
+        standard =
+          standardRow?.water_ml_bird_day != null
+            ? num(standardRow.water_ml_bird_day)
+            : null;
+        break;
+
+      case "waterFeed":
+        actual =
+          feed > 0 && water > 0
+            ? water / feed
+            : null;
+        break;
+    }
+
+    if (currentWeight !== null) {
+      previousWeight = currentWeight;
+      previousWeightAge = age;
+    }
+
+    return {
+      key: record.entry_date,
+      label: `${age}d`,
+      actual,
+      standard,
+    };
+  });
+
+  const config: Record<
+    PerformanceMetric,
+    {
+      title: string;
+      unit: string;
+      decimals: number;
+      empty: string;
+    }
+  > = {
+    bodyweight: {
+      title: "Bodyweight",
+      unit: "kg",
+      decimals: 2,
+      empty: "No bodyweight entries yet.",
+    },
+    adg: {
+      title: "Average daily gain",
+      unit: "g/day",
+      decimals: 1,
+      empty:
+        "At least two bodyweight entries are needed.",
+    },
+    fcr: {
+      title: "Feed conversion rate",
+      unit: "FCR",
+      decimals: 3,
+      empty:
+        "Feed and bodyweight entries are needed to calculate FCR.",
+    },
+    pef: {
+      title: "Poultry Efficiency Factor",
+      unit: "PEF",
+      decimals: 0,
+      empty:
+        "Age, livability, bodyweight and FCR are needed to calculate PEF.",
+    },
+    mortality: {
+      title: "Daily mortality",
+      unit: "%",
+      decimals: 2,
+      empty: "No mortality entries yet.",
+    },
+    cumulativeMortality: {
+      title: "Cumulative mortality",
+      unit: "%",
+      decimals: 2,
+      empty: "No mortality entries yet.",
+    },
+    feed: {
+      title: "Daily feed per bird",
+      unit: "gbd",
+      decimals: 1,
+      empty: "No feed entries yet.",
+    },
+    water: {
+      title: "Daily water per bird",
+      unit: "mL/bird",
+      decimals: 1,
+      empty: "No water entries yet.",
+    },
+    waterFeed: {
+      title: "Water / feed",
+      unit: "L/kg",
+      decimals: 2,
+      empty: "No water-to-feed entries yet.",
+    },
+  };
+
+  return {
+    data: allData,
+    ...config[metric],
+    standardName:
+      standards.find(
+        (row) =>
+          row.active &&
+          row.module.trim().toLowerCase() === "broilers",
+      )?.standard_name ?? null,
+  };
+}
+
+function MobileStylePerformanceChart({
+  story,
+  standards,
 }: {
-  actual: { age: number; value: number }[];
-  standard: { age: number; value: number }[];
+  story: Story;
+  standards: StandardRow[];
 }) {
-  const [hoveredAge, setHoveredAge] = useState<number | null>(null);
-  const [hoverX, setHoverX] = useState<number | null>(null);
+  const [metric, setMetric] =
+    useState<PerformanceMetric>("bodyweight");
 
-  const width = 760;
-  const height = 225;
-  const left = 42;
-  const right = 14;
-  const top = 14;
-  const bottom = 28;
+  const [range, setRange] =
+    useState<PerformanceRange>(14);
 
-  const all = [...actual, ...standard];
+  const fullChart = useMemo(
+    () => buildChartData(story, standards, metric),
+    [story, standards, metric],
+  );
 
-  if (all.length < 2) {
-    return (
-      <div className="bi-chart-empty">
-        Bodyweight trajectory will appear as weights are entered.
-      </div>
+  const chart = useMemo(() => {
+    return {
+      ...fullChart,
+      data:
+        range === "all"
+          ? fullChart.data
+          : fullChart.data.slice(-range),
+    };
+  }, [fullChart, range]);
+
+  const numeric = chart.data.flatMap((item) =>
+    [item.actual, item.standard].filter(
+      (value): value is number =>
+        value !== null &&
+        Number.isFinite(value),
+    ),
+  );
+
+  const rawMax = numeric.length
+    ? Math.max(...numeric)
+    : 1;
+
+  const rawMin = numeric.length
+    ? Math.min(...numeric)
+    : 0;
+
+  const padding = Math.max(
+    (rawMax - rawMin) * 0.14,
+    0.05,
+  );
+
+  const min = Math.max(0, rawMin - padding);
+  const max = rawMax + padding;
+  const span = Math.max(0.1, max - min);
+
+  const pointFor = (
+    value: number | null,
+    index: number,
+  ) => {
+    if (value === null) return null;
+
+    const x =
+      chart.data.length <= 1
+        ? 50
+        : (index / (chart.data.length - 1)) * 100;
+
+    const y =
+      88 -
+      ((value - min) / span) * 72;
+
+    return { x, y };
+  };
+
+  const actualCoordinates = chart.data
+    .map((item, index) => {
+      const point = pointFor(
+        item.actual,
+        index,
+      );
+
+      return point
+        ? {
+            ...point,
+            dataIndex: index,
+          }
+        : null;
+    })
+    .filter(
+      (
+        point,
+      ): point is {
+        x: number;
+        y: number;
+        dataIndex: number;
+      } => point !== null,
+    );
+
+  const standardCoordinates = chart.data
+    .map((item, index) => {
+      const point = pointFor(
+        item.standard,
+        index,
+      );
+
+      return point
+        ? {
+            ...point,
+            dataIndex: index,
+          }
+        : null;
+    })
+    .filter(
+      (
+        point,
+      ): point is {
+        x: number;
+        y: number;
+        dataIndex: number;
+      } => point !== null,
+    );
+
+  const actualPoints = actualCoordinates
+    .map((point) => `${point.x},${point.y}`)
+    .join(" ");
+
+  const standardPoints = standardCoordinates
+    .map((point) => `${point.x},${point.y}`)
+    .join(" ");
+
+  const areaPoints =
+    actualCoordinates.length > 0
+      ? `0,92 ${actualPoints} 100,92`
+      : "";
+
+  const latestIndex =
+    [...chart.data]
+      .map((item, index) => ({
+        item,
+        index,
+      }))
+      .reverse()
+      .find(
+        ({ item }) =>
+          item.actual !== null,
+      )?.index ?? -1;
+
+  const [selectedIndex, setSelectedIndex] =
+    useState(latestIndex);
+
+  useEffect(() => {
+    setSelectedIndex(latestIndex);
+  }, [
+    latestIndex,
+    metric,
+    range,
+    story.plan.id,
+  ]);
+
+  const selected =
+    selectedIndex >= 0
+      ? chart.data[selectedIndex]
+      : null;
+
+  const selectedPoint =
+    selectedIndex >= 0
+      ? actualCoordinates.find(
+          (point) =>
+            point.dataIndex ===
+            selectedIndex,
+        ) ?? null
+      : null;
+
+  const hasStandard =
+    standardCoordinates.length > 0;
+
+  const selectedValue =
+    selected?.actual === null ||
+    selected?.actual === undefined
+      ? "—"
+      : `${selected.actual.toFixed(
+          chart.decimals,
+        )} ${chart.unit}`;
+
+  const selectedStandardValue =
+    selected?.standard === null ||
+    selected?.standard === undefined
+      ? null
+      : `${selected.standard.toFixed(
+          chart.decimals,
+        )} ${chart.unit}`;
+
+  const selectedVariance =
+    selected?.actual !== null &&
+    selected?.actual !== undefined &&
+    selected?.standard !== null &&
+    selected?.standard !== undefined
+      ? selected.actual - selected.standard
+      : null;
+
+  const axisLabelStep =
+    chart.data.length <= 8
+      ? 1
+      : chart.data.length <= 16
+        ? 2
+        : chart.data.length <= 32
+          ? 4
+          : 7;
+
+  function selectNearestPoint(
+    event:
+      | React.PointerEvent<SVGSVGElement>
+      | React.MouseEvent<SVGSVGElement>,
+  ) {
+    if (
+      chart.data.length === 0 ||
+      actualCoordinates.length === 0
+    ) {
+      return;
+    }
+
+    const bounds =
+      event.currentTarget.getBoundingClientRect();
+
+    const relativeX = Math.min(
+      Math.max(
+        event.clientX - bounds.left,
+        0,
+      ),
+      bounds.width,
+    );
+
+    const approximateIndex =
+      chart.data.length <= 1
+        ? 0
+        : Math.round(
+            (relativeX / bounds.width) *
+              (chart.data.length - 1),
+          );
+
+    let nearest =
+      actualCoordinates[0];
+
+    for (
+      const point of
+      actualCoordinates.slice(1)
+    ) {
+      if (
+        Math.abs(
+          point.dataIndex -
+            approximateIndex,
+        ) <
+        Math.abs(
+          nearest.dataIndex -
+            approximateIndex,
+        )
+      ) {
+        nearest = point;
+      }
+    }
+
+    setSelectedIndex(
+      nearest.dataIndex,
     );
   }
 
-  const minAge = Math.min(...all.map((x) => x.age));
-  const maxAge = Math.max(...all.map((x) => x.age), minAge + 1);
-  const maxY = Math.max(...all.map((x) => x.value), 0.1);
-
-  const x = (age: number) =>
-    left +
-    ((age - minAge) / Math.max(1, maxAge - minAge)) *
-      (width - left - right);
-
-  const y = (value: number) =>
-    top +
-    (1 - value / maxY) *
-      (height - top - bottom);
-
-  const pts = (rows: { age: number; value: number }[]) =>
-    rows.map((row) => `${x(row.age)},${y(row.value)}`).join(" ");
-
-  const hoverActual =
-    hoveredAge === null
-      ? null
-      : actual.reduce((closest, row) =>
-          Math.abs(row.age - hoveredAge) < Math.abs(closest.age - hoveredAge)
-            ? row
-            : closest,
-        actual[0]);
-
-  const hoverStandard = hoverActual
-    ? standard.reduce(
-        (closest, row) =>
-          Math.abs(row.age - hoverActual.age) <
-          Math.abs(closest.age - hoverActual.age)
-            ? row
-            : closest,
-        standard[0],
-      )
-    : null;
-
-  const hoverVarianceKg =
-    hoverActual && hoverStandard
-      ? hoverActual.value - hoverStandard.value
-      : null;
-
-  const hoverVariancePct =
-    hoverVarianceKg !== null && hoverStandard && hoverStandard.value > 0
-      ? (hoverVarianceKg / hoverStandard.value) * 100
-      : null;
-
-  const tooltipWidth = 156;
-  const tooltipHeight = 84;
-
-  const tooltipX = hoverActual && hoverX !== null
-    ? Math.min(
-        width - right - tooltipWidth,
-        Math.max(left + 4, hoverX + 10),
-      )
-    : 0;
-
-  const tooltipY = hoverActual
-    ? Math.min(
-        height - bottom - tooltipHeight - 2,
-        Math.max(top + 2, y(hoverActual.value) - 44),
-      )
-    : 0;
-
-  function handleMouseMove(event: React.MouseEvent<SVGSVGElement>) {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const mouseX =
-      ((event.clientX - rect.left) / Math.max(1, rect.width)) * width;
-
-    const clampedX = Math.max(left, Math.min(width - right, mouseX));
-    const age =
-      minAge +
-      ((clampedX - left) / Math.max(1, width - left - right)) *
-        (maxAge - minAge);
-
-    setHoverX(clampedX);
-    setHoveredAge(age);
-  }
-
   return (
-    <svg
-      viewBox={`0 0 ${width} ${height}`}
-      className="bi-growth-chart"
-      role="img"
-      aria-label="Actual bodyweight versus standard"
-      onMouseMove={handleMouseMove}
-      onMouseLeave={() => {
-        setHoveredAge(null);
-        setHoverX(null);
-      }}
-    >
-      {[0.25, 0.5, 0.75, 1].map((f) => {
-        const value = maxY * f;
-        return (
-          <g key={f}>
-            <line
-              x1={left}
-              x2={width - right}
-              y1={y(value)}
-              y2={y(value)}
-              className="bi-grid-line"
-            />
-            <text
-              x={left - 7}
-              y={y(value) + 3}
-              textAnchor="end"
-              className="bi-axis-text"
+    <article className="bi-mobile-chart-card">
+      <div className="bi-mobile-chart-controls">
+        <label>
+          <span>Metric</span>
+
+          <select
+            value={metric}
+            onChange={(event) =>
+              setMetric(
+                event.target
+                  .value as PerformanceMetric,
+              )
+            }
+          >
+            {performanceMetricOptions.map(
+              (option) => (
+                <option
+                  key={option.value}
+                  value={option.value}
+                >
+                  {option.label}
+                </option>
+              ),
+            )}
+          </select>
+        </label>
+
+        <div
+          className="bi-mobile-range"
+          aria-label="Graph date range"
+        >
+          {(
+            [
+              [7, "7D"],
+              [14, "14D"],
+              [30, "30D"],
+              ["all", "All"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              type="button"
+              key={String(value)}
+              className={
+                range === value
+                  ? "active"
+                  : ""
+              }
+              onClick={() =>
+                setRange(value)
+              }
             >
-              {value.toFixed(2)}
-            </text>
-          </g>
-        );
-      })}
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
 
-      <polyline
-        points={pts(standard)}
-        fill="none"
-        className="bi-standard-line"
-      />
+      <div className="bi-mobile-chart-head">
+        <div className="bi-mobile-chart-summary">
+          <small>
+            {chart.title.toUpperCase()}
+          </small>
 
-      <polyline
-        points={pts(actual)}
-        fill="none"
-        className="bi-actual-line"
-      />
+          <strong>
+            {selectedValue}
+          </strong>
 
-      {actual.map((row) => (
-        <circle
-          key={`${row.age}-${row.value}`}
-          cx={x(row.age)}
-          cy={y(row.value)}
-          r="3"
-          className="bi-actual-dot"
-        />
-      ))}
+          <span>
+            {selected
+              ? `${selected.label} · ${formatChartDate(
+                  selected.key,
+                )}`
+              : "No entries"}
+          </span>
 
-      {hoverActual ? (
-        <g className="bi-hover-layer" pointerEvents="none">
-          <line
-            x1={hoverX ?? x(hoverActual.age)}
-            x2={hoverX ?? x(hoverActual.age)}
-            y1={top}
-            y2={height - bottom}
-            className="bi-hover-line"
-          />
+          {selectedStandardValue ? (
+            <div className="bi-mobile-chart-comparison">
+              <span>
+                <b>Standard</b>
+                {selectedStandardValue}
+              </span>
 
-          {hoverStandard ? (
-            <circle
-              cx={x(hoverActual.age)}
-              cy={y(hoverStandard.value)}
-              r="4.2"
-              className="bi-hover-standard-dot"
-            />
+              {selectedVariance !== null ? (
+                <span>
+                  <b>Variance</b>
+                  {selectedVariance >= 0
+                    ? "+"
+                    : ""}
+                  {selectedVariance.toFixed(
+                    chart.decimals,
+                  )}{" "}
+                  {chart.unit}
+                </span>
+              ) : null}
+            </div>
           ) : null}
+        </div>
 
-          <circle
-            cx={x(hoverActual.age)}
-            cy={y(hoverActual.value)}
-            r="5"
-            className="bi-hover-actual-dot"
-          />
+        <div className="bi-mobile-chart-legend">
+          <span>
+            <i className="actual" />
+            Actual
+          </span>
 
-          <g transform={`translate(${tooltipX}, ${tooltipY})`}>
-            <rect
-              width={tooltipWidth}
-              height={tooltipHeight}
-              rx="7"
-              className="bi-chart-tooltip-bg"
+          {hasStandard ? (
+            <span>
+              <i className="standard" />
+              {chart.standardName ??
+                "Standard"}
+            </span>
+          ) : null}
+        </div>
+      </div>
+
+      {actualCoordinates.length === 0 ? (
+        <div className="bi-chart-empty">
+          {chart.empty}
+        </div>
+      ) : (
+        <div className="bi-mobile-chart-plot">
+          <svg
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            aria-label={`${chart.title} performance graph`}
+            onPointerDown={(event) => {
+              event.currentTarget.setPointerCapture(
+                event.pointerId,
+              );
+
+              selectNearestPoint(event);
+            }}
+            onPointerMove={(event) => {
+              selectNearestPoint(event);
+            }}
+            onMouseMove={(event) => {
+              selectNearestPoint(event);
+            }}
+          >
+            <line
+              x1="0"
+              y1="92"
+              x2="100"
+              y2="92"
+              className="bi-mobile-baseline"
+              vectorEffect="non-scaling-stroke"
             />
 
-            <text x="10" y="15" className="bi-tooltip-title">
-              Day {hoverActual.age}
-            </text>
+            {areaPoints ? (
+              <polyline
+                points={areaPoints}
+                className="bi-mobile-area"
+                stroke="none"
+              />
+            ) : null}
 
-            <text x="10" y="31" className="bi-tooltip-label">
-              Actual BW
-            </text>
-            <text x="146" y="31" textAnchor="end" className="bi-tooltip-value">
-              {hoverActual.value.toFixed(3)} kg
-            </text>
+            {hasStandard &&
+            standardPoints ? (
+              <polyline
+                points={
+                  standardPoints
+                }
+                className="bi-mobile-standard-line"
+                fill="none"
+                vectorEffect="non-scaling-stroke"
+              />
+            ) : null}
 
-            <text x="10" y="46" className="bi-tooltip-label">
-              Standard BW
-            </text>
-            <text x="146" y="46" textAnchor="end" className="bi-tooltip-value">
-              {hoverStandard ? `${hoverStandard.value.toFixed(3)} kg` : "—"}
-            </text>
+            <polyline
+              points={actualPoints}
+              className="bi-mobile-actual-line"
+              fill="none"
+              vectorEffect="non-scaling-stroke"
+            />
 
-            <text x="10" y="61" className="bi-tooltip-label">
-              Variance
-            </text>
-            <text
-              x="146"
-              y="61"
-              textAnchor="end"
-              className={
-                hoverVarianceKg !== null && hoverVarianceKg < 0
-                  ? "bi-tooltip-value bi-tooltip-bad"
-                  : "bi-tooltip-value bi-tooltip-good"
-              }
-            >
-              {hoverVarianceKg === null
-                ? "—"
-                : `${hoverVarianceKg > 0 ? "+" : ""}${(
-                    hoverVarianceKg * 1000
-                  ).toFixed(0)} g`}
-            </text>
+            {selectedPoint ? (
+              <line
+                x1={selectedPoint.x}
+                y1="8"
+                x2={selectedPoint.x}
+                y2="92"
+                className="bi-mobile-selection-line"
+                vectorEffect="non-scaling-stroke"
+              />
+            ) : null}
 
-            <text x="10" y="76" className="bi-tooltip-label">
-              Variance %
-            </text>
-            <text
-              x="146"
-              y="76"
-              textAnchor="end"
-              className={
-                hoverVariancePct !== null && hoverVariancePct < 0
-                  ? "bi-tooltip-value bi-tooltip-bad"
-                  : "bi-tooltip-value bi-tooltip-good"
-              }
-            >
-              {hoverVariancePct === null
-                ? "—"
-                : `${hoverVariancePct > 0 ? "+" : ""}${hoverVariancePct.toFixed(
-                    1,
-                  )}%`}
-            </text>
-          </g>
-        </g>
+            {actualCoordinates.map(
+              (point) => (
+                <circle
+                  key={`${point.x}-${point.dataIndex}`}
+                  cx={point.x}
+                  cy={point.y}
+                  r={
+                    point.dataIndex ===
+                    selectedIndex
+                      ? "2.6"
+                      : "1.7"
+                  }
+                  className={
+                    point.dataIndex ===
+                    selectedIndex
+                      ? "bi-mobile-point-selected"
+                      : "bi-mobile-point"
+                  }
+                  vectorEffect="non-scaling-stroke"
+                />
+              ),
+            )}
+          </svg>
+
+          <div
+            className="bi-mobile-axis"
+            style={{
+              gridTemplateColumns: `repeat(${Math.max(
+                chart.data.length,
+                1,
+              )}, minmax(0, 1fr))`,
+            }}
+          >
+            {chart.data.map(
+              (item, index) => {
+                const showLabel =
+                  index === 0 ||
+                  index ===
+                    chart.data.length -
+                      1 ||
+                  index %
+                    axisLabelStep ===
+                    0;
+
+                return (
+                  <span
+                    key={item.key}
+                  >
+                    {showLabel
+                      ? item.label
+                      : ""}
+                  </span>
+                );
+              },
+            )}
+          </div>
+        </div>
+      )}
+
+      {metric === "bodyweight" &&
+      !hasStandard ? (
+        <p className="bi-mobile-standard-unavailable">
+          No active Broilers bodyweight standard is available.
+        </p>
       ) : null}
-
-      <text x={left} y={height - 7} className="bi-axis-text">
-        Day {minAge}
-      </text>
-
-      <text
-        x={width - right}
-        y={height - 7}
-        textAnchor="end"
-        className="bi-axis-text"
-      >
-        Day {maxAge}
-      </text>
-
-      <rect
-        x={left}
-        y={top}
-        width={width - left - right}
-        height={height - top - bottom}
-        fill="transparent"
-        className="bi-chart-hit-area"
-      />
-    </svg>
+    </article>
   );
 }
 
@@ -1536,19 +2068,14 @@ function BroilerIntelligenceContent() {
               <article className="bi-panel">
                 <div className="bi-panel-head">
                   <div>
-                    <p>Growth Trajectory</p>
-                    <h3>Actual bodyweight vs standard</h3>
-                  </div>
-
-                  <div className="bi-legend">
-                    <span className="actual">Actual</span>
-                    <span className="standard">Standard</span>
+                    <p>Performance Trajectory</p>
+                    <h3>Interactive flock performance</h3>
                   </div>
                 </div>
 
-                <GrowthChart
-                  actual={focusStory.weightActualSeries}
-                  standard={focusStory.weightStandardSeries}
+                <MobileStylePerformanceChart
+                  story={focusStory}
+                  standards={standards}
                 />
 
                 <div className="bi-growth-footer">
@@ -2416,6 +2943,237 @@ function BroilerIntelligenceContent() {
           color: #4d6a60;
           background: #f5faf8;
           border: 1px solid #dce9e4;
+        }
+
+
+        .bi-mobile-chart-card {
+          border: 1px solid #d8e7e1;
+          background:
+            linear-gradient(
+              180deg,
+              #fbfefd 0%,
+              #f4faf7 100%
+            );
+          border-radius: 9px;
+          padding: 8px;
+        }
+
+        .bi-mobile-chart-controls {
+          display: flex;
+          justify-content: space-between;
+          align-items: end;
+          gap: 8px;
+          margin-bottom: 7px;
+        }
+
+        .bi-mobile-chart-controls label {
+          display: grid;
+          gap: 3px;
+        }
+
+        .bi-mobile-chart-controls label > span {
+          font-size: 7.5px;
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: .11em;
+          color: #5f7b71;
+        }
+
+        .bi-mobile-chart-controls select {
+          height: 28px;
+          min-width: 180px;
+          border: 1px solid #c8d9d2;
+          border-radius: 6px;
+          background: #fff;
+          padding: 0 8px;
+          color: #143e33;
+          font-size: 9px;
+          font-weight: 800;
+        }
+
+        .bi-mobile-range {
+          display: flex;
+          gap: 3px;
+        }
+
+        .bi-mobile-range button {
+          min-width: 34px;
+          height: 26px;
+          padding: 0 7px;
+          border: 1px solid #d2e0db;
+          border-radius: 6px;
+          background: #fff;
+          color: #5f756d;
+          font-size: 8px;
+          font-weight: 900;
+          cursor: pointer;
+        }
+
+        .bi-mobile-range button.active {
+          border-color: #0b6a51;
+          background: #0b6a51;
+          color: #fff;
+        }
+
+        .bi-mobile-chart-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 10px;
+          margin-bottom: 3px;
+        }
+
+        .bi-mobile-chart-summary {
+          display: grid;
+          gap: 1px;
+        }
+
+        .bi-mobile-chart-summary > small {
+          font-size: 7.5px;
+          font-weight: 900;
+          letter-spacing: .12em;
+          color: #39715f;
+        }
+
+        .bi-mobile-chart-summary > strong {
+          font-size: 18px;
+          line-height: 1;
+          color: #103f34;
+        }
+
+        .bi-mobile-chart-summary > span {
+          font-size: 8px;
+          color: #72847e;
+        }
+
+        .bi-mobile-chart-comparison {
+          display: flex;
+          gap: 5px;
+          flex-wrap: wrap;
+          margin-top: 3px;
+        }
+
+        .bi-mobile-chart-comparison span {
+          display: inline-flex;
+          gap: 4px;
+          align-items: center;
+          padding: 3px 5px;
+          border-radius: 999px;
+          background: #edf5f2;
+          color: #365f52;
+          font-size: 7.5px;
+        }
+
+        .bi-mobile-chart-comparison b {
+          color: #163f34;
+        }
+
+        .bi-mobile-chart-legend {
+          display: flex;
+          gap: 8px;
+          align-items: center;
+          flex-wrap: wrap;
+          justify-content: flex-end;
+          color: #667b73;
+          font-size: 7.5px;
+          font-weight: 800;
+        }
+
+        .bi-mobile-chart-legend span {
+          display: inline-flex;
+          gap: 4px;
+          align-items: center;
+        }
+
+        .bi-mobile-chart-legend i {
+          display: inline-block;
+          width: 16px;
+          height: 2px;
+        }
+
+        .bi-mobile-chart-legend i.actual {
+          background: #0b6a51;
+        }
+
+        .bi-mobile-chart-legend i.standard {
+          background: #9eb0aa;
+        }
+
+        .bi-mobile-chart-plot {
+          position: relative;
+        }
+
+        .bi-mobile-chart-plot svg {
+          width: 100%;
+          height: 185px;
+          display: block;
+          overflow: visible;
+          touch-action: none;
+          cursor: crosshair;
+        }
+
+        .bi-mobile-baseline {
+          stroke: #d8e4df;
+          stroke-width: 1;
+        }
+
+        .bi-mobile-area {
+          fill: #dff1e9;
+          opacity: .62;
+        }
+
+        .bi-mobile-standard-line {
+          stroke: #9cafaa;
+          stroke-width: 1.5;
+          stroke-dasharray: 3 3;
+          stroke-linecap: round;
+          stroke-linejoin: round;
+        }
+
+        .bi-mobile-actual-line {
+          stroke: #0b6a51;
+          stroke-width: 2.6;
+          stroke-linecap: round;
+          stroke-linejoin: round;
+        }
+
+        .bi-mobile-selection-line {
+          stroke: #66867a;
+          stroke-width: 1;
+          stroke-dasharray: 2 2;
+          opacity: .9;
+        }
+
+        .bi-mobile-point {
+          fill: #fff;
+          stroke: #0b6a51;
+          stroke-width: 1.25;
+        }
+
+        .bi-mobile-point-selected {
+          fill: #0b6a51;
+          stroke: #fff;
+          stroke-width: 1.5;
+        }
+
+        .bi-mobile-axis {
+          display: grid;
+          align-items: start;
+          margin-top: -1px;
+        }
+
+        .bi-mobile-axis span {
+          min-width: 0;
+          text-align: center;
+          font-size: 6.5px;
+          color: #7b8d86;
+          white-space: nowrap;
+        }
+
+        .bi-mobile-standard-unavailable {
+          margin: 5px 0 0;
+          font-size: 8px;
+          color: #806217;
         }
 
         @media (max-width: 1180px) {
