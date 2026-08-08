@@ -376,6 +376,8 @@ function GrowthChart({
   actual: { age: number; value: number }[];
   standard: { age: number; value: number }[];
 }) {
+  const [hoveredAge, setHoveredAge] = useState<number | null>(null);
+
   const width = 760;
   const height = 225;
   const left = 42;
@@ -410,12 +412,75 @@ function GrowthChart({
   const pts = (rows: { age: number; value: number }[]) =>
     rows.map((row) => `${x(row.age)},${y(row.value)}`).join(" ");
 
+  const hoverActual =
+    hoveredAge === null
+      ? null
+      : actual.reduce((closest, row) =>
+          Math.abs(row.age - hoveredAge) < Math.abs(closest.age - hoveredAge)
+            ? row
+            : closest,
+        actual[0]);
+
+  const hoverStandard = hoverActual
+    ? standard.reduce(
+        (closest, row) =>
+          Math.abs(row.age - hoverActual.age) <
+          Math.abs(closest.age - hoverActual.age)
+            ? row
+            : closest,
+        standard[0],
+      )
+    : null;
+
+  const hoverVarianceKg =
+    hoverActual && hoverStandard
+      ? hoverActual.value - hoverStandard.value
+      : null;
+
+  const hoverVariancePct =
+    hoverVarianceKg !== null && hoverStandard && hoverStandard.value > 0
+      ? (hoverVarianceKg / hoverStandard.value) * 100
+      : null;
+
+  const tooltipWidth = 156;
+  const tooltipHeight = 84;
+
+  const tooltipX = hoverActual
+    ? Math.min(
+        width - right - tooltipWidth,
+        Math.max(left + 4, x(hoverActual.age) + 10),
+      )
+    : 0;
+
+  const tooltipY = hoverActual
+    ? Math.min(
+        height - bottom - tooltipHeight - 2,
+        Math.max(top + 2, y(hoverActual.value) - 44),
+      )
+    : 0;
+
+  function handleMouseMove(event: React.MouseEvent<SVGSVGElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const mouseX =
+      ((event.clientX - rect.left) / Math.max(1, rect.width)) * width;
+
+    const clampedX = Math.max(left, Math.min(width - right, mouseX));
+    const age =
+      minAge +
+      ((clampedX - left) / Math.max(1, width - left - right)) *
+        (maxAge - minAge);
+
+    setHoveredAge(age);
+  }
+
   return (
     <svg
       viewBox={`0 0 ${width} ${height}`}
       className="bi-growth-chart"
       role="img"
       aria-label="Actual bodyweight versus standard"
+      onMouseMove={handleMouseMove}
+      onMouseLeave={() => setHoveredAge(null)}
     >
       {[0.25, 0.5, 0.75, 1].map((f) => {
         const value = maxY * f;
@@ -462,6 +527,101 @@ function GrowthChart({
         />
       ))}
 
+      {hoverActual ? (
+        <g className="bi-hover-layer" pointerEvents="none">
+          <line
+            x1={x(hoverActual.age)}
+            x2={x(hoverActual.age)}
+            y1={top}
+            y2={height - bottom}
+            className="bi-hover-line"
+          />
+
+          {hoverStandard ? (
+            <circle
+              cx={x(hoverActual.age)}
+              cy={y(hoverStandard.value)}
+              r="4.2"
+              className="bi-hover-standard-dot"
+            />
+          ) : null}
+
+          <circle
+            cx={x(hoverActual.age)}
+            cy={y(hoverActual.value)}
+            r="5"
+            className="bi-hover-actual-dot"
+          />
+
+          <g transform={`translate(${tooltipX}, ${tooltipY})`}>
+            <rect
+              width={tooltipWidth}
+              height={tooltipHeight}
+              rx="7"
+              className="bi-chart-tooltip-bg"
+            />
+
+            <text x="10" y="15" className="bi-tooltip-title">
+              Day {hoverActual.age}
+            </text>
+
+            <text x="10" y="31" className="bi-tooltip-label">
+              Actual BW
+            </text>
+            <text x="146" y="31" textAnchor="end" className="bi-tooltip-value">
+              {hoverActual.value.toFixed(3)} kg
+            </text>
+
+            <text x="10" y="46" className="bi-tooltip-label">
+              Standard BW
+            </text>
+            <text x="146" y="46" textAnchor="end" className="bi-tooltip-value">
+              {hoverStandard ? `${hoverStandard.value.toFixed(3)} kg` : "—"}
+            </text>
+
+            <text x="10" y="61" className="bi-tooltip-label">
+              Variance
+            </text>
+            <text
+              x="146"
+              y="61"
+              textAnchor="end"
+              className={
+                hoverVarianceKg !== null && hoverVarianceKg < 0
+                  ? "bi-tooltip-value bi-tooltip-bad"
+                  : "bi-tooltip-value bi-tooltip-good"
+              }
+            >
+              {hoverVarianceKg === null
+                ? "—"
+                : `${hoverVarianceKg > 0 ? "+" : ""}${(
+                    hoverVarianceKg * 1000
+                  ).toFixed(0)} g`}
+            </text>
+
+            <text x="10" y="76" className="bi-tooltip-label">
+              Variance %
+            </text>
+            <text
+              x="146"
+              y="76"
+              textAnchor="end"
+              className={
+                hoverVariancePct !== null && hoverVariancePct < 0
+                  ? "bi-tooltip-value bi-tooltip-bad"
+                  : "bi-tooltip-value bi-tooltip-good"
+              }
+            >
+              {hoverVariancePct === null
+                ? "—"
+                : `${hoverVariancePct > 0 ? "+" : ""}${hoverVariancePct.toFixed(
+                    1,
+                  )}%`}
+            </text>
+          </g>
+        </g>
+      ) : null}
+
       <text x={left} y={height - 7} className="bi-axis-text">
         Day {minAge}
       </text>
@@ -474,6 +634,15 @@ function GrowthChart({
       >
         Day {maxAge}
       </text>
+
+      <rect
+        x={left}
+        y={top}
+        width={width - left - right}
+        height={height - top - bottom}
+        fill="transparent"
+        className="bi-chart-hit-area"
+      />
     </svg>
   );
 }
@@ -1873,6 +2042,66 @@ function BroilerIntelligenceContent() {
           fill: white;
           stroke: #0c6b52;
           stroke-width: 2;
+        }
+
+
+        .bi-growth-chart {
+          cursor: crosshair;
+        }
+
+        .bi-chart-hit-area {
+          pointer-events: all;
+        }
+
+        .bi-hover-line {
+          stroke: #789b90;
+          stroke-width: 1;
+          stroke-dasharray: 3 3;
+        }
+
+        .bi-hover-actual-dot {
+          fill: #ffffff;
+          stroke: #0c6b52;
+          stroke-width: 2.4;
+        }
+
+        .bi-hover-standard-dot {
+          fill: #ffffff;
+          stroke: #9aada6;
+          stroke-width: 2;
+        }
+
+        .bi-chart-tooltip-bg {
+          fill: rgba(16, 63, 52, 0.97);
+          stroke: rgba(255, 255, 255, 0.18);
+          stroke-width: 1;
+          filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.16));
+        }
+
+        .bi-tooltip-title {
+          fill: #ffffff;
+          font-size: 9px;
+          font-weight: 900;
+        }
+
+        .bi-tooltip-label {
+          fill: #cfe3da;
+          font-size: 8px;
+          font-weight: 700;
+        }
+
+        .bi-tooltip-value {
+          fill: #ffffff;
+          font-size: 8px;
+          font-weight: 900;
+        }
+
+        .bi-tooltip-bad {
+          fill: #ffc0bb;
+        }
+
+        .bi-tooltip-good {
+          fill: #bfead5;
         }
 
         .bi-chart-empty {
