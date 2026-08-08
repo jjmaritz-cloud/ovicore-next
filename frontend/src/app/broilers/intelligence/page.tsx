@@ -122,6 +122,7 @@ type PerformanceRange = 7 | 14 | 30 | "all";
 type ChartDatum = {
   key: string;
   label: string;
+  age: number;
   actual: number | null;
   standard: number | null;
 };
@@ -606,6 +607,7 @@ function buildChartData(
     return {
       key: record.entry_date,
       label: `${age}d`,
+      age,
       actual,
       standard,
     };
@@ -744,16 +746,42 @@ function MobileStylePerformanceChart({
   const max = rawMax + padding;
   const span = Math.max(0.1, max - min);
 
+  const minAge =
+    chart.data.length > 0
+      ? Math.min(
+          ...chart.data.map(
+            (item) => item.age,
+          ),
+        )
+      : 0;
+
+  const maxAge =
+    chart.data.length > 0
+      ? Math.max(
+          ...chart.data.map(
+            (item) => item.age,
+          ),
+        )
+      : 1;
+
+  const ageSpan = Math.max(
+    1,
+    maxAge - minAge,
+  );
+
+  const xForAge = (age: number) =>
+    ((age - minAge) / ageSpan) * 100;
+
   const pointFor = (
     value: number | null,
-    index: number,
+    age: number,
   ) => {
     if (value === null) return null;
 
     const x =
       chart.data.length <= 1
         ? 50
-        : (index / (chart.data.length - 1)) * 100;
+        : xForAge(age);
 
     const y =
       88 -
@@ -766,7 +794,7 @@ function MobileStylePerformanceChart({
     .map((item, index) => {
       const point = pointFor(
         item.actual,
-        index,
+        item.age,
       );
 
       return point
@@ -790,7 +818,7 @@ function MobileStylePerformanceChart({
     .map((item, index) => {
       const point = pointFor(
         item.standard,
-        index,
+        item.age,
       );
 
       return point
@@ -920,13 +948,10 @@ function MobileStylePerformanceChart({
       bounds.width,
     );
 
-    const approximateIndex =
-      chart.data.length <= 1
-        ? 0
-        : Math.round(
-            (relativeX / bounds.width) *
-              (chart.data.length - 1),
-          );
+    const targetAge =
+      minAge +
+      (relativeX / bounds.width) *
+        ageSpan;
 
     let nearest =
       actualCoordinates[0];
@@ -935,14 +960,22 @@ function MobileStylePerformanceChart({
       const point of
       actualCoordinates.slice(1)
     ) {
+      const pointAge =
+        chart.data[
+          point.dataIndex
+        ]?.age ?? minAge;
+
+      const nearestAge =
+        chart.data[
+          nearest.dataIndex
+        ]?.age ?? minAge;
+
       if (
         Math.abs(
-          point.dataIndex -
-            approximateIndex,
+          pointAge - targetAge,
         ) <
         Math.abs(
-          nearest.dataIndex -
-            approximateIndex,
+          nearestAge - targetAge,
         )
       ) {
         nearest = point;
@@ -1147,15 +1180,7 @@ function MobileStylePerformanceChart({
                 stretches circles on this wide chart. */}
           </svg>
 
-          <div
-            className="bi-mobile-axis"
-            style={{
-              gridTemplateColumns: `repeat(${Math.max(
-                chart.data.length,
-                1,
-              )}, minmax(0, 1fr))`,
-            }}
-          >
+          <div className="bi-mobile-axis">
             {chart.data.map(
               (item, index) => {
                 const showLabel =
@@ -1167,13 +1192,20 @@ function MobileStylePerformanceChart({
                     axisLabelStep ===
                     0;
 
+                if (!showLabel) {
+                  return null;
+                }
+
                 return (
                   <span
                     key={item.key}
+                    style={{
+                      left: `${xForAge(
+                        item.age,
+                      )}%`,
+                    }}
                   >
-                    {showLabel
-                      ? item.label
-                      : ""}
+                    {item.label}
                   </span>
                 );
               },
@@ -4245,17 +4277,22 @@ function BroilerIntelligenceContent() {
         }
 
         .bi-mobile-axis {
-          display: grid;
-          align-items: start;
+          position: relative;
+          height: 14px;
           margin-top: -1px;
         }
 
         .bi-mobile-axis span {
-          min-width: 0;
-          text-align: center;
+          position: absolute;
+          top: 0;
+          transform: translateX(-50%);
           font-size: 6.5px;
           color: #7b8d86;
           white-space: nowrap;
+        }
+
+        .bi-mobile-axis span:first-child {
+          transform: translateX(0);
         }
 
         .bi-mobile-standard-unavailable {
