@@ -1390,19 +1390,27 @@ function MobileStylePerformanceChart({
             )}
           </div>
 
-          {selectedPoint ? (
-            <span
-              className="bi-modern-selected-marker"
-              style={{
-                left: `${selectedPoint.x}%`,
-                top: `${selectedPoint.y}%`,
-              }}
-              aria-hidden="true"
-            >
-              <span className="bi-modern-selected-marker-ring" />
-              <span className="bi-modern-selected-marker-dot" />
-            </span>
-          ) : null}
+          <div className="bi-modern-point-layer" aria-hidden="true">
+            {actualCoordinates.map((point) => {
+              const isActive =
+                point.dataIndex === selectedIndex;
+
+              return (
+                <span
+                  key={`${point.dataIndex}-${point.x}-${point.y}`}
+                  className={`bi-modern-data-point ${
+                    isActive ? "active" : ""
+                  }`}
+                  style={{
+                    left: `${point.x}%`,
+                    top: `${point.y}%`,
+                  }}
+                >
+                  <span className="bi-modern-data-point-core" />
+                </span>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -4564,7 +4572,7 @@ function BroilerIntelligenceContent() {
 
         .bi-mobile-actual-line {
           stroke: var(--bi-accent);
-          stroke-width: 2.35;
+          stroke-width: 2.15;
           stroke-linecap: round;
           stroke-linejoin: round;
           filter: none;
@@ -4579,70 +4587,57 @@ function BroilerIntelligenceContent() {
 
 
 
-        .bi-modern-selected-marker {
+        .bi-modern-point-layer {
           position: absolute;
-          width: 16px;
-          height: 16px;
-          transform: translate(-50%, -50%);
+          inset: 0;
           pointer-events: none;
           z-index: 4;
         }
 
-        .bi-modern-selected-marker-dot,
-        .bi-modern-selected-marker-ring {
+        .bi-modern-data-point {
           position: absolute;
-          left: 50%;
-          top: 50%;
-          border-radius: 999px;
+          width: 9px;
+          height: 9px;
           transform: translate(-50%, -50%);
+          transition:
+            width 150ms ease-out,
+            height 150ms ease-out,
+            filter 150ms ease-out;
         }
 
-        .bi-modern-selected-marker-dot {
-          width: 8px;
-          height: 8px;
+        .bi-modern-data-point-core {
+          position: absolute;
+          inset: 2px;
+          border-radius: 999px;
           background: var(--bi-accent);
-          border: 2px solid #ffffff;
+          border: 1.5px solid #ffffff;
+          box-shadow: 0 0 0 1px color-mix(in srgb, var(--bi-accent) 72%, transparent);
+          transition:
+            inset 150ms ease-out,
+            border-width 150ms ease-out,
+            box-shadow 150ms ease-out,
+            transform 150ms ease-out;
+        }
+
+        .bi-modern-data-point.active {
+          width: 16px;
+          height: 16px;
+          filter: drop-shadow(0 3px 6px rgba(18, 63, 52, .18));
+        }
+
+        .bi-modern-data-point.active .bi-modern-data-point-core {
+          inset: 2px;
+          border-width: 2px;
           box-shadow:
             0 0 0 1px var(--bi-accent),
-            0 2px 5px rgba(18, 63, 52, .14);
-        }
-
-        .bi-modern-selected-marker-ring {
-          width: 14px;
-          height: 14px;
-          border: 1px solid var(--bi-accent);
-          opacity: .38;
-          animation:
-            bi-marker-pulse 1.35s ease-out infinite;
-        }
-
-        @keyframes bi-marker-pulse {
-          0% {
-            transform:
-              translate(-50%, -50%)
-              scale(.72);
-            opacity: .42;
-          }
-
-          70% {
-            transform:
-              translate(-50%, -50%)
-              scale(1.12);
-            opacity: .08;
-          }
-
-          100% {
-            transform:
-              translate(-50%, -50%)
-              scale(1.12);
-            opacity: 0;
-          }
+            0 0 0 4px color-mix(in srgb, var(--bi-accent) 14%, transparent);
+          transform: scale(1.02);
         }
 
         @media (prefers-reduced-motion: reduce) {
-          .bi-modern-selected-marker-ring {
-            animation: none;
-            opacity: .22;
+          .bi-modern-data-point,
+          .bi-modern-data-point-core {
+            transition: none;
           }
         }
 
