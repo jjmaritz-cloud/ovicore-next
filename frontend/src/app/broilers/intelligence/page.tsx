@@ -694,70 +694,6 @@ function buildChartData(
 }
 
 
-function smoothSvgPath(
-  points: Array<{ x: number; y: number }>,
-) {
-  if (points.length === 0) return "";
-  if (points.length === 1) {
-    return `M ${points[0].x} ${points[0].y}`;
-  }
-
-  const smoothing = 0.18;
-
-  const line = (
-    point: { x: number; y: number },
-    index: number,
-  ) => {
-    const previous =
-      points[index - 1] ?? point;
-    const next =
-      points[index + 1] ?? point;
-    const nextNext =
-      points[index + 2] ?? next;
-
-    const controlPointOne = {
-      x:
-        previous.x +
-        (next.x - previous.x) *
-          smoothing,
-      y:
-        previous.y +
-        (next.y - previous.y) *
-          smoothing,
-    };
-
-    const controlPointTwo = {
-      x:
-        next.x -
-        (nextNext.x - point.x) *
-          smoothing,
-      y:
-        next.y -
-        (nextNext.y - point.y) *
-          smoothing,
-    };
-
-    return `C ${controlPointOne.x} ${controlPointOne.y}, ${controlPointTwo.x} ${controlPointTwo.y}, ${next.x} ${next.y}`;
-  };
-
-  return points.reduce(
-    (path, point, index) => {
-      if (index === 0) {
-        return `M ${point.x} ${point.y}`;
-      }
-
-      return path;
-    },
-    "",
-  ) +
-    points
-      .slice(0, -1)
-      .map((point, index) =>
-        line(point, index),
-      )
-      .join(" ");
-}
-
 function metricAccentClass(
   metric: PerformanceMetric,
 ) {
@@ -948,13 +884,19 @@ function MobileStylePerformanceChart({
     .map((point) => `${point.x},${point.y}`)
     .join(" ");
 
-  const actualPath = smoothSvgPath(
-    actualCoordinates,
-  );
+  const actualPath =
+    actualCoordinates.length > 0
+      ? `M ${actualCoordinates
+          .map((point) => `${point.x} ${point.y}`)
+          .join(" L ")}`
+      : "";
 
-  const standardPath = smoothSvgPath(
-    standardCoordinates,
-  );
+  const standardPath =
+    standardCoordinates.length > 0
+      ? `M ${standardCoordinates
+          .map((point) => `${point.x} ${point.y}`)
+          .join(" L ")}`
+      : "";
 
   const areaPath =
     actualCoordinates.length > 0
@@ -1362,12 +1304,12 @@ function MobileStylePerformanceChart({
                 <stop
                   offset="0%"
                   stopColor="var(--bi-accent)"
-                  stopOpacity="0.18"
+                  stopOpacity="0.13"
                 />
                 <stop
                   offset="100%"
                   stopColor="var(--bi-accent)"
-                  stopOpacity="0.02"
+                  stopOpacity="0.015"
                 />
               </linearGradient>
             </defs>
@@ -1450,12 +1392,16 @@ function MobileStylePerformanceChart({
 
           {selectedPoint ? (
             <span
-              className="bi-modern-selected-dot"
+              className="bi-modern-selected-marker"
               style={{
                 left: `${selectedPoint.x}%`,
                 top: `${selectedPoint.y}%`,
               }}
-            />
+              aria-hidden="true"
+            >
+              <span className="bi-modern-selected-marker-ring" />
+              <span className="bi-modern-selected-marker-dot" />
+            </span>
           ) : null}
         </div>
       )}
@@ -4618,34 +4564,86 @@ function BroilerIntelligenceContent() {
 
         .bi-mobile-actual-line {
           stroke: var(--bi-accent);
-          stroke-width: 2.75;
+          stroke-width: 2.35;
           stroke-linecap: round;
           stroke-linejoin: round;
-          filter: drop-shadow(
-            0 1px 1px rgba(16, 63, 52, .08)
-          );
+          filter: none;
         }
 
         .bi-mobile-selection-line {
-          stroke: #7e948b;
-          stroke-width: .72;
+          stroke: #7d9188;
+          stroke-width: .7;
           stroke-dasharray: 2 2;
-          opacity: .6;
+          opacity: .55;
         }
 
-        .bi-modern-selected-dot {
+
+
+        .bi-modern-selected-marker {
           position: absolute;
-          width: 9px;
-          height: 9px;
-          border-radius: 50%;
-          background: var(--bi-accent);
-          border: 2px solid #fff;
-          box-shadow:
-            0 0 0 1px var(--bi-accent),
-            0 3px 8px rgba(18, 63, 52, .15);
+          width: 16px;
+          height: 16px;
           transform: translate(-50%, -50%);
           pointer-events: none;
-          z-index: 3;
+          z-index: 4;
+        }
+
+        .bi-modern-selected-marker-dot,
+        .bi-modern-selected-marker-ring {
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          border-radius: 999px;
+          transform: translate(-50%, -50%);
+        }
+
+        .bi-modern-selected-marker-dot {
+          width: 8px;
+          height: 8px;
+          background: var(--bi-accent);
+          border: 2px solid #ffffff;
+          box-shadow:
+            0 0 0 1px var(--bi-accent),
+            0 2px 5px rgba(18, 63, 52, .14);
+        }
+
+        .bi-modern-selected-marker-ring {
+          width: 14px;
+          height: 14px;
+          border: 1px solid var(--bi-accent);
+          opacity: .38;
+          animation:
+            bi-marker-pulse 1.35s ease-out infinite;
+        }
+
+        @keyframes bi-marker-pulse {
+          0% {
+            transform:
+              translate(-50%, -50%)
+              scale(.72);
+            opacity: .42;
+          }
+
+          70% {
+            transform:
+              translate(-50%, -50%)
+              scale(1.12);
+            opacity: .08;
+          }
+
+          100% {
+            transform:
+              translate(-50%, -50%)
+              scale(1.12);
+            opacity: 0;
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .bi-modern-selected-marker-ring {
+            animation: none;
+            opacity: .22;
+          }
         }
 
         .bi-mobile-axis {
