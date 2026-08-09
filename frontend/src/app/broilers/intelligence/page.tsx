@@ -5471,9 +5471,24 @@ function BroilerIntelligenceContent() {
             overflow: hidden;
           }
 
-          .bi-mobile-chart-card {
-            height: 100%;
+          /* The trajectory panel has content both above and below the chart card.
+             Make the panel itself the flex container so the chart only receives
+             the space that remains after its heading and footer are reserved. */
+          .bi-core-grid > .bi-panel:first-child {
+            display: flex;
+            flex-direction: column;
             min-height: 0;
+          }
+
+          .bi-core-grid > .bi-panel:first-child > .bi-panel-head,
+          .bi-core-grid > .bi-panel:first-child > .bi-growth-footer {
+            flex: 0 0 auto;
+          }
+
+          .bi-mobile-chart-card {
+            height: auto;
+            min-height: 0;
+            flex: 1 1 0;
             display: flex;
             flex-direction: column;
           }
@@ -5629,6 +5644,19 @@ function BroilerIntelligenceContent() {
 
           .bi-mobile-chart-card {
             overflow: hidden;
+            height: auto;
+            flex: 1 1 0;
+            min-height: 0;
+          }
+
+          .bi-core-grid > .bi-panel:first-child {
+            display: flex;
+            flex-direction: column;
+          }
+
+          .bi-core-grid > .bi-panel:first-child > .bi-panel-head,
+          .bi-core-grid > .bi-panel:first-child > .bi-growth-footer {
+            flex: 0 0 auto;
           }
 
           .bi-modern-chart-toolbar,
@@ -5655,6 +5683,8 @@ function BroilerIntelligenceContent() {
           .bi-mobile-chart-comparison span { font-size: 7.8px; }
           .bi-modern-chart-insight strong { font-size: 9px; }
           .bi-modern-chart-insight p { font-size: 8px; }
+          .bi-modern-chart-insight { margin-bottom: 3px; }
+          .bi-growth-footer { margin-top: 3px; }
           .bi-growth-footer span { font-size: 8px; }
           .bi-growth-footer strong { font-size: 9px; }
 
