@@ -2621,6 +2621,7 @@ function BroilerIntelligenceContent() {
         waterChangePct,
         feedChangePct,
         mortalityChangePct,
+        recentMortalityPct: recentMortality,
       };
     });
 
@@ -3029,6 +3030,83 @@ function BroilerIntelligenceContent() {
               />
             </section>
 
+            <section className={`bi-health-strip bi-health-${animalWelfare.focus?.tone ?? "normal"}`}>
+              <div className="bi-health-title">
+                <div>
+                  <p>Bird Health & Welfare</p>
+                  <h3>Early warning indicators</h3>
+                </div>
+                <span className={`bi-health-status ${animalWelfare.focus?.tone ?? "normal"}`}>
+                  {(animalWelfare.focus?.tone ?? "normal").toUpperCase()}
+                </span>
+              </div>
+
+              <div className="bi-health-signals">
+                <div className={`bi-health-signal ${animalWelfare.focus?.waterChangePct != null && animalWelfare.focus.waterChangePct <= -6 ? "warn" : "ok"}`}>
+                  <span>Water</span>
+                  <strong>
+                    {animalWelfare.focus?.waterChangePct != null
+                      ? signed(animalWelfare.focus.waterChangePct, 0, "%")
+                      : "—"}
+                  </strong>
+                  <small>3d vs prior 3d</small>
+                </div>
+
+                <div className={`bi-health-signal ${animalWelfare.focus?.feedChangePct != null && animalWelfare.focus.feedChangePct <= -5 ? "warn" : "ok"}`}>
+                  <span>Feed intake</span>
+                  <strong>
+                    {animalWelfare.focus?.feedChangePct != null
+                      ? signed(animalWelfare.focus.feedChangePct, 0, "%")
+                      : "—"}
+                  </strong>
+                  <small>3d vs prior 3d</small>
+                </div>
+
+                <div className={`bi-health-signal ${animalWelfare.focus?.mortalityChangePct != null && animalWelfare.focus.mortalityChangePct >= 25 ? "bad" : "ok"}`}>
+                  <span>Mortality</span>
+                  <strong>
+                    {animalWelfare.focus?.recentMortalityPct != null
+                      ? `${fmt(animalWelfare.focus.recentMortalityPct, 2)}%`
+                      : "—"}
+                  </strong>
+                  <small>
+                    {animalWelfare.focus?.mortalityChangePct != null
+                      ? `${signed(animalWelfare.focus.mortalityChangePct, 0, "%")} trend`
+                      : "daily trend"}
+                  </small>
+                </div>
+
+                <div className={`bi-health-signal ${focusStory.bwVariancePct != null && focusStory.bwVariancePct <= -5 ? "warn" : "ok"}`}>
+                  <span>Bodyweight</span>
+                  <strong>
+                    {focusStory.bwVariancePct != null
+                      ? signed(focusStory.bwVariancePct, 1, "%")
+                      : "—"}
+                  </strong>
+                  <small>vs age standard</small>
+                </div>
+
+                <div className={`bi-health-signal ${focusStory.livabilityPct < 97 ? "bad" : focusStory.livabilityPct < 98.5 ? "warn" : "ok"}`}>
+                  <span>Livability</span>
+                  <strong>{pct(focusStory.livabilityPct, 2)}</strong>
+                  <small>current flock</small>
+                </div>
+              </div>
+
+              <div className="bi-health-readout">
+                <span>OviCore read</span>
+                <strong>
+                  {animalWelfare.focus?.tone === "urgent"
+                    ? "Multiple bird-health signals are deteriorating together — inspect the flock now."
+                    : animalWelfare.focus?.tone === "attention"
+                      ? "Combined deterioration is developing across bird-health indicators."
+                      : animalWelfare.focus?.tone === "watch"
+                        ? "An early health signal is moving outside the flock's recent pattern."
+                        : "No combined deterioration pattern detected across water, feed and mortality."}
+                </strong>
+              </div>
+            </section>
+
             <section className="bi-core-grid">
               <article className="bi-panel">
                 <div className="bi-panel-head">
@@ -3395,7 +3473,7 @@ function BroilerIntelligenceContent() {
                 </div>
 
                 <div className="bi-anomaly-list">
-                  {anomalies.map((anomaly, index) => (
+                  {anomalies.slice(0, 3).map((anomaly, index) => (
                     <div
                       key={`${anomaly.title}-${index}`}
                       className={`bi-anomaly bi-anomaly-${anomaly.severity}`}
@@ -3419,7 +3497,7 @@ function BroilerIntelligenceContent() {
                 </div>
 
                 <div className="bi-change-list">
-                  {recentChanges.map((change, index) => (
+                  {recentChanges.slice(0, 3).map((change, index) => (
                     <div
                       key={`${change.title}-${index}`}
                       className={`bi-change bi-change-${change.tone}`}
@@ -3445,7 +3523,7 @@ function BroilerIntelligenceContent() {
                 </div>
 
                 <div className="bi-flock-list">
-                  {stories.slice(0, 7).map((story) => (
+                  {stories.slice(0, 4).map((story) => (
                     <button
                       key={story.plan.id}
                       type="button"
@@ -3493,63 +3571,6 @@ function BroilerIntelligenceContent() {
                     </button>
                   ))}
                 </div>
-              </article>
-
-              <article className={`bi-panel bi-welfare bi-welfare-${animalWelfare.overallTone}`}>
-                <div className="bi-panel-head bi-welfare-head">
-                  <div>
-                    <p>Animal Welfare</p>
-                    <h3>Early health & welfare detection</h3>
-                  </div>
-
-                  <span className={`bi-welfare-status ${animalWelfare.overallTone}`}>
-                    {animalWelfare.overallTone === "urgent"
-                      ? "URGENT"
-                      : animalWelfare.overallTone === "attention"
-                        ? "ATTENTION"
-                        : animalWelfare.overallTone === "watch"
-                          ? "WATCH"
-                          : "NORMAL"}
-                  </span>
-                </div>
-
-                {animalWelfare.flaggedCount === 0 ? (
-                  <div className="bi-welfare-normal">
-                    <span>✓</span>
-                    <div>
-                      <strong>No emerging welfare pattern detected</strong>
-                      <p>Water, feed and mortality are not showing a combined deterioration signal.</p>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <div className="bi-welfare-summary">
-                      <strong>{animalWelfare.flaggedCount}</strong>
-                      <span>flock{animalWelfare.flaggedCount === 1 ? "" : "s"} showing an early warning pattern</span>
-                    </div>
-
-                    <div className="bi-welfare-list">
-                      {animalWelfare.topFlagged.map((item) => (
-                        <button
-                          type="button"
-                          key={item.story.plan.id}
-                          onClick={() => setSelectedPlanId(item.story.plan.id)}
-                          className="bi-welfare-row"
-                        >
-                          <div>
-                            <strong>{item.story.farmName} / {item.story.shedName}</strong>
-                            <span>{item.signals.join(" · ") || "Combined welfare pressure"}</span>
-                          </div>
-                          <b>{Math.round(item.score)}</b>
-                        </button>
-                      ))}
-                    </div>
-
-                    <p className="bi-welfare-note">
-                      OviCore is watching for water and feed deterioration before mortality materially changes.
-                    </p>
-                  </>
-                )}
               </article>
 
               <article className="bi-panel">
@@ -4047,13 +4068,144 @@ function BroilerIntelligenceContent() {
           line-height: 1.35;
         }
 
+        .bi-health-strip {
+          display: grid;
+          grid-template-columns: 185px minmax(0, 1fr) minmax(260px, .8fr);
+          gap: 7px;
+          align-items: stretch;
+          padding: 7px 8px;
+          border: 1px solid #d7e5df;
+          border-left: 3px solid #4b9a79;
+          border-radius: 10px;
+          background: linear-gradient(90deg, #f5fbf8 0%, #ffffff 48%, #f8fbfa 100%);
+        }
+
+        .bi-health-watch { border-left-color: #d1a032; }
+        .bi-health-attention { border-left-color: #d47a24; }
+        .bi-health-urgent { border-left-color: #c5534b; }
+
+        .bi-health-title {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 7px;
+          padding-right: 7px;
+          border-right: 1px solid #e2ece8;
+        }
+
+        .bi-health-title p {
+          margin: 0 0 2px;
+          font-size: 7px;
+          font-weight: 900;
+          letter-spacing: .11em;
+          text-transform: uppercase;
+          color: #216751;
+        }
+
+        .bi-health-title h3 {
+          margin: 0;
+          font-size: 12px;
+          line-height: 1.05;
+          color: #133f34;
+        }
+
+        .bi-health-status {
+          flex: 0 0 auto;
+          padding: 4px 6px;
+          border-radius: 999px;
+          background: #e6f3ed;
+          color: #176046;
+          font-size: 6.8px;
+          font-weight: 900;
+          letter-spacing: .04em;
+        }
+
+        .bi-health-status.watch { background: #fff2ce; color: #7f5b05; }
+        .bi-health-status.attention { background: #fff0dc; color: #9a5615; }
+        .bi-health-status.urgent { background: #fee8e6; color: #a43a33; }
+
+        .bi-health-signals {
+          display: grid;
+          grid-template-columns: repeat(5, minmax(0, 1fr));
+          gap: 5px;
+        }
+
+        .bi-health-signal {
+          min-width: 0;
+          display: grid;
+          align-content: center;
+          gap: 1px;
+          padding: 5px 6px;
+          border: 1px solid #e2ebe7;
+          border-radius: 7px;
+          background: #fbfdfc;
+        }
+
+        .bi-health-signal > span {
+          font-size: 7px;
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: .06em;
+          color: #6b8179;
+        }
+
+        .bi-health-signal strong {
+          font-size: 13px;
+          line-height: 1;
+          color: #176046;
+        }
+
+        .bi-health-signal small {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          font-size: 6.5px;
+          color: #809189;
+        }
+
+        .bi-health-signal.warn {
+          background: #fffaf0;
+          border-color: #ecdca6;
+        }
+
+        .bi-health-signal.warn strong { color: #9a6810; }
+
+        .bi-health-signal.bad {
+          background: #fff3f1;
+          border-color: #ecc9c5;
+        }
+
+        .bi-health-signal.bad strong { color: #a43a33; }
+
+        .bi-health-readout {
+          display: grid;
+          align-content: center;
+          gap: 2px;
+          padding-left: 8px;
+          border-left: 1px solid #e2ece8;
+        }
+
+        .bi-health-readout span {
+          font-size: 6.8px;
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: .09em;
+          color: #216751;
+        }
+
+        .bi-health-readout strong {
+          font-size: 8.3px;
+          line-height: 1.28;
+          color: #345c50;
+        }
+
         .bi-intelligence-grid + .bi-lower-grid {
           margin-top: 0;
         }
 
         .bi-lower-grid {
           display: grid;
-          grid-template-columns: minmax(0, 1.35fr) minmax(235px, .86fr) minmax(210px, .68fr) minmax(250px, .9fr);
+          grid-template-columns: minmax(0, 1.45fr) minmax(230px, .78fr) minmax(260px, .95fr);
           gap: 7px;
         }
 
@@ -4381,12 +4533,13 @@ function BroilerIntelligenceContent() {
 
         .bi-intelligence-grid {
           display: grid;
-          grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+          grid-template-columns: minmax(0, 1.2fr) minmax(0, .9fr) minmax(0, .9fr);
           gap: 7px;
+          align-items: stretch;
         }
 
         .bi-history-panel {
-          grid-column: 1 / -1;
+          grid-column: auto;
           padding: 8px 9px;
           background: #ffffff;
         }
@@ -4401,6 +4554,12 @@ function BroilerIntelligenceContent() {
 
         .bi-history-table-wrap {
           overflow-x: auto;
+        }
+
+
+        .bi-history-panel .bi-history-table-wrap {
+          max-height: 112px;
+          overflow: auto;
         }
 
         .bi-history-table {
@@ -4457,7 +4616,7 @@ function BroilerIntelligenceContent() {
 
         .bi-history-strip {
           display: grid;
-          grid-template-columns: minmax(180px, .8fr) minmax(0, 1.6fr) minmax(220px, 1fr);
+          grid-template-columns: 1fr;
           gap: 8px;
           align-items: center;
           padding: 8px 9px;
@@ -4509,7 +4668,7 @@ function BroilerIntelligenceContent() {
 
         .bi-history-strip > p {
           margin: 0;
-          text-align: right;
+          text-align: left;
           font-size: 7.5px;
           line-height: 1.25;
           color: #75877f;
@@ -5129,6 +5288,150 @@ function BroilerIntelligenceContent() {
           color: #806217;
         }
 
+        @media (min-width: 1181px) and (min-height: 700px) {
+          .bi-page {
+            gap: 5px;
+            padding: 6px 10px 8px;
+          }
+
+          .bi-scope {
+            padding: 4px 7px;
+          }
+
+          .bi-scope select {
+            height: 26px;
+            min-width: 300px;
+            font-size: 9.5px;
+          }
+
+          .bi-scope-chips span {
+            padding: 3px 6px;
+            font-size: 7px;
+          }
+
+          .bi-story-header {
+            padding: 6px 9px;
+          }
+
+          .bi-story-header h2 {
+            font-size: 16px;
+          }
+
+          .bi-story-header > div:first-child > span {
+            margin-top: 1px;
+            font-size: 8px;
+          }
+
+          .bi-story-score {
+            min-width: 150px;
+            padding: 5px 7px;
+          }
+
+          .bi-story-score strong { font-size: 12px; }
+          .bi-story-score small { font-size: 7.5px; }
+
+          .bi-metrics { gap: 5px; }
+
+          .bi-metric {
+            min-height: 72px;
+            gap: 1px;
+            padding: 5px 7px;
+          }
+
+          .bi-metric-top > span { font-size: 7px; }
+
+          .bi-spark,
+          .bi-spark-empty {
+            width: 44px;
+            height: 16px;
+          }
+
+          .bi-metric-value { font-size: 17px; }
+          .bi-metric-meta { min-height: 10px; font-size: 7.2px; }
+          .bi-metric p { font-size: 7.2px; }
+
+          .bi-panel { padding: 6px 7px; }
+          .bi-panel-head { margin-bottom: 4px; }
+          .bi-panel-head h3 { font-size: 11px; }
+
+          .bi-mobile-chart-card {
+            padding: 7px 9px 6px;
+            border-radius: 10px;
+          }
+
+          .bi-modern-chart-toolbar {
+            margin-bottom: 4px;
+          }
+
+          .bi-mobile-range button {
+            min-width: 30px;
+            height: 23px;
+            padding: 0 6px;
+          }
+
+          .bi-modern-metric-select select {
+            height: 30px;
+            min-width: 160px;
+          }
+
+          .bi-mobile-chart-summary > strong { font-size: 20px; }
+          .bi-mobile-chart-summary > span { font-size: 7px; }
+          .bi-mobile-chart-comparison { margin-top: 3px; }
+          .bi-mobile-chart-comparison span { padding: 3px 5px; font-size: 6.8px; }
+
+          .bi-mobile-svg-stage { height: 126px; }
+          .bi-mobile-axis { height: 12px; }
+          .bi-modern-chart-insight {
+            grid-template-columns: 20px 1fr;
+            gap: 6px;
+            margin-top: 4px;
+            padding: 5px 7px;
+          }
+          .bi-modern-chart-insight-icon { width: 19px; height: 19px; font-size: 9px; }
+          .bi-modern-chart-insight strong { font-size: 8px; }
+          .bi-modern-chart-insight p { font-size: 7px; }
+
+          .bi-growth-footer { padding-top: 4px; }
+          .bi-growth-footer span { font-size: 7px; }
+          .bi-growth-footer strong { font-size: 8.5px; }
+
+          .bi-diagnosis { gap: 5px; }
+          .bi-diagnosis-callout,
+          .bi-priority { padding: 7px; }
+          .bi-diagnosis-callout strong { font-size: 9.5px; line-height: 1.28; }
+          .bi-priority p { font-size: 8.5px; line-height: 1.25; }
+
+          .bi-history-panel { padding: 6px 7px; }
+          .bi-history-panel .bi-panel-head { margin-bottom: 3px; }
+          .bi-history-strip { padding: 5px 7px; }
+          .bi-history-table th,
+          .bi-history-table td { padding: 4px 6px; }
+          .bi-history-summary-compact { margin-top: 3px; padding: 4px 6px; }
+
+          .bi-intelligence-grid > .bi-panel:not(.bi-history-panel) {
+            min-height: 0;
+            padding: 6px 7px;
+          }
+
+          .bi-intelligence-grid { gap: 5px; }
+          .bi-history-panel .bi-history-table-wrap { max-height: 86px; }
+
+          .bi-anomaly-list,
+          .bi-change-list { gap: 3px; }
+          .bi-anomaly,
+          .bi-change { padding: 4px 6px; }
+
+          .bi-lower-grid { gap: 5px; }
+          .bi-flock-list { gap: 2px; }
+          .bi-flock-row { padding: 4px 5px; }
+          .bi-flock-row strong { font-size: 8.5px; }
+          .bi-flock-row span { font-size: 7px; }
+          .bi-pressure-list { gap: 6px; }
+          .bi-actions { gap: 4px; }
+          .bi-actions p { font-size: 7.5px; line-height: 1.2; }
+          .bi-actions strong { font-size: 8.5px; }
+        }
+
         @media (max-width: 1180px) {
           .bi-metrics {
             grid-template-columns: repeat(3, 1fr);
@@ -5136,6 +5439,16 @@ function BroilerIntelligenceContent() {
 
           .bi-lower-grid {
             grid-template-columns: 1fr 1fr;
+          }
+
+          .bi-health-strip {
+            grid-template-columns: 1fr;
+          }
+
+          .bi-health-title,
+          .bi-health-readout {
+            border: 0;
+            padding: 0;
           }
 
           .bi-intelligence-grid {
@@ -5201,6 +5514,10 @@ function BroilerIntelligenceContent() {
 
           .bi-metrics {
             grid-template-columns: repeat(2, 1fr);
+          }
+
+          .bi-health-signals {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
           }
 
           .bi-core-grid,
