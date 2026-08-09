@@ -1266,9 +1266,10 @@ function MobileStylePerformanceChart({
         </div>
       ) : (
         <div className="bi-mobile-chart-plot">
-          <svg
-            viewBox="0 0 100 100"
-            preserveAspectRatio="none"
+          <div className="bi-mobile-svg-stage">
+            <svg
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
             aria-label={`${chart.title} performance graph`}
             onPointerDown={(event) => {
               event.currentTarget.setPointerCapture(
@@ -1340,37 +1341,6 @@ function MobileStylePerformanceChart({
               vectorEffect="non-scaling-stroke"
             />
 
-            {actualCoordinates.map((point) => {
-              const isActive =
-                point.dataIndex === selectedIndex;
-
-              return (
-                <g
-                  key={`${point.dataIndex}-${point.x}-${point.y}`}
-                  className={`bi-svg-point ${
-                    isActive ? "active" : ""
-                  }`}
-                >
-                  {isActive ? (
-                    <circle
-                      cx={point.x}
-                      cy={point.y}
-                      r="2.9"
-                      className="bi-svg-point-halo"
-                      vectorEffect="non-scaling-stroke"
-                    />
-                  ) : null}
-
-                  <circle
-                    cx={point.x}
-                    cy={point.y}
-                    r={isActive ? "1.9" : "1.05"}
-                    className="bi-svg-point-core"
-                    vectorEffect="non-scaling-stroke"
-                  />
-                </g>
-              );
-            })}
 
             {selectedPoint ? (
               <line
@@ -1388,7 +1358,36 @@ function MobileStylePerformanceChart({
                 while the values are shown in the summary above.
                 No SVG point marker is used here because preserveAspectRatio="none"
                 stretches circles on this wide chart. */}
-          </svg>
+            </svg>
+
+            <div
+              className="bi-modern-point-layer"
+              aria-hidden="true"
+            >
+              {actualCoordinates.map((point) => {
+                const isActive =
+                  point.dataIndex === selectedIndex;
+
+                return (
+                  <span
+                    key={`${point.dataIndex}-${point.x}-${point.y}`}
+                    className={`bi-modern-data-point ${
+                      isActive ? "active" : ""
+                    }`}
+                    style={{
+                      left: `${point.x}%`,
+                      top: `${point.y}%`,
+                    }}
+                  >
+                    <span className="bi-modern-data-point-core" />
+                    {isActive ? (
+                      <span className="bi-modern-data-point-ring" />
+                    ) : null}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
 
           <div className="bi-mobile-axis">
             {chart.data.map(
@@ -4555,9 +4554,15 @@ function BroilerIntelligenceContent() {
             );
         }
 
-        .bi-mobile-chart-plot svg {
+        .bi-mobile-svg-stage {
+          position: relative;
           width: 100%;
           height: 202px;
+        }
+
+        .bi-mobile-svg-stage svg {
+          width: 100%;
+          height: 100%;
           display: block;
           overflow: visible;
           touch-action: none;
@@ -4600,38 +4605,74 @@ function BroilerIntelligenceContent() {
 
 
 
-        .bi-svg-point-core {
-          fill: var(--bi-accent);
-          stroke: #ffffff;
-          stroke-width: 1;
+
+        .bi-modern-point-layer {
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          z-index: 4;
+        }
+
+        .bi-modern-data-point {
+          position: absolute;
+          width: 8px;
+          height: 8px;
+          transform: translate(-50%, -50%);
           transition:
-            r 140ms ease-out,
-            stroke-width 140ms ease-out,
+            width 140ms ease-out,
+            height 140ms ease-out,
             filter 140ms ease-out;
         }
 
-        .bi-svg-point-halo {
-          fill: none;
-          stroke: var(--bi-accent);
-          stroke-width: 1.2;
-          opacity: .34;
-          transition:
-            r 140ms ease-out,
-            opacity 140ms ease-out;
+        .bi-modern-data-point-core,
+        .bi-modern-data-point-ring {
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          border-radius: 999px;
+          transform: translate(-50%, -50%);
         }
 
-        .bi-svg-point.active
-        .bi-svg-point-core {
-          stroke-width: 1.4;
+        .bi-modern-data-point-core {
+          width: 6px;
+          height: 6px;
+          background: var(--bi-accent);
+          border: 1.5px solid #ffffff;
+          box-shadow:
+            0 0 0 1px var(--bi-accent);
+          transition:
+            width 140ms ease-out,
+            height 140ms ease-out,
+            border-width 140ms ease-out,
+            box-shadow 140ms ease-out;
+        }
+
+        .bi-modern-data-point.active {
+          width: 16px;
+          height: 16px;
           filter:
             drop-shadow(
-              0 1px 1px rgba(18, 63, 52, .15)
+              0 3px 5px rgba(18, 63, 52, .15)
             );
         }
 
+        .bi-modern-data-point.active
+        .bi-modern-data-point-core {
+          width: 10px;
+          height: 10px;
+          border-width: 2px;
+        }
+
+        .bi-modern-data-point-ring {
+          width: 16px;
+          height: 16px;
+          border: 1px solid var(--bi-accent);
+          opacity: .28;
+        }
+
         @media (prefers-reduced-motion: reduce) {
-          .bi-svg-point-core,
-          .bi-svg-point-halo {
+          .bi-modern-data-point,
+          .bi-modern-data-point-core {
             transition: none;
           }
         }
