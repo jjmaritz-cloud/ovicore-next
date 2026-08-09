@@ -2505,6 +2505,152 @@ function BroilerIntelligenceContent() {
     );
   }, [selectedPlanId, stories]);
 
+  const animalWelfare = useMemo(() => {
+    type WelfareTone = "normal" | "watch" | "attention" | "urgent";
+
+    const pctChange = (current: number | null, baseline: number | null) =>
+      current !== null && baseline !== null && baseline > 0
+        ? ((current - baseline) / baseline) * 100
+        : null;
+
+    const average = (values: number[]) => {
+      const clean = values.filter((value) => Number.isFinite(value) && value > 0);
+      return clean.length > 0
+        ? clean.reduce((sum, value) => sum + value, 0) / clean.length
+        : null;
+    };
+
+    const evaluations = stories.map((story) => {
+      const recentRows = story.records.slice(-3);
+      const baselineRows = story.records.slice(-6, -3);
+
+      const waterPerBird = (row: PerformanceRecord) => {
+        const birds = num(row.closing_birds) || num(row.opening_birds);
+        const water = num(row.water_litres);
+        return birds > 0 && water > 0 ? (water * 1000) / birds : 0;
+      };
+
+      const recentWater = average(recentRows.map(waterPerBird));
+      const baselineWater = average(baselineRows.map(waterPerBird));
+      const waterChangePct = pctChange(recentWater, baselineWater);
+
+      const recentFeed = average(recentRows.map(feedPerBird));
+      const baselineFeed = average(baselineRows.map(feedPerBird));
+      const feedChangePct = pctChange(recentFeed, baselineFeed);
+
+      const recentMortality = average(recentRows.map(dailyMortPct));
+      const baselineMortality = average(baselineRows.map(dailyMortPct));
+      const mortalityChangePct = pctChange(recentMortality, baselineMortality);
+
+      const waterScore =
+        waterChangePct === null
+          ? 0
+          : waterChangePct <= -15
+            ? 38
+            : waterChangePct <= -10
+              ? 30
+              : waterChangePct <= -6
+                ? 18
+                : 0;
+
+      const feedScore =
+        feedChangePct === null
+          ? 0
+          : feedChangePct <= -12
+            ? 30
+            : feedChangePct <= -8
+              ? 24
+              : feedChangePct <= -5
+                ? 14
+                : 0;
+
+      const mortalityScore =
+        mortalityChangePct === null
+          ? 0
+          : mortalityChangePct >= 100
+            ? 28
+            : mortalityChangePct >= 50
+              ? 20
+              : mortalityChangePct >= 25
+                ? 10
+                : 0;
+
+      // Persistence bonus: concurrent water + feed decline is more meaningful
+      // than either signal on its own. This deliberately remains an early-warning
+      // rule rather than a disease diagnosis.
+      const persistenceScore =
+        waterChangePct !== null &&
+        feedChangePct !== null &&
+        waterChangePct <= -6 &&
+        feedChangePct <= -5
+          ? 12
+          : 0;
+
+      const score = clamp(
+        waterScore + feedScore + mortalityScore + persistenceScore,
+      );
+
+      const tone: WelfareTone =
+        score >= 72
+          ? "urgent"
+          : score >= 45
+            ? "attention"
+            : score >= 22
+              ? "watch"
+              : "normal";
+
+      const signals: string[] = [];
+
+      if (waterChangePct !== null && waterChangePct <= -6) {
+        signals.push(`Water ${signed(waterChangePct, 0, "%")}`);
+      }
+
+      if (feedChangePct !== null && feedChangePct <= -5) {
+        signals.push(`Feed ${signed(feedChangePct, 0, "%")}`);
+      }
+
+      if (mortalityChangePct !== null && mortalityChangePct >= 25) {
+        signals.push(`Mort ${signed(mortalityChangePct, 0, "%")}`);
+      }
+
+      return {
+        story,
+        score,
+        tone,
+        signals,
+        waterChangePct,
+        feedChangePct,
+        mortalityChangePct,
+      };
+    });
+
+    const ranked = [...evaluations].sort((a, b) => b.score - a.score);
+    const focus =
+      ranked.find((item) => item.story.plan.id === focusStory?.plan.id) ??
+      ranked[0] ??
+      null;
+
+    const flaggedCount = evaluations.filter(
+      (item) => item.tone !== "normal",
+    ).length;
+
+    const overallTone: WelfareTone =
+      ranked.some((item) => item.tone === "urgent")
+        ? "urgent"
+        : ranked.some((item) => item.tone === "attention")
+          ? "attention"
+          : ranked.some((item) => item.tone === "watch")
+            ? "watch"
+            : "normal";
+
+    return {
+      focus,
+      flaggedCount,
+      overallTone,
+      topFlagged: ranked.filter((item) => item.tone !== "normal").slice(0, 2),
+    };
+  }, [stories, focusStory]);
+
   const pressure = useMemo(() => {
     if (!focusStory) {
       return {
@@ -3349,6 +3495,63 @@ function BroilerIntelligenceContent() {
                 </div>
               </article>
 
+              <article className={`bi-panel bi-welfare bi-welfare-${animalWelfare.overallTone}`}>
+                <div className="bi-panel-head bi-welfare-head">
+                  <div>
+                    <p>Animal Welfare</p>
+                    <h3>Early health & welfare detection</h3>
+                  </div>
+
+                  <span className={`bi-welfare-status ${animalWelfare.overallTone}`}>
+                    {animalWelfare.overallTone === "urgent"
+                      ? "URGENT"
+                      : animalWelfare.overallTone === "attention"
+                        ? "ATTENTION"
+                        : animalWelfare.overallTone === "watch"
+                          ? "WATCH"
+                          : "NORMAL"}
+                  </span>
+                </div>
+
+                {animalWelfare.flaggedCount === 0 ? (
+                  <div className="bi-welfare-normal">
+                    <span>✓</span>
+                    <div>
+                      <strong>No emerging welfare pattern detected</strong>
+                      <p>Water, feed and mortality are not showing a combined deterioration signal.</p>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="bi-welfare-summary">
+                      <strong>{animalWelfare.flaggedCount}</strong>
+                      <span>flock{animalWelfare.flaggedCount === 1 ? "" : "s"} showing an early warning pattern</span>
+                    </div>
+
+                    <div className="bi-welfare-list">
+                      {animalWelfare.topFlagged.map((item) => (
+                        <button
+                          type="button"
+                          key={item.story.plan.id}
+                          onClick={() => setSelectedPlanId(item.story.plan.id)}
+                          className="bi-welfare-row"
+                        >
+                          <div>
+                            <strong>{item.story.farmName} / {item.story.shedName}</strong>
+                            <span>{item.signals.join(" · ") || "Combined welfare pressure"}</span>
+                          </div>
+                          <b>{Math.round(item.score)}</b>
+                        </button>
+                      ))}
+                    </div>
+
+                    <p className="bi-welfare-note">
+                      OviCore is watching for water and feed deterioration before mortality materially changes.
+                    </p>
+                  </>
+                )}
+              </article>
+
               <article className="bi-panel">
                 <div className="bi-panel-head">
                   <div>
@@ -3850,8 +4053,174 @@ function BroilerIntelligenceContent() {
 
         .bi-lower-grid {
           display: grid;
-          grid-template-columns: 1.25fr 0.8fr 1fr;
+          grid-template-columns: minmax(0, 1.35fr) minmax(235px, .86fr) minmax(210px, .68fr) minmax(250px, .9fr);
           gap: 7px;
+        }
+
+        .bi-welfare {
+          position: relative;
+          overflow: hidden;
+        }
+
+        .bi-welfare::before {
+          content: "";
+          position: absolute;
+          inset: 0 auto 0 0;
+          width: 3px;
+          background: #4b9a79;
+        }
+
+        .bi-welfare-watch::before { background: #d1a032; }
+        .bi-welfare-attention::before { background: #d47a24; }
+        .bi-welfare-urgent::before { background: #c5534b; }
+
+        .bi-welfare-head {
+          align-items: flex-start;
+        }
+
+        .bi-welfare-status {
+          flex: 0 0 auto;
+          padding: 4px 6px;
+          border-radius: 999px;
+          background: #e6f3ed;
+          color: #176046;
+          font-size: 7px;
+          font-weight: 900;
+          letter-spacing: .04em;
+        }
+
+        .bi-welfare-status.watch {
+          background: #fff2ce;
+          color: #7f5b05;
+        }
+
+        .bi-welfare-status.attention {
+          background: #fff0dc;
+          color: #9a5615;
+        }
+
+        .bi-welfare-status.urgent {
+          background: #fee8e6;
+          color: #a43a33;
+        }
+
+        .bi-welfare-normal {
+          display: grid;
+          grid-template-columns: 24px 1fr;
+          gap: 7px;
+          align-items: center;
+          padding: 8px;
+          border: 1px solid #dceae4;
+          border-radius: 8px;
+          background: #f5faf7;
+        }
+
+        .bi-welfare-normal > span {
+          width: 22px;
+          height: 22px;
+          display: grid;
+          place-items: center;
+          border-radius: 999px;
+          background: #dff1e8;
+          color: #176046;
+          font-size: 10px;
+          font-weight: 900;
+        }
+
+        .bi-welfare-normal strong {
+          display: block;
+          font-size: 8.5px;
+          color: #173f35;
+        }
+
+        .bi-welfare-normal p,
+        .bi-welfare-note {
+          margin: 2px 0 0;
+          font-size: 7.4px;
+          line-height: 1.3;
+          color: #6b8179;
+        }
+
+        .bi-welfare-summary {
+          display: flex;
+          align-items: baseline;
+          gap: 5px;
+          margin-bottom: 5px;
+        }
+
+        .bi-welfare-summary strong {
+          font-size: 18px;
+          line-height: 1;
+          color: #173f35;
+        }
+
+        .bi-welfare-summary span {
+          font-size: 7.5px;
+          font-weight: 800;
+          color: #6b8179;
+        }
+
+        .bi-welfare-list {
+          display: grid;
+          gap: 4px;
+        }
+
+        .bi-welfare-row {
+          width: 100%;
+          display: grid;
+          grid-template-columns: 1fr auto;
+          gap: 6px;
+          align-items: center;
+          padding: 5px 6px;
+          border: 1px solid #e2ebe7;
+          border-radius: 7px;
+          background: #fbfdfc;
+          text-align: left;
+          cursor: pointer;
+        }
+
+        .bi-welfare-row:hover {
+          background: #f2f8f5;
+          border-color: #cbded6;
+        }
+
+        .bi-welfare-row div {
+          min-width: 0;
+        }
+
+        .bi-welfare-row strong {
+          display: block;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          font-size: 8px;
+          color: #173f35;
+        }
+
+        .bi-welfare-row span {
+          display: block;
+          margin-top: 1px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          font-size: 7.2px;
+          color: #6b8179;
+        }
+
+        .bi-welfare-row b {
+          min-width: 28px;
+          padding: 4px 5px;
+          border-radius: 999px;
+          background: #eef5f2;
+          color: #345f52;
+          text-align: center;
+          font-size: 7.5px;
+        }
+
+        .bi-welfare-note {
+          margin-top: 5px;
+          padding-top: 5px;
+          border-top: 1px solid #e7efec;
         }
 
         .bi-flock-list {
@@ -4785,9 +5154,6 @@ function BroilerIntelligenceContent() {
             text-align: left;
           }
 
-          .bi-lower-grid > article:last-child {
-            grid-column: 1 / -1;
-          }
         }
 
 
@@ -4855,9 +5221,6 @@ function BroilerIntelligenceContent() {
             text-align: left;
           }
 
-          .bi-lower-grid > article:last-child {
-            grid-column: auto;
-          }
 
           .bi-flock-row {
             grid-template-columns: 1fr auto;
