@@ -693,6 +693,93 @@ function buildChartData(
   };
 }
 
+
+function smoothSvgPath(
+  points: Array<{ x: number; y: number }>,
+) {
+  if (points.length === 0) return "";
+  if (points.length === 1) {
+    return `M ${points[0].x} ${points[0].y}`;
+  }
+
+  const smoothing = 0.18;
+
+  const line = (
+    point: { x: number; y: number },
+    index: number,
+  ) => {
+    const previous =
+      points[index - 1] ?? point;
+    const next =
+      points[index + 1] ?? point;
+    const nextNext =
+      points[index + 2] ?? next;
+
+    const controlPointOne = {
+      x:
+        previous.x +
+        (next.x - previous.x) *
+          smoothing,
+      y:
+        previous.y +
+        (next.y - previous.y) *
+          smoothing,
+    };
+
+    const controlPointTwo = {
+      x:
+        next.x -
+        (nextNext.x - point.x) *
+          smoothing,
+      y:
+        next.y -
+        (nextNext.y - point.y) *
+          smoothing,
+    };
+
+    return `C ${controlPointOne.x} ${controlPointOne.y}, ${controlPointTwo.x} ${controlPointTwo.y}, ${next.x} ${next.y}`;
+  };
+
+  return points.reduce(
+    (path, point, index) => {
+      if (index === 0) {
+        return `M ${point.x} ${point.y}`;
+      }
+
+      return path;
+    },
+    "",
+  ) +
+    points
+      .slice(0, -1)
+      .map((point, index) =>
+        line(point, index),
+      )
+      .join(" ");
+}
+
+function metricAccentClass(
+  metric: PerformanceMetric,
+) {
+  switch (metric) {
+    case "bodyweight":
+      return "bi-accent-bodyweight";
+    case "mortality":
+    case "cumulativeMortality":
+      return "bi-accent-mortality";
+    case "water":
+    case "waterFeed":
+      return "bi-accent-water";
+    case "fcr":
+      return "bi-accent-fcr";
+    case "pef":
+    case "feed":
+    case "adg":
+    default:
+      return "bi-accent-green";
+  }
+}
+
 function MobileStylePerformanceChart({
   story,
   standards,
@@ -861,9 +948,23 @@ function MobileStylePerformanceChart({
     .map((point) => `${point.x},${point.y}`)
     .join(" ");
 
-  const areaPoints =
+  const actualPath = smoothSvgPath(
+    actualCoordinates,
+  );
+
+  const standardPath = smoothSvgPath(
+    standardCoordinates,
+  );
+
+  const areaPath =
     actualCoordinates.length > 0
-      ? `0,92 ${actualPoints} 100,92`
+      ? `${actualPath} L ${
+          actualCoordinates[
+            actualCoordinates.length - 1
+          ].x
+        } 92 L ${
+          actualCoordinates[0].x
+        } 92 Z`
       : "";
 
   const latestIndex =
@@ -1002,65 +1103,165 @@ function MobileStylePerformanceChart({
     );
   }
 
+  const chartInsight = (() => {
+    if (
+      selected?.actual === null ||
+      selected?.actual === undefined
+    ) {
+      return {
+        headline: "No selected value yet.",
+        detail:
+          "Move across the chart to inspect the flock trajectory.",
+        tone: "neutral",
+      };
+    }
+
+    if (
+      selected.standard !== null &&
+      selected.standard !== undefined
+    ) {
+      const difference =
+        selected.actual -
+        selected.standard;
+
+      const absDifference =
+        Math.abs(difference);
+
+      const direction =
+        difference < 0
+          ? "below"
+          : difference > 0
+            ? "above"
+            : "on";
+
+      const improving =
+        selectedIndex > 0 &&
+        chart.data[selectedIndex - 1]
+          ?.actual !== null &&
+        chart.data[selectedIndex - 1]
+          ?.actual !== undefined &&
+        chart.data[selectedIndex - 1]
+          ?.standard !== null &&
+        chart.data[selectedIndex - 1]
+          ?.standard !== undefined
+          ? Math.abs(
+              selected.actual -
+                selected.standard,
+            ) <
+            Math.abs(
+              Number(
+                chart.data[
+                  selectedIndex - 1
+                ].actual,
+              ) -
+                Number(
+                  chart.data[
+                    selectedIndex - 1
+                  ].standard,
+                ),
+            )
+          : null;
+
+      return {
+        headline:
+          difference === 0
+            ? `${chart.title} is on standard.`
+            : `${chart.title} is ${absDifference.toFixed(
+                chart.decimals,
+              )} ${chart.unit} ${direction} standard.`,
+        detail:
+          improving === true
+            ? "The gap is narrowing at the selected point."
+            : improving === false
+              ? "The gap is widening at the selected point."
+              : "Keep watching the trajectory against standard.",
+        tone:
+          difference < 0
+            ? "watch"
+            : "good",
+      };
+    }
+
+    return {
+      headline: `${chart.title}: ${selected.actual.toFixed(
+        chart.decimals,
+      )} ${chart.unit}.`,
+      detail:
+        "No age-matched standard is available for this metric.",
+      tone: "neutral",
+    };
+  })();
+
+
   return (
-    <article className="bi-mobile-chart-card">
-      <div className="bi-mobile-chart-controls">
-        <label>
-          <span>Metric</span>
+    <article
+      className={`bi-mobile-chart-card ${metricAccentClass(
+        metric,
+      )}`}
+    >
+      <div className="bi-modern-chart-toolbar">
+        <div className="bi-modern-chart-title">
+          <span>Selected metric</span>
+          <h4>{chart.title}</h4>
+        </div>
 
-          <select
-            value={metric}
-            onChange={(event) =>
-              setMetric(
-                event.target
-                  .value as PerformanceMetric,
-              )
-            }
+        <div className="bi-modern-chart-actions">
+          <div
+            className="bi-mobile-range"
+            aria-label="Graph date range"
           >
-            {performanceMetricOptions.map(
-              (option) => (
-                <option
-                  key={option.value}
-                  value={option.value}
-                >
-                  {option.label}
-                </option>
-              ),
-            )}
-          </select>
-        </label>
+            {(
+              [
+                [7, "7D"],
+                [14, "14D"],
+                [30, "30D"],
+                ["all", "All"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                type="button"
+                key={String(value)}
+                className={
+                  range === value
+                    ? "active"
+                    : ""
+                }
+                onClick={() =>
+                  setRange(value)
+                }
+              >
+                {label}
+              </button>
+            ))}
+          </div>
 
-        <div
-          className="bi-mobile-range"
-          aria-label="Graph date range"
-        >
-          {(
-            [
-              [7, "7D"],
-              [14, "14D"],
-              [30, "30D"],
-              ["all", "All"],
-            ] as const
-          ).map(([value, label]) => (
-            <button
-              type="button"
-              key={String(value)}
-              className={
-                range === value
-                  ? "active"
-                  : ""
-              }
-              onClick={() =>
-                setRange(value)
+          <label className="bi-modern-metric-select">
+            <span>Metric</span>
+            <select
+              value={metric}
+              onChange={(event) =>
+                setMetric(
+                  event.target
+                    .value as PerformanceMetric,
+                )
               }
             >
-              {label}
-            </button>
-          ))}
+              {performanceMetricOptions.map(
+                (option) => (
+                  <option
+                    key={option.value}
+                    value={option.value}
+                  >
+                    {option.label}
+                  </option>
+                ),
+              )}
+            </select>
+          </label>
         </div>
       </div>
 
-      <div className="bi-mobile-chart-head">
+      <div className="bi-modern-chart-summary-row">
         <div className="bi-mobile-chart-summary">
           <small>
             {chart.title.toUpperCase()}
@@ -1150,28 +1351,48 @@ function MobileStylePerformanceChart({
               vectorEffect="non-scaling-stroke"
             />
 
-            {areaPoints ? (
-              <polyline
-                points={areaPoints}
+            <defs>
+              <linearGradient
+                id={`bi-area-gradient-${metric}`}
+                x1="0"
+                y1="0"
+                x2="0"
+                y2="1"
+              >
+                <stop
+                  offset="0%"
+                  stopColor="var(--bi-accent)"
+                  stopOpacity="0.18"
+                />
+                <stop
+                  offset="100%"
+                  stopColor="var(--bi-accent)"
+                  stopOpacity="0.02"
+                />
+              </linearGradient>
+            </defs>
+
+            {areaPath ? (
+              <path
+                d={areaPath}
                 className="bi-mobile-area"
                 stroke="none"
+                fill={`url(#bi-area-gradient-${metric})`}
               />
             ) : null}
 
             {hasStandard &&
             standardPoints ? (
-              <polyline
-                points={
-                  standardPoints
-                }
+              <path
+                d={standardPath}
                 className="bi-mobile-standard-line"
                 fill="none"
                 vectorEffect="non-scaling-stroke"
               />
             ) : null}
 
-            <polyline
-              points={actualPoints}
+            <path
+              d={actualPath}
               className="bi-mobile-actual-line"
               fill="none"
               vectorEffect="non-scaling-stroke"
@@ -1226,8 +1447,37 @@ function MobileStylePerformanceChart({
               },
             )}
           </div>
+
+          {selectedPoint ? (
+            <span
+              className="bi-modern-selected-dot"
+              style={{
+                left: `${selectedPoint.x}%`,
+                top: `${selectedPoint.y}%`,
+              }}
+            />
+          ) : null}
         </div>
       )}
+
+      <div
+        className={`bi-modern-chart-insight bi-modern-chart-insight-${chartInsight.tone}`}
+      >
+        <span className="bi-modern-chart-insight-icon">
+          {chartInsight.tone === "good"
+            ? "✓"
+            : chartInsight.tone === "watch"
+              ? "!"
+              : "i"}
+        </span>
+
+        <div>
+          <strong>
+            {chartInsight.headline}
+          </strong>
+          <p>{chartInsight.detail}</p>
+        </div>
+      </div>
 
       {metric === "bodyweight" &&
       !hasStandard ? (
@@ -4094,75 +4344,151 @@ function BroilerIntelligenceContent() {
 
 
         .bi-mobile-chart-card {
-          border: 1px solid #d8e7e1;
-          background:
-            linear-gradient(
-              180deg,
-              #fbfefd 0%,
-              #f4faf7 100%
-            );
-          border-radius: 9px;
-          padding: 8px;
+          --bi-accent: #0b6a51;
+          --bi-accent-soft: #e8f4ef;
+          border: 1px solid #d9e5e0;
+          background: #ffffff;
+          border-radius: 14px;
+          padding: 12px 13px 10px;
+          box-shadow:
+            0 10px 28px rgba(19, 63, 51, 0.045),
+            0 1px 2px rgba(19, 63, 51, 0.04);
+          overflow: hidden;
         }
 
-        .bi-mobile-chart-controls {
+        .bi-accent-bodyweight {
+          --bi-accent: #ef8b09;
+          --bi-accent-soft: #fff4df;
+        }
+
+        .bi-accent-mortality {
+          --bi-accent: #df3f3a;
+          --bi-accent-soft: #fff0ef;
+        }
+
+        .bi-accent-water {
+          --bi-accent: #2a78ef;
+          --bi-accent-soft: #edf5ff;
+        }
+
+        .bi-accent-fcr {
+          --bi-accent: #8b63c7;
+          --bi-accent-soft: #f4effc;
+        }
+
+        .bi-accent-green {
+          --bi-accent: #0b6a51;
+          --bi-accent-soft: #eaf5f0;
+        }
+
+        .bi-modern-chart-toolbar {
           display: flex;
           justify-content: space-between;
-          align-items: end;
-          gap: 8px;
-          margin-bottom: 7px;
+          align-items: center;
+          gap: 14px;
+          margin-bottom: 9px;
         }
 
-        .bi-mobile-chart-controls label {
+        .bi-modern-chart-title {
           display: grid;
-          gap: 3px;
+          gap: 1px;
         }
 
-        .bi-mobile-chart-controls label > span {
-          font-size: 7.5px;
+        .bi-modern-chart-title > span {
+          font-size: 7px;
           font-weight: 900;
+          letter-spacing: .12em;
           text-transform: uppercase;
-          letter-spacing: .11em;
-          color: #5f7b71;
+          color: #6d837a;
         }
 
-        .bi-mobile-chart-controls select {
-          height: 28px;
-          min-width: 180px;
-          border: 1px solid #c8d9d2;
-          border-radius: 6px;
-          background: #fff;
-          padding: 0 8px;
-          color: #143e33;
-          font-size: 9px;
-          font-weight: 800;
+        .bi-modern-chart-title h4 {
+          margin: 0;
+          font-size: 13px;
+          line-height: 1.1;
+          color: var(--bi-accent);
+        }
+
+        .bi-modern-chart-actions {
+          display: flex;
+          align-items: center;
+          gap: 8px;
         }
 
         .bi-mobile-range {
           display: flex;
-          gap: 3px;
+          gap: 4px;
+          padding: 3px;
+          border: 1px solid #e1e9e5;
+          background: #f7faf8;
+          border-radius: 10px;
         }
 
         .bi-mobile-range button {
           min-width: 34px;
-          height: 26px;
-          padding: 0 7px;
-          border: 1px solid #d2e0db;
-          border-radius: 6px;
-          background: #fff;
-          color: #5f756d;
+          height: 27px;
+          padding: 0 8px;
+          border: 0;
+          border-radius: 7px;
+          background: transparent;
+          color: #587068;
           font-size: 8px;
           font-weight: 900;
           cursor: pointer;
+          transition:
+            background .16s ease,
+            color .16s ease,
+            box-shadow .16s ease;
+        }
+
+        .bi-mobile-range button:hover {
+          background: #edf3f0;
         }
 
         .bi-mobile-range button.active {
-          border-color: #0b6a51;
           background: #0b6a51;
           color: #fff;
+          box-shadow:
+            0 4px 10px rgba(11, 106, 81, .18);
         }
 
-        .bi-mobile-chart-head {
+        .bi-modern-metric-select {
+          position: relative;
+          display: grid;
+        }
+
+        .bi-modern-metric-select > span {
+          position: absolute;
+          left: 10px;
+          top: 4px;
+          z-index: 1;
+          pointer-events: none;
+          font-size: 6px;
+          font-weight: 900;
+          letter-spacing: .08em;
+          text-transform: uppercase;
+          color: #758980;
+        }
+
+        .bi-modern-metric-select select {
+          height: 36px;
+          min-width: 176px;
+          border: 1px solid #dbe6e1;
+          border-radius: 9px;
+          background: #fff;
+          padding: 11px 28px 2px 10px;
+          color: #173f34;
+          font-size: 9px;
+          font-weight: 800;
+          outline: none;
+        }
+
+        .bi-modern-metric-select select:focus {
+          border-color: #90b9aa;
+          box-shadow: 0 0 0 3px rgba(11, 106, 81, .08);
+        }
+
+        .bi-modern-chart-summary-row {
           display: flex;
           justify-content: space-between;
           align-items: flex-start;
@@ -4176,83 +4502,96 @@ function BroilerIntelligenceContent() {
         }
 
         .bi-mobile-chart-summary > small {
-          font-size: 7.5px;
+          font-size: 7px;
           font-weight: 900;
-          letter-spacing: .12em;
-          color: #39715f;
+          letter-spacing: .11em;
+          color: var(--bi-accent);
         }
 
         .bi-mobile-chart-summary > strong {
-          font-size: 18px;
-          line-height: 1;
+          font-size: 25px;
+          line-height: .95;
           color: #103f34;
+          letter-spacing: -.025em;
         }
 
         .bi-mobile-chart-summary > span {
+          margin-top: 2px;
           font-size: 8px;
-          color: #72847e;
+          color: #73877f;
         }
 
         .bi-mobile-chart-comparison {
           display: flex;
           gap: 5px;
           flex-wrap: wrap;
-          margin-top: 3px;
+          margin-top: 5px;
         }
 
         .bi-mobile-chart-comparison span {
           display: inline-flex;
           gap: 4px;
           align-items: center;
-          padding: 3px 5px;
+          padding: 4px 7px;
           border-radius: 999px;
-          background: #edf5f2;
-          color: #365f52;
+          background: var(--bi-accent-soft);
+          color: #46665b;
           font-size: 7.5px;
         }
 
         .bi-mobile-chart-comparison b {
-          color: #163f34;
+          color: #173f34;
         }
 
         .bi-mobile-chart-legend {
           display: flex;
-          gap: 8px;
+          gap: 11px;
           align-items: center;
           flex-wrap: wrap;
           justify-content: flex-end;
-          color: #667b73;
+          padding-top: 4px;
+          color: #6d8079;
           font-size: 7.5px;
           font-weight: 800;
         }
 
         .bi-mobile-chart-legend span {
           display: inline-flex;
-          gap: 4px;
+          gap: 5px;
           align-items: center;
         }
 
         .bi-mobile-chart-legend i {
           display: inline-block;
-          width: 16px;
+          width: 17px;
           height: 2px;
+          border-radius: 999px;
         }
 
         .bi-mobile-chart-legend i.actual {
-          background: #0b6a51;
+          background: var(--bi-accent);
         }
 
         .bi-mobile-chart-legend i.standard {
-          background: #9eb0aa;
+          height: 0;
+          border-top: 1px dashed #98aaa3;
         }
 
         .bi-mobile-chart-plot {
           position: relative;
+          margin-top: 2px;
+          border-radius: 10px;
+          background:
+            linear-gradient(
+              180deg,
+              #ffffff 0%,
+              #fbfdfc 100%
+            );
         }
 
         .bi-mobile-chart-plot svg {
           width: 100%;
-          height: 185px;
+          height: 202px;
           display: block;
           overflow: visible;
           touch-action: none;
@@ -4260,49 +4599,67 @@ function BroilerIntelligenceContent() {
         }
 
         .bi-mobile-baseline {
-          stroke: #d8e4df;
-          stroke-width: 1;
+          stroke: #e5ece9;
+          stroke-width: .8;
         }
 
         .bi-mobile-area {
-          fill: #dff1e9;
-          opacity: .34;
+          opacity: 1;
         }
 
         .bi-mobile-standard-line {
-          stroke: #9cafaa;
-          stroke-width: 1.5;
-          stroke-dasharray: 3 3;
+          stroke: #96aaa2;
+          stroke-width: 1.25;
+          stroke-dasharray: 3.5 3.5;
           stroke-linecap: round;
           stroke-linejoin: round;
+          opacity: .9;
         }
 
         .bi-mobile-actual-line {
-          stroke: #0b6a51;
-          stroke-width: 2.6;
+          stroke: var(--bi-accent);
+          stroke-width: 2.75;
           stroke-linecap: round;
           stroke-linejoin: round;
+          filter: drop-shadow(
+            0 1px 1px rgba(16, 63, 52, .08)
+          );
         }
 
         .bi-mobile-selection-line {
-          stroke: #789187;
-          stroke-width: .8;
+          stroke: #7e948b;
+          stroke-width: .72;
           stroke-dasharray: 2 2;
-          opacity: .72;
+          opacity: .6;
+        }
+
+        .bi-modern-selected-dot {
+          position: absolute;
+          width: 9px;
+          height: 9px;
+          border-radius: 50%;
+          background: var(--bi-accent);
+          border: 2px solid #fff;
+          box-shadow:
+            0 0 0 1px var(--bi-accent),
+            0 3px 8px rgba(18, 63, 52, .15);
+          transform: translate(-50%, -50%);
+          pointer-events: none;
+          z-index: 3;
         }
 
         .bi-mobile-axis {
           position: relative;
-          height: 14px;
-          margin-top: -1px;
+          height: 16px;
+          margin-top: -2px;
         }
 
         .bi-mobile-axis span {
           position: absolute;
-          top: 0;
+          top: 1px;
           transform: translateX(-50%);
           font-size: 6.5px;
-          color: #7b8d86;
+          color: #85968f;
           white-space: nowrap;
         }
 
@@ -4310,8 +4667,66 @@ function BroilerIntelligenceContent() {
           transform: translateX(0);
         }
 
+        .bi-modern-chart-insight {
+          display: grid;
+          grid-template-columns: 25px 1fr;
+          gap: 8px;
+          align-items: center;
+          margin-top: 8px;
+          padding: 8px 10px;
+          border-radius: 9px;
+          border: 1px solid #e0e9e5;
+          background: #f8fbfa;
+        }
+
+        .bi-modern-chart-insight-icon {
+          width: 24px;
+          height: 24px;
+          display: grid;
+          place-items: center;
+          border-radius: 999px;
+          background: #dfeee8;
+          color: #176349;
+          font-size: 11px;
+          font-weight: 900;
+        }
+
+        .bi-modern-chart-insight strong {
+          display: block;
+          margin-bottom: 1px;
+          font-size: 9px;
+          color: #173f35;
+        }
+
+        .bi-modern-chart-insight p {
+          margin: 0;
+          font-size: 8px;
+          line-height: 1.3;
+          color: #667c74;
+        }
+
+        .bi-modern-chart-insight-watch {
+          background: #fffaf0;
+          border-color: #eadfb7;
+        }
+
+        .bi-modern-chart-insight-watch
+        .bi-modern-chart-insight-icon {
+          background: #f4e5ae;
+          color: #795803;
+        }
+
+        .bi-modern-chart-insight-good {
+          background: #f1f9f5;
+          border-color: #d5e9df;
+        }
+
+        .bi-modern-chart-insight-neutral {
+          background: #f7faf9;
+        }
+
         .bi-mobile-standard-unavailable {
-          margin: 5px 0 0;
+          margin: 6px 0 0;
           font-size: 8px;
           color: #806217;
         }
@@ -4343,6 +4758,32 @@ function BroilerIntelligenceContent() {
 
           .bi-lower-grid > article:last-child {
             grid-column: 1 / -1;
+          }
+        }
+
+
+        @media (max-width: 980px) {
+          .bi-modern-chart-toolbar,
+          .bi-modern-chart-summary-row {
+            align-items: stretch;
+            flex-direction: column;
+          }
+
+          .bi-modern-chart-actions {
+            justify-content: space-between;
+            flex-wrap: wrap;
+          }
+
+          .bi-modern-metric-select {
+            flex: 1;
+          }
+
+          .bi-modern-metric-select select {
+            width: 100%;
+          }
+
+          .bi-mobile-chart-legend {
+            justify-content: flex-start;
           }
         }
 
