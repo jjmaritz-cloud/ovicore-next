@@ -1340,6 +1340,38 @@ function MobileStylePerformanceChart({
               vectorEffect="non-scaling-stroke"
             />
 
+            {actualCoordinates.map((point) => {
+              const isActive =
+                point.dataIndex === selectedIndex;
+
+              return (
+                <g
+                  key={`${point.dataIndex}-${point.x}-${point.y}`}
+                  className={`bi-svg-point ${
+                    isActive ? "active" : ""
+                  }`}
+                >
+                  {isActive ? (
+                    <circle
+                      cx={point.x}
+                      cy={point.y}
+                      r="2.9"
+                      className="bi-svg-point-halo"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  ) : null}
+
+                  <circle
+                    cx={point.x}
+                    cy={point.y}
+                    r={isActive ? "1.9" : "1.05"}
+                    className="bi-svg-point-core"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                </g>
+              );
+            })}
+
             {selectedPoint ? (
               <line
                 x1={selectedPoint.x}
@@ -1390,27 +1422,7 @@ function MobileStylePerformanceChart({
             )}
           </div>
 
-          <div className="bi-modern-point-layer" aria-hidden="true">
-            {actualCoordinates.map((point) => {
-              const isActive =
-                point.dataIndex === selectedIndex;
 
-              return (
-                <span
-                  key={`${point.dataIndex}-${point.x}-${point.y}`}
-                  className={`bi-modern-data-point ${
-                    isActive ? "active" : ""
-                  }`}
-                  style={{
-                    left: `${point.x}%`,
-                    top: `${point.y}%`,
-                  }}
-                >
-                  <span className="bi-modern-data-point-core" />
-                </span>
-              );
-            })}
-          </div>
         </div>
       )}
 
@@ -4587,56 +4599,39 @@ function BroilerIntelligenceContent() {
 
 
 
-        .bi-modern-point-layer {
-          position: absolute;
-          inset: 0;
-          pointer-events: none;
-          z-index: 4;
-        }
 
-        .bi-modern-data-point {
-          position: absolute;
-          width: 9px;
-          height: 9px;
-          transform: translate(-50%, -50%);
+        .bi-svg-point-core {
+          fill: var(--bi-accent);
+          stroke: #ffffff;
+          stroke-width: 1;
           transition:
-            width 150ms ease-out,
-            height 150ms ease-out,
-            filter 150ms ease-out;
+            r 140ms ease-out,
+            stroke-width 140ms ease-out,
+            filter 140ms ease-out;
         }
 
-        .bi-modern-data-point-core {
-          position: absolute;
-          inset: 2px;
-          border-radius: 999px;
-          background: var(--bi-accent);
-          border: 1.5px solid #ffffff;
-          box-shadow: 0 0 0 1px color-mix(in srgb, var(--bi-accent) 72%, transparent);
+        .bi-svg-point-halo {
+          fill: none;
+          stroke: var(--bi-accent);
+          stroke-width: 1.2;
+          opacity: .34;
           transition:
-            inset 150ms ease-out,
-            border-width 150ms ease-out,
-            box-shadow 150ms ease-out,
-            transform 150ms ease-out;
+            r 140ms ease-out,
+            opacity 140ms ease-out;
         }
 
-        .bi-modern-data-point.active {
-          width: 16px;
-          height: 16px;
-          filter: drop-shadow(0 3px 6px rgba(18, 63, 52, .18));
-        }
-
-        .bi-modern-data-point.active .bi-modern-data-point-core {
-          inset: 2px;
-          border-width: 2px;
-          box-shadow:
-            0 0 0 1px var(--bi-accent),
-            0 0 0 4px color-mix(in srgb, var(--bi-accent) 14%, transparent);
-          transform: scale(1.02);
+        .bi-svg-point.active
+        .bi-svg-point-core {
+          stroke-width: 1.4;
+          filter:
+            drop-shadow(
+              0 1px 1px rgba(18, 63, 52, .15)
+            );
         }
 
         @media (prefers-reduced-motion: reduce) {
-          .bi-modern-data-point,
-          .bi-modern-data-point-core {
+          .bi-svg-point-core,
+          .bi-svg-point-halo {
             transition: none;
           }
         }
