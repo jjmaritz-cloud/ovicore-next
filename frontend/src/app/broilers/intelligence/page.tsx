@@ -5432,6 +5432,99 @@ function BroilerIntelligenceContent() {
           .bi-actions strong { font-size: 8.5px; }
         }
 
+        /* Full-screen Intelligence cockpit on desktop.
+           The dashboard uses the available viewport height rather than
+           leaving unused space below the final row. */
+        @media (min-width: 1181px) and (min-height: 700px) {
+          .bi-page {
+            height: calc(100dvh - 158px);
+            min-height: 620px;
+            overflow: hidden;
+            grid-template-rows:
+              auto
+              auto
+              auto
+              auto
+              minmax(0, 1.9fr)
+              minmax(0, 0.78fr)
+              minmax(0, 0.9fr);
+            align-content: stretch;
+          }
+
+          .bi-core-grid,
+          .bi-intelligence-grid,
+          .bi-lower-grid {
+            min-height: 0;
+            height: 100%;
+          }
+
+          .bi-core-grid > *,
+          .bi-intelligence-grid > *,
+          .bi-lower-grid > * {
+            min-height: 0;
+            height: 100%;
+          }
+
+          .bi-core-grid .bi-panel,
+          .bi-intelligence-grid .bi-panel,
+          .bi-lower-grid .bi-panel {
+            overflow: hidden;
+          }
+
+          .bi-mobile-chart-card {
+            height: 100%;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+          }
+
+          .bi-mobile-chart-plot {
+            flex: 1 1 auto;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+          }
+
+          .bi-mobile-svg-stage {
+            flex: 1 1 auto;
+            min-height: 126px;
+            height: auto;
+          }
+
+          .bi-diagnosis {
+            height: 100%;
+            align-content: start;
+          }
+
+          .bi-intelligence-grid .bi-history-strip,
+          .bi-intelligence-grid .bi-anomaly-list,
+          .bi-intelligence-grid .bi-change-list,
+          .bi-lower-grid .bi-flock-list,
+          .bi-lower-grid .bi-pressure-list,
+          .bi-lower-grid .bi-actions {
+            min-height: 0;
+          }
+        }
+
+        /* Give taller monitors proportionally more room to the trajectory
+           while keeping every intelligence row visible at once. */
+        @media (min-width: 1181px) and (min-height: 900px) {
+          .bi-page {
+            grid-template-rows:
+              auto
+              auto
+              auto
+              auto
+              minmax(0, 2.25fr)
+              minmax(0, 0.82fr)
+              minmax(0, 1fr);
+          }
+
+          .bi-mobile-svg-stage {
+            min-height: 150px;
+          }
+        }
+
         @media (max-width: 1180px) {
           .bi-metrics {
             grid-template-columns: repeat(3, 1fr);
