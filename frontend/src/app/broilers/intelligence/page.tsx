@@ -5588,6 +5588,124 @@ function BroilerIntelligenceContent() {
           }
         }
 
+        /* Desktop readability pass: keep the dashboard full-screen without making
+           the UI microscopic, and reserve enough space for chart annotations. */
+        @media (min-width: 1181px) and (min-height: 700px) {
+          .bi-page {
+            grid-template-rows:
+              auto
+              auto
+              auto
+              auto
+              minmax(300px, 1.7fr)
+              minmax(118px, 0.72fr)
+              minmax(132px, 0.82fr);
+          }
+
+          .bi-scope span,
+          .bi-panel-head p,
+          .bi-story-header p,
+          .bi-metric-top > span,
+          .bi-story-score span {
+            font-size: 8.8px;
+          }
+
+          .bi-scope select { font-size: 10.5px; }
+          .bi-scope-chips span { font-size: 8px; }
+
+          .bi-story-header h2 { font-size: 17px; }
+          .bi-story-header > div:first-child > span { font-size: 9px; }
+          .bi-story-score strong { font-size: 13px; }
+          .bi-story-score small { font-size: 8.5px; }
+
+          .bi-metric { min-height: 76px; }
+          .bi-metric-top > span { font-size: 8.4px; }
+          .bi-metric-value { font-size: 18px; }
+          .bi-metric-meta { font-size: 8.2px; }
+          .bi-metric p { font-size: 8.2px; line-height: 1.25; }
+
+          .bi-panel-head h3 { font-size: 12px; }
+          .bi-panel-head p { font-size: 8.4px; }
+
+          .bi-mobile-chart-card {
+            overflow: hidden;
+          }
+
+          .bi-modern-chart-toolbar,
+          .bi-modern-chart-summary-row,
+          .bi-modern-chart-insight,
+          .bi-growth-footer {
+            flex: 0 0 auto;
+          }
+
+          .bi-mobile-chart-plot {
+            flex: 1 1 0;
+            min-height: 0;
+            overflow: hidden;
+          }
+
+          .bi-mobile-svg-stage {
+            flex: 1 1 0;
+            min-height: 110px;
+            height: auto;
+          }
+
+          .bi-mobile-axis span { font-size: 7.4px; }
+          .bi-mobile-chart-summary > span { font-size: 8px; }
+          .bi-mobile-chart-comparison span { font-size: 7.8px; }
+          .bi-modern-chart-insight strong { font-size: 9px; }
+          .bi-modern-chart-insight p { font-size: 8px; }
+          .bi-growth-footer span { font-size: 8px; }
+          .bi-growth-footer strong { font-size: 9px; }
+
+          .bi-diagnosis-callout strong { font-size: 10.5px; }
+          .bi-priority p { font-size: 9px; }
+
+          .bi-history-summary-compact p,
+          .bi-flock-row span,
+          .bi-flock-severity,
+          .bi-history-strip-metrics b,
+          .bi-welfare-row strong,
+          .bi-modern-chart-insight p {
+            font-size: 8.4px;
+          }
+
+          .bi-flock-row strong,
+          .bi-pressure-row span,
+          .bi-pressure-row strong,
+          .bi-actions strong,
+          .bi-actions p,
+          .bi-anomaly strong,
+          .bi-anomaly p,
+          .bi-change strong,
+          .bi-change p {
+            font-size: 8.8px;
+          }
+
+          .bi-core-grid .bi-panel,
+          .bi-intelligence-grid .bi-panel,
+          .bi-lower-grid .bi-panel {
+            overflow: hidden;
+          }
+        }
+
+        @media (min-width: 1181px) and (min-height: 900px) {
+          .bi-page {
+            grid-template-rows:
+              auto
+              auto
+              auto
+              auto
+              minmax(330px, 1.8fr)
+              minmax(125px, 0.74fr)
+              minmax(142px, 0.86fr);
+          }
+
+          .bi-mobile-svg-stage {
+            min-height: 135px;
+          }
+        }
+
         @media (max-width: 850px) {
           .bi-scope,
           .bi-story-header {
