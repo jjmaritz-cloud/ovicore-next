@@ -10,6 +10,8 @@ import {
 
 import { useSearchParams } from "next/navigation";
 import DailyHouseCard from "@/components/daily-house-card";
+import OviCoreSidebar from "@/components/sidebar/OviCoreSidebar";
+import { getSidebarMenu } from "@/components/sidebar/menuRegistry";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 const API_BASE = "";
@@ -860,14 +862,11 @@ function CommercialLayersDailyHouseCardContent() {
   }
 
   return (
-    <div
-      style={{
-        width: "calc(100% - 12px)",
-        marginLeft: "12px",
-        minWidth: 0,
-      }}
-    >
-      <DailyHouseCard
+    <div className="page-shell">
+      <OviCoreSidebar menu={getSidebarMenu("layers")} />
+
+      <main className="main-panel">
+        <DailyHouseCard
         moduleLabel="Commercial Layers"
         description="Daily layer entry for bird position, feed, water, bodyweight, egg production and egg quality."
         homeAction={{
@@ -1277,7 +1276,8 @@ function CommercialLayersDailyHouseCardContent() {
             )}
           </tbody>
         </table>
-      </DailyHouseCard>
+        </DailyHouseCard>
+      </main>
     </div>
   );
 }
