@@ -1078,19 +1078,6 @@ function DailyPerformancePageContent() {
               width: 100%;
             }
 
-            /*
-             * DailyHouseCard owns the scroll wrapper around the table.
-             * :has() lets this page resize that wrapper without changing
-             * the shared DailyHouseCard component used by other modules.
-             */
-            .broiler-daily-entry div:has(> table) {
-              overflow: auto !important;
-              max-height: clamp(
-                360px,
-                calc(100vh - 430px),
-                560px
-              ) !important;
-            }
 
             .broiler-daily-entry div:has(> table) > table {
               width: max-content;
@@ -1118,25 +1105,7 @@ function DailyPerformancePageContent() {
               padding-bottom: 2px !important;
             }
 
-            @media (min-width: 1600px) {
-              .broiler-daily-entry div:has(> table) {
-                max-height: clamp(
-                  420px,
-                  calc(100vh - 420px),
-                  620px
-                ) !important;
-              }
-            }
 
-            @media (max-width: 1099px) {
-              .broiler-daily-entry div:has(> table) {
-                max-height: clamp(
-                  320px,
-                  calc(100vh - 390px),
-                  460px
-                ) !important;
-              }
-            }
           `}</style>
         </main>
       </div>

@@ -10,15 +10,23 @@ import type {
 
 const TABLE_HEIGHT_STORAGE_KEY = "ovicore_daily_house_card_table_height";
 const MIN_TABLE_HEIGHT = 300;
-const MAX_TABLE_HEIGHT = 720;
+
+function getMaxTableHeight() {
+  if (typeof window === "undefined") return 720;
+
+  // Let the table grow with larger screens while still leaving room
+  // for the page header / controls. This is deliberately much less
+  // restrictive than the old fixed 720px cap.
+  return Math.max(MIN_TABLE_HEIGHT, window.innerHeight - 245);
+}
 
 function getDefaultTableHeight() {
   if (typeof window === "undefined") return 420;
 
-  // Responsive default used only until the user drags the resize handle.
+  // Responsive starting height used only until the user drags the handle.
   return Math.max(
     MIN_TABLE_HEIGHT,
-    Math.min(MAX_TABLE_HEIGHT, window.innerHeight - 430),
+    Math.min(getMaxTableHeight(), window.innerHeight - 430),
   );
 }
 
@@ -81,7 +89,7 @@ export default function DailyHouseCard({
 
     if (Number.isFinite(parsedHeight)) {
       setTableHeight(
-        Math.max(MIN_TABLE_HEIGHT, Math.min(MAX_TABLE_HEIGHT, parsedHeight)),
+        Math.max(MIN_TABLE_HEIGHT, Math.min(getMaxTableHeight(), parsedHeight)),
       );
       return;
     }
@@ -119,7 +127,7 @@ export default function DailyHouseCard({
     const delta = event.clientY - resizeStartY.current;
     const nextHeight = Math.max(
       MIN_TABLE_HEIGHT,
-      Math.min(MAX_TABLE_HEIGHT, resizeStartHeight.current + delta),
+      Math.min(getMaxTableHeight(), resizeStartHeight.current + delta),
     );
 
     setTableHeight(nextHeight);
