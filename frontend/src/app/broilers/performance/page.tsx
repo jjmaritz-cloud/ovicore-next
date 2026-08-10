@@ -1084,7 +1084,12 @@ function DailyPerformancePageContent() {
              * the shared DailyHouseCard component used by other modules.
              */
             .broiler-daily-entry div:has(> table) {
-              max-height: calc(100vh - 340px) !important;
+              overflow: auto !important;
+              max-height: clamp(
+                360px,
+                calc(100vh - 430px),
+                560px
+              ) !important;
             }
 
             .broiler-daily-entry div:has(> table) > table {
@@ -1113,18 +1118,23 @@ function DailyPerformancePageContent() {
               padding-bottom: 2px !important;
             }
 
-            @media (min-width: 1100px) {
+            @media (min-width: 1600px) {
               .broiler-daily-entry div:has(> table) {
-                height: calc(100vh - 340px) !important;
-                min-height: 380px;
-                overflow: auto !important;
+                max-height: clamp(
+                  420px,
+                  calc(100vh - 420px),
+                  620px
+                ) !important;
               }
             }
 
             @media (max-width: 1099px) {
               .broiler-daily-entry div:has(> table) {
-                max-height: 62vh !important;
-                overflow: auto !important;
+                max-height: clamp(
+                  320px,
+                  calc(100vh - 390px),
+                  460px
+                ) !important;
               }
             }
           `}</style>
