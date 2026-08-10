@@ -10,6 +10,7 @@ import {
 
 import { useSearchParams } from "next/navigation";
 import DailyHouseCard from "@/components/daily-house-card";
+import BroilerSidebar from "@/components/BroilerSidebar";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 const API_BASE = "";
@@ -739,7 +740,11 @@ function DailyPerformancePageContent() {
 	}
 
 		return (
-			<DailyHouseCard
+      <div className="page-shell broiler-daily-entry">
+        <BroilerSidebar />
+
+        <main className="main-panel">
+          <DailyHouseCard
           moduleLabel="Broiler Production"
           description="Daily broiler entry for mortality, culls, feed, water, bodyweight and shed comments."
           homeAction={{
@@ -1056,7 +1061,75 @@ function DailyPerformancePageContent() {
               )}
             </tbody>
       </table>
-    </DailyHouseCard>
+          </DailyHouseCard>
+
+          <style jsx global>{`
+            /*
+             * Broiler Daily Data Entry desktop sizing.
+             * Keep the page inside the normal Broiler shell and use the
+             * available screen height for the daily-entry grid.
+             */
+            .broiler-daily-entry {
+              min-height: 100vh;
+            }
+
+            .broiler-daily-entry .main-panel {
+              min-width: 0;
+              width: 100%;
+            }
+
+            /*
+             * DailyHouseCard owns the scroll wrapper around the table.
+             * :has() lets this page resize that wrapper without changing
+             * the shared DailyHouseCard component used by other modules.
+             */
+            .broiler-daily-entry div:has(> table) {
+              max-height: calc(100vh - 340px) !important;
+            }
+
+            .broiler-daily-entry div:has(> table) > table {
+              width: max-content;
+              min-width: 100%;
+            }
+
+            .broiler-daily-entry table th,
+            .broiler-daily-entry table td {
+              height: 31px !important;
+              min-height: 31px !important;
+              padding-top: 4px !important;
+              padding-bottom: 4px !important;
+              vertical-align: middle;
+            }
+
+            .broiler-daily-entry table thead th {
+              height: 29px !important;
+              min-height: 29px !important;
+            }
+
+            .broiler-daily-entry table input {
+              min-height: 24px !important;
+              height: 24px !important;
+              padding-top: 2px !important;
+              padding-bottom: 2px !important;
+            }
+
+            @media (min-width: 1100px) {
+              .broiler-daily-entry div:has(> table) {
+                height: calc(100vh - 340px) !important;
+                min-height: 380px;
+                overflow: auto !important;
+              }
+            }
+
+            @media (max-width: 1099px) {
+              .broiler-daily-entry div:has(> table) {
+                max-height: 62vh !important;
+                overflow: auto !important;
+              }
+            }
+          `}</style>
+        </main>
+      </div>
   );
 }
 
