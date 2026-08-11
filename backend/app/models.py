@@ -980,3 +980,101 @@ class CommercialLayerDailyPerformance(Base):
             name="uq_commercial_layer_flock_entry_date",
         ),
     )
+
+# ---------------------------------------------------------------------
+# Hatchery Integration
+# Breeder Production -> Egg Receiving -> Setter Program
+# ---------------------------------------------------------------------
+
+class HatcheryEggReceipt(Base):
+    __tablename__ = "hatchery_egg_receipts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(
+        Integer,
+        ForeignKey("companies.id"),
+        nullable=False,
+        index=True,
+    )
+    breeder_production_flock_id = Column(
+        Integer,
+        ForeignKey("breeder_production_flocks.id"),
+        nullable=False,
+        index=True,
+    )
+
+    receipt_date = Column(Date, nullable=False, index=True)
+    total_eggs_received = Column(Integer, nullable=False, default=0)
+    floor_eggs = Column(Integer, nullable=False, default=0)
+    cracked_eggs = Column(Integer, nullable=False, default=0)
+    dirty_eggs = Column(Integer, nullable=False, default=0)
+    rejected_eggs = Column(Integer, nullable=False, default=0)
+    settable_eggs = Column(Integer, nullable=False, default=0)
+    avg_egg_weight_g = Column(Numeric(8, 3), nullable=True)
+    storage_room = Column(String(120), nullable=True)
+    status = Column(String(40), nullable=False, default="Ready")
+    notes = Column(Text, nullable=True)
+
+    last_saved_by = Column(String(255), nullable=True)
+    last_saved_at = Column(
+        DateTime,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+    created_at = Column(DateTime, server_default=func.now())
+
+    breeder_production_flock = relationship("BreederProductionFlock")
+    setter_batches = relationship(
+        "HatcherySetterBatch",
+        back_populates="egg_receipt",
+        cascade="all, delete-orphan",
+    )
+
+
+class HatcherySetterBatch(Base):
+    __tablename__ = "hatchery_setter_batches"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(
+        Integer,
+        ForeignKey("companies.id"),
+        nullable=False,
+        index=True,
+    )
+    egg_receipt_id = Column(
+        Integer,
+        ForeignKey("hatchery_egg_receipts.id"),
+        nullable=False,
+        index=True,
+    )
+
+    set_date = Column(Date, nullable=False, index=True)
+    setter_name = Column(String(120), nullable=False)
+    eggs_set = Column(Integer, nullable=False, default=0)
+
+    # Fertility and hatchability are separate assumptions so OviCore can
+    # explain whether future chick movement is breeder-driven or hatch-driven.
+    expected_fertility_pct = Column(Numeric(7, 3), nullable=True)
+    expected_hatchability_pct = Column(Numeric(7, 3), nullable=True)
+    expected_chicks = Column(Integer, nullable=True)
+
+    # Chicken incubation defaults to 21 days in the API, but is persisted so
+    # future species / operational exceptions do not require schema changes.
+    hatch_date = Column(Date, nullable=False, index=True)
+
+    status = Column(String(40), nullable=False, default="Planned")
+    notes = Column(Text, nullable=True)
+
+    last_saved_by = Column(String(255), nullable=True)
+    last_saved_at = Column(
+        DateTime,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+    created_at = Column(DateTime, server_default=func.now())
+
+    egg_receipt = relationship(
+        "HatcheryEggReceipt",
+        back_populates="setter_batches",
+    )
+

@@ -1328,3 +1328,118 @@ class LayerRearingTransferCreate(BaseModel):
 class LayerRearingTransferResult(BaseModel):
     rearing_flock: LayerRearingFlockOut
     commercial_layer_flock: CommercialLayerFlockOut
+
+# ---------------------------------------------------------------------
+# Hatchery Integration
+# Breeder Production -> Egg Receiving -> Setter Program
+# ---------------------------------------------------------------------
+
+class HatcheryEggReceiptCreate(BaseModel):
+    company_id: int
+    breeder_production_flock_id: int
+    receipt_date: date
+    total_eggs_received: int
+    floor_eggs: int = 0
+    cracked_eggs: int = 0
+    dirty_eggs: int = 0
+    avg_egg_weight_g: Optional[float] = None
+    storage_room: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class HatcheryEggReceiptPatch(BaseModel):
+    receipt_date: Optional[date] = None
+    total_eggs_received: Optional[int] = None
+    floor_eggs: Optional[int] = None
+    cracked_eggs: Optional[int] = None
+    dirty_eggs: Optional[int] = None
+    avg_egg_weight_g: Optional[float] = None
+    storage_room: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class HatcheryEggReceiptOut(BaseModel):
+    id: int
+    company_id: int
+    breeder_production_flock_id: int
+    breeder_flock_code: str
+    breeder_farm_name: str
+    breeder_shed_name: str
+    breed: Optional[str] = None
+    flock_age_days: Optional[int] = None
+
+    receipt_date: date
+    total_eggs_received: int
+    floor_eggs: int
+    cracked_eggs: int
+    dirty_eggs: int
+    rejected_eggs: int
+    settable_eggs: int
+    reject_pct: Optional[float] = None
+    avg_egg_weight_g: Optional[float] = None
+    storage_room: Optional[str] = None
+    status: str
+    notes: Optional[str] = None
+
+    # Integration / reconciliation fields.
+    hatching_eggs_produced_to_date: int = 0
+    eggs_received_to_date: int = 0
+    unreceived_hatching_eggs: int = 0
+    eggs_allocated_to_setters: int = 0
+    unallocated_settable_eggs: int = 0
+
+    last_saved_by: Optional[str] = None
+    last_saved_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class HatcherySetterBatchCreate(BaseModel):
+    company_id: int
+    egg_receipt_id: int
+    set_date: date
+    setter_name: str
+    eggs_set: int
+    expected_fertility_pct: Optional[float] = None
+    expected_hatchability_pct: Optional[float] = None
+    notes: Optional[str] = None
+
+
+class HatcherySetterBatchPatch(BaseModel):
+    set_date: Optional[date] = None
+    setter_name: Optional[str] = None
+    eggs_set: Optional[int] = None
+    expected_fertility_pct: Optional[float] = None
+    expected_hatchability_pct: Optional[float] = None
+    status: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class HatcherySetterBatchOut(BaseModel):
+    id: int
+    company_id: int
+    egg_receipt_id: int
+    breeder_production_flock_id: int
+    breeder_flock_code: str
+    breeder_farm_name: str
+    breeder_shed_name: str
+
+    set_date: date
+    setter_name: str
+    eggs_set: int
+    expected_fertility_pct: Optional[float] = None
+    expected_hatchability_pct: Optional[float] = None
+    expected_chicks: Optional[int] = None
+    hatch_date: date
+    status: str
+    notes: Optional[str] = None
+
+    receipt_settable_eggs: int = 0
+    eggs_allocated_from_receipt: int = 0
+    eggs_remaining_on_receipt: int = 0
+
+    last_saved_by: Optional[str] = None
+    last_saved_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+

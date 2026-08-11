@@ -10,6 +10,7 @@ from openpyxl import load_workbook
 from app.routers import broiler_processing
 from app.routers import app_notes
 from app.routers import broiler_supply
+from app.routers import hatchery
 from app.routers import access
 from app.routers import auth
 from app.routers import standards
@@ -67,6 +68,7 @@ app = FastAPI(title="OviCore Broiler Module API", version="0.1.0")
 app.include_router(broiler_processing.router)
 app.include_router(app_notes.router)
 app.include_router(broiler_supply.router)
+app.include_router(hatchery.router)
 app.include_router(access.router)
 app.include_router(auth.router)
 app.include_router(standards.router)
