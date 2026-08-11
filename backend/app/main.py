@@ -308,6 +308,67 @@ def ensure_module_access_schema() -> None:
         )
 
 
+
+def ensure_broiler_shed_setup_schema() -> None:
+    """
+    Bring older broiler_sheds tables up to the current Shed setup model.
+
+    SQLAlchemy's create_all() creates missing tables but does not add new
+    columns to tables that already exist. Older Render/PostgreSQL databases
+    therefore need these setup fields added explicitly before any ORM query
+    loads BroilerShed.
+    """
+    inspector = inspect(engine)
+    table_names = set(inspector.get_table_names())
+
+    if "broiler_sheds" not in table_names:
+        return
+
+    existing_columns = {
+        column["name"]
+        for column in inspector.get_columns("broiler_sheds")
+    }
+
+    # Keep these definitions portable across PostgreSQL and SQLite.
+    # shed_type mirrors the current model's required default; all other
+    # expanded setup fields are nullable.
+    column_sql = {
+        "shed_type": "VARCHAR(80) NOT NULL DEFAULT 'Broiler'",
+        "housing_system": "VARCHAR(80)",
+        "capacity_birds": "INTEGER",
+        "length_m": "NUMERIC(10, 2)",
+        "width_m": "NUMERIC(10, 2)",
+        "number_of_levels": "INTEGER",
+        "number_of_sections": "INTEGER",
+        "ventilation_type": "TEXT",
+        "cooling_system": "TEXT",
+        "heating_system": "TEXT",
+        "lighting_system": "TEXT",
+        "water_system": "TEXT",
+        "feeder_system": "TEXT",
+        "nest_type": "TEXT",
+        "egg_collection_system": "TEXT",
+        "manure_system": "TEXT",
+        "year_commissioned": "INTEGER",
+        "male_female_support": "VARCHAR(80)",
+        "environmental_controller": "TEXT",
+        "controller_id": "TEXT",
+        "water_meter_id": "TEXT",
+        "power_meter_id": "TEXT",
+        "notes": "TEXT",
+    }
+
+    with engine.begin() as connection:
+        for column_name, sql_type in column_sql.items():
+            if column_name not in existing_columns:
+                connection.execute(
+                    text(
+                        f"ALTER TABLE broiler_sheds "
+                        f"ADD COLUMN {column_name} {sql_type}"
+                    )
+                )
+
+
 def ensure_commercial_layer_transfer_schema() -> None:
     """
     Upgrade an existing commercial_layer_flocks table created by the
@@ -536,6 +597,7 @@ def repair_shed_company_links(db: Session) -> int:
 def startup():
     Base.metadata.create_all(bind=engine)
     ensure_module_access_schema()
+    ensure_broiler_shed_setup_schema()
     ensure_commercial_layer_transfer_schema()
     ensure_commercial_layer_operational_schema()
     ensure_layer_transfer_schema()
