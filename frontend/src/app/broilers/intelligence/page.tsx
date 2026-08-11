@@ -2371,6 +2371,48 @@ function buildRecentChanges(
 }
 
 
+function consecutiveTrendDays(
+  values: number[],
+  direction: "down" | "up",
+  minimumStepPct = 0.02,
+) {
+  const clean = values.filter(
+    (value) => Number.isFinite(value) && value > 0,
+  );
+
+  if (clean.length < 2) return 0;
+
+  let days = 0;
+
+  for (let index = clean.length - 1; index > 0; index -= 1) {
+    const previous = clean[index - 1];
+    const current = clean[index];
+
+    const moved =
+      direction === "down"
+        ? current <= previous * (1 - minimumStepPct)
+        : current >= previous * (1 + minimumStepPct);
+
+    if (!moved) break;
+    days += 1;
+  }
+
+  return days;
+}
+
+function healthTrendLabel(
+  days: number,
+  direction: "down" | "up",
+  fallback: string,
+) {
+  if (days <= 0) return fallback;
+
+  return `${direction === "down" ? "↓" : "↑"} ${days} day${
+    days === 1 ? "" : "s"
+  }`;
+}
+
+
 function BroilerIntelligenceContent() {
   const searchParams = useSearchParams();
   const { currentUser, loadingUser, userError } = useCurrentUser();
@@ -2521,14 +2563,19 @@ function BroilerIntelligenceContent() {
     };
 
     const evaluations = stories.map((story) => {
-      const recentRows = story.records.slice(-3);
-      const baselineRows = story.records.slice(-6, -3);
+      const rows = story.records.slice(-7);
+      const recentRows = rows.slice(-3);
+      const baselineRows = rows.slice(-6, -3);
 
       const waterPerBird = (row: PerformanceRecord) => {
         const birds = num(row.closing_birds) || num(row.opening_birds);
         const water = num(row.water_litres);
         return birds > 0 && water > 0 ? (water * 1000) / birds : 0;
       };
+
+      const waterSeries = rows.map(waterPerBird);
+      const feedSeries = rows.map(feedPerBird);
+      const mortalitySeries = rows.map(dailyMortPct);
 
       const recentWater = average(recentRows.map(waterPerBird));
       const baselineWater = average(baselineRows.map(waterPerBird));
@@ -2542,112 +2589,127 @@ function BroilerIntelligenceContent() {
       const baselineMortality = average(baselineRows.map(dailyMortPct));
       const mortalityChangePct = pctChange(recentMortality, baselineMortality);
 
+      const waterDownDays = consecutiveTrendDays(waterSeries, "down", 0.02);
+      const feedDownDays = consecutiveTrendDays(feedSeries, "down", 0.015);
+      const mortalityUpDays = consecutiveTrendDays(mortalitySeries, "up", 0.05);
+      const latestBwVariance = story.bwVariancePct ?? null;
+
       const waterScore =
-        waterChangePct === null
-          ? 0
-          : waterChangePct <= -15
-            ? 38
-            : waterChangePct <= -10
-              ? 30
-              : waterChangePct <= -6
-                ? 18
-                : 0;
+        waterChangePct === null ? 0
+        : waterChangePct <= -15 ? 34
+        : waterChangePct <= -10 ? 27
+        : waterChangePct <= -6 ? 16
+        : 0;
 
       const feedScore =
-        feedChangePct === null
-          ? 0
-          : feedChangePct <= -12
-            ? 30
-            : feedChangePct <= -8
-              ? 24
-              : feedChangePct <= -5
-                ? 14
-                : 0;
+        feedChangePct === null ? 0
+        : feedChangePct <= -12 ? 28
+        : feedChangePct <= -8 ? 22
+        : feedChangePct <= -5 ? 13
+        : 0;
 
       const mortalityScore =
-        mortalityChangePct === null
-          ? 0
-          : mortalityChangePct >= 100
-            ? 28
-            : mortalityChangePct >= 50
-              ? 20
-              : mortalityChangePct >= 25
-                ? 10
-                : 0;
+        mortalityChangePct === null ? 0
+        : mortalityChangePct >= 100 ? 30
+        : mortalityChangePct >= 50 ? 22
+        : mortalityChangePct >= 25 ? 12
+        : 0;
 
-      // Persistence bonus: concurrent water + feed decline is more meaningful
-      // than either signal on its own. This deliberately remains an early-warning
-      // rule rather than a disease diagnosis.
-      const persistenceScore =
-        waterChangePct !== null &&
-        feedChangePct !== null &&
-        waterChangePct <= -6 &&
-        feedChangePct <= -5
-          ? 12
-          : 0;
+      const bodyweightScore =
+        latestBwVariance === null ? 0
+        : latestBwVariance <= -7 ? 26
+        : latestBwVariance <= -5 ? 20
+        : latestBwVariance <= -3 ? 10
+        : 0;
+
+      const persistenceScore = Math.min(18, waterDownDays * 3 + feedDownDays * 3);
+      const combinedIntakeScore =
+        waterChangePct !== null && feedChangePct !== null &&
+        waterChangePct <= -6 && feedChangePct <= -5 ? 14 : 0;
+      const mortalityJoinScore =
+        mortalityUpDays >= 1 &&
+        ((waterChangePct !== null && waterChangePct <= -6) ||
+          (feedChangePct !== null && feedChangePct <= -5)) ? 14 : 0;
 
       const score = clamp(
-        waterScore + feedScore + mortalityScore + persistenceScore,
+        waterScore + feedScore + mortalityScore + bodyweightScore +
+        persistenceScore + combinedIntakeScore + mortalityJoinScore,
       );
 
-      const tone: WelfareTone =
-        score >= 72
-          ? "urgent"
-          : score >= 45
-            ? "attention"
-            : score >= 22
-              ? "watch"
-              : "normal";
+      const signalCount = [
+        waterChangePct !== null && waterChangePct <= -6,
+        feedChangePct !== null && feedChangePct <= -5,
+        mortalityChangePct !== null && mortalityChangePct >= 25,
+        latestBwVariance !== null && latestBwVariance <= -5,
+      ].filter(Boolean).length;
 
-      const signals: string[] = [];
-
-      if (waterChangePct !== null && waterChangePct <= -6) {
-        signals.push(`Water ${signed(waterChangePct, 0, "%")}`);
+      let tone: WelfareTone = "normal";
+      if (score >= 74 || (signalCount >= 3 && mortalityUpDays >= 1)) {
+        tone = "urgent";
+      } else if (
+        score >= 46 || signalCount >= 2 ||
+        (waterDownDays >= 2 && feedDownDays >= 2)
+      ) {
+        tone = "attention";
+      } else if (
+        score >= 22 || signalCount >= 1 ||
+        waterDownDays >= 2 || feedDownDays >= 2
+      ) {
+        tone = "watch";
       }
 
-      if (feedChangePct !== null && feedChangePct <= -5) {
-        signals.push(`Feed ${signed(feedChangePct, 0, "%")}`);
+      const mortalityRising =
+        mortalityChangePct !== null && mortalityChangePct >= 25;
+      const intakeDeteriorating =
+        (waterChangePct !== null && waterChangePct <= -6) ||
+        (feedChangePct !== null && feedChangePct <= -5);
+
+      let readout =
+        "No combined deterioration pattern detected across water, feed, growth and mortality.";
+
+      if (tone === "watch") {
+        readout =
+          waterDownDays >= 2 || feedDownDays >= 2
+            ? "An early intake signal is persisting across multiple days. Watch the next entry closely before the pattern strengthens."
+            : "One bird-health signal is moving outside the flock's recent pattern. Verify the next data point and inspect for an obvious operational cause.";
       }
 
-      if (mortalityChangePct !== null && mortalityChangePct >= 25) {
-        signals.push(`Mort ${signed(mortalityChangePct, 0, "%")}`);
+      if (tone === "attention") {
+        readout =
+          waterDownDays >= 2 && feedDownDays >= 2
+            ? "Water and feed have both declined for multiple days. Early health pressure is developing even if mortality has not yet increased."
+            : intakeDeteriorating && latestBwVariance !== null && latestBwVariance <= -5
+              ? "Intake pressure and below-standard bodyweight are occurring together. Check access, environment and bird distribution before growth loss widens."
+              : "Two or more bird-health indicators are deteriorating together. A flock inspection is warranted before the pattern escalates.";
+      }
+
+      if (tone === "urgent") {
+        readout = mortalityRising
+          ? "Multiple bird-health signals are deteriorating together and mortality is now rising. Inspect the flock immediately."
+          : "Multiple bird-health signals are deteriorating together with a persistent intake decline. Inspect the flock now before mortality responds.";
       }
 
       return {
-        story,
-        score,
-        tone,
-        signals,
-        waterChangePct,
-        feedChangePct,
-        mortalityChangePct,
-        recentMortalityPct: recentMortality,
+        story, score, tone, signalCount, waterChangePct, feedChangePct,
+        mortalityChangePct, recentMortalityPct: recentMortality,
+        waterDownDays, feedDownDays, mortalityUpDays, readout,
       };
     });
 
     const ranked = [...evaluations].sort((a, b) => b.score - a.score);
     const focus =
       ranked.find((item) => item.story.plan.id === focusStory?.plan.id) ??
-      ranked[0] ??
-      null;
+      ranked[0] ?? null;
 
-    const flaggedCount = evaluations.filter(
-      (item) => item.tone !== "normal",
-    ).length;
-
+    const flaggedCount = evaluations.filter((item) => item.tone !== "normal").length;
     const overallTone: WelfareTone =
-      ranked.some((item) => item.tone === "urgent")
-        ? "urgent"
-        : ranked.some((item) => item.tone === "attention")
-          ? "attention"
-          : ranked.some((item) => item.tone === "watch")
-            ? "watch"
-            : "normal";
+      ranked.some((item) => item.tone === "urgent") ? "urgent"
+      : ranked.some((item) => item.tone === "attention") ? "attention"
+      : ranked.some((item) => item.tone === "watch") ? "watch"
+      : "normal";
 
     return {
-      focus,
-      flaggedCount,
-      overallTone,
+      focus, flaggedCount, overallTone,
       topFlagged: ranked.filter((item) => item.tone !== "normal").slice(0, 2),
     };
   }, [stories, focusStory]);
@@ -3035,6 +3097,7 @@ function BroilerIntelligenceContent() {
                 <div>
                   <p>Bird Health & Welfare</p>
                   <h3>Early warning indicators</h3>
+                  <small>Multi-day pattern detection across intake, growth and mortality</small>
                 </div>
                 <span className={`bi-health-status ${animalWelfare.focus?.tone ?? "normal"}`}>
                   {(animalWelfare.focus?.tone ?? "normal").toUpperCase()}
@@ -3049,7 +3112,13 @@ function BroilerIntelligenceContent() {
                       ? signed(animalWelfare.focus.waterChangePct, 0, "%")
                       : "—"}
                   </strong>
-                  <small>3d vs prior 3d</small>
+                  <small>
+                    {healthTrendLabel(
+                      animalWelfare.focus?.waterDownDays ?? 0,
+                      "down",
+                      "3d vs prior 3d",
+                    )}
+                  </small>
                 </div>
 
                 <div className={`bi-health-signal ${animalWelfare.focus?.feedChangePct != null && animalWelfare.focus.feedChangePct <= -5 ? "warn" : "ok"}`}>
@@ -3059,7 +3128,13 @@ function BroilerIntelligenceContent() {
                       ? signed(animalWelfare.focus.feedChangePct, 0, "%")
                       : "—"}
                   </strong>
-                  <small>3d vs prior 3d</small>
+                  <small>
+                    {healthTrendLabel(
+                      animalWelfare.focus?.feedDownDays ?? 0,
+                      "down",
+                      "3d vs prior 3d",
+                    )}
+                  </small>
                 </div>
 
                 <div className={`bi-health-signal ${animalWelfare.focus?.mortalityChangePct != null && animalWelfare.focus.mortalityChangePct >= 25 ? "bad" : "ok"}`}>
@@ -3070,9 +3145,13 @@ function BroilerIntelligenceContent() {
                       : "—"}
                   </strong>
                   <small>
-                    {animalWelfare.focus?.mortalityChangePct != null
-                      ? `${signed(animalWelfare.focus.mortalityChangePct, 0, "%")} trend`
-                      : "daily trend"}
+                    {healthTrendLabel(
+                      animalWelfare.focus?.mortalityUpDays ?? 0,
+                      "up",
+                      animalWelfare.focus?.mortalityChangePct != null
+                        ? `${signed(animalWelfare.focus.mortalityChangePct, 0, "%")} trend`
+                        : "daily trend",
+                    )}
                   </small>
                 </div>
 
@@ -3096,14 +3175,16 @@ function BroilerIntelligenceContent() {
               <div className="bi-health-readout">
                 <span>OviCore read</span>
                 <strong>
-                  {animalWelfare.focus?.tone === "urgent"
-                    ? "Multiple bird-health signals are deteriorating together — inspect the flock now."
-                    : animalWelfare.focus?.tone === "attention"
-                      ? "Combined deterioration is developing across bird-health indicators."
-                      : animalWelfare.focus?.tone === "watch"
-                        ? "An early health signal is moving outside the flock's recent pattern."
-                        : "No combined deterioration pattern detected across water, feed and mortality."}
+                  {animalWelfare.focus?.readout ??
+                    "No combined deterioration pattern detected across water, feed, growth and mortality."}
                 </strong>
+                <div className="bi-health-readout-meta">
+                  <span>Score {fmt(animalWelfare.focus?.score ?? 0, 0)}/100</span>
+                  <span>
+                    {animalWelfare.focus?.signalCount ?? 0} active signal
+                    {(animalWelfare.focus?.signalCount ?? 0) === 1 ? "" : "s"}
+                  </span>
+                </div>
               </div>
             </section>
 
@@ -4070,10 +4151,11 @@ function BroilerIntelligenceContent() {
 
         .bi-health-strip {
           display: grid;
-          grid-template-columns: 185px minmax(0, 1fr) minmax(260px, .8fr);
+          grid-template-columns: 215px minmax(0, 1fr) minmax(330px, .92fr);
           gap: 7px;
           align-items: stretch;
-          padding: 7px 8px;
+          padding: 10px 11px;
+          min-height: 94px;
           border: 1px solid #d7e5df;
           border-left: 3px solid #4b9a79;
           border-radius: 10px;
@@ -4095,7 +4177,7 @@ function BroilerIntelligenceContent() {
 
         .bi-health-title p {
           margin: 0 0 2px;
-          font-size: 7px;
+          font-size: 8.5px;
           font-weight: 900;
           letter-spacing: .11em;
           text-transform: uppercase;
@@ -4104,18 +4186,26 @@ function BroilerIntelligenceContent() {
 
         .bi-health-title h3 {
           margin: 0;
-          font-size: 12px;
-          line-height: 1.05;
+          font-size: 15px;
+          line-height: 1.08;
           color: #133f34;
+        }
+
+        .bi-health-title small {
+          display: block;
+          margin-top: 5px;
+          font-size: 8px;
+          line-height: 1.25;
+          color: #6b8179;
         }
 
         .bi-health-status {
           flex: 0 0 auto;
-          padding: 4px 6px;
+          padding: 5px 8px;
           border-radius: 999px;
           background: #e6f3ed;
           color: #176046;
-          font-size: 6.8px;
+          font-size: 8px;
           font-weight: 900;
           letter-spacing: .04em;
         }
@@ -4127,7 +4217,7 @@ function BroilerIntelligenceContent() {
         .bi-health-signals {
           display: grid;
           grid-template-columns: repeat(5, minmax(0, 1fr));
-          gap: 5px;
+          gap: 7px;
         }
 
         .bi-health-signal {
@@ -4135,7 +4225,7 @@ function BroilerIntelligenceContent() {
           display: grid;
           align-content: center;
           gap: 1px;
-          padding: 5px 6px;
+          padding: 7px 8px;
           border: 1px solid #e2ebe7;
           border-radius: 7px;
           background: #fbfdfc;
@@ -4150,7 +4240,7 @@ function BroilerIntelligenceContent() {
         }
 
         .bi-health-signal strong {
-          font-size: 13px;
+          font-size: 16px;
           line-height: 1;
           color: #176046;
         }
@@ -4159,7 +4249,7 @@ function BroilerIntelligenceContent() {
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
-          font-size: 6.5px;
+          font-size: 7.8px;
           color: #809189;
         }
 
@@ -4194,9 +4284,27 @@ function BroilerIntelligenceContent() {
         }
 
         .bi-health-readout strong {
-          font-size: 8.3px;
-          line-height: 1.28;
+          font-size: 10px;
+          line-height: 1.35;
           color: #345c50;
+        }
+
+        .bi-health-readout-meta {
+          display: flex;
+          gap: 6px;
+          flex-wrap: wrap;
+          margin-top: 2px;
+        }
+
+        .bi-health-readout-meta span {
+          padding: 3px 6px;
+          border-radius: 999px;
+          background: #eef5f2;
+          color: #46665b;
+          font-size: 7.5px;
+          font-weight: 800;
+          letter-spacing: 0;
+          text-transform: none;
         }
 
         .bi-intelligence-grid + .bi-lower-grid {
@@ -5538,6 +5646,25 @@ function BroilerIntelligenceContent() {
           .bi-mobile-svg-stage {
             min-height: 150px;
           }
+        }
+
+        @media (min-width: 1181px) and (min-height: 700px) {
+          .bi-panel-head h3 { font-size: 13px; }
+          .bi-panel-head p, .bi-story-header p, .bi-scope span { font-size: 9px; }
+          .bi-story-header h2 { font-size: 18px; }
+          .bi-story-header > div:first-child > span { font-size: 9.5px; }
+          .bi-story-score strong { font-size: 14px; }
+          .bi-story-score small { font-size: 9px; }
+          .bi-metric { min-height: 82px; padding: 6px 8px; }
+          .bi-metric-top > span { font-size: 8.5px; }
+          .bi-metric-value { font-size: 19px; }
+          .bi-metric-meta, .bi-metric p { font-size: 8.5px; }
+          .bi-diagnosis-callout strong { font-size: 11px; line-height: 1.38; }
+          .bi-priority p { font-size: 9.5px; line-height: 1.35; }
+          .bi-flock-row strong, .bi-pressure-row > span, .bi-actions strong,
+          .bi-anomaly strong, .bi-change strong { font-size: 9.4px; }
+          .bi-flock-row span, .bi-pressure-row > strong, .bi-actions p,
+          .bi-anomaly p, .bi-change p, .bi-history-summary-compact p { font-size: 8.6px; }
         }
 
         @media (max-width: 1180px) {
