@@ -93,8 +93,8 @@ type SetterBatch = {
   set_date: string;
   setter_name: string;
   eggs_set: number;
-  fertility_pct: number;
-  hatchability_pct: number;
+  expected_fertility_pct?: number | null;
+  expected_hatchability_pct?: number | null;
   expected_chicks: number;
   hatch_date: string;
 
@@ -371,7 +371,8 @@ function SetterProgramContent() {
     const averageHatchability =
       batches.length > 0
         ? batches.reduce(
-            (sum, row) => sum + row.hatchability_pct,
+            (sum, row) =>
+              sum + Number(row.expected_hatchability_pct || 0),
             0,
           ) / batches.length
         : 0;
@@ -489,8 +490,8 @@ function SetterProgramContent() {
             set_date: form.setDate,
             setter_name: form.setterName.trim(),
             eggs_set: eggsSet,
-            fertility_pct: fertilityPct,
-            hatchability_pct: hatchabilityPct,
+            expected_fertility_pct: fertilityPct,
+            expected_hatchability_pct: hatchabilityPct,
             notes: form.notes.trim() || null,
           }),
         },
@@ -936,10 +937,10 @@ function SetterProgramContent() {
                     <td>{row.breeder_flock_code}</td>
                     <td>{formatNumber(row.eggs_set)}</td>
                     <td>
-                      {formatPercent(row.fertility_pct)}
+                      {formatPercent(row.expected_fertility_pct)}
                     </td>
                     <td>
-                      {formatPercent(row.hatchability_pct)}
+                      {formatPercent(row.expected_hatchability_pct)}
                     </td>
                     <td>
                       {formatNumber(row.expected_chicks)}
@@ -971,6 +972,12 @@ function SetterProgramContent() {
                       >
                         {row.status}
                       </span>
+                      {Number(row.expected_fertility_pct || 0) === 0 &&
+                      Number(row.expected_hatchability_pct || 0) === 0 ? (
+                        <small className="legacy-row-note">
+                          Recreate test row
+                        </small>
+                      ) : null}
                     </td>
                     <td>{row.notes || ""}</td>
                   </tr>
@@ -1355,6 +1362,15 @@ function SetterProgramContent() {
         .status-pill.short-supply {
           background: #fde5e3;
           color: #a6312b;
+        }
+
+        .legacy-row-note {
+          display: block;
+          margin-top: 3px;
+          color: #a6312b;
+          font-size: 8px;
+          font-weight: 800;
+          white-space: nowrap;
         }
 
         @media (max-width: 1180px) {
