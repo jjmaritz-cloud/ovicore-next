@@ -46,6 +46,7 @@ type DemandPlan = {
 
 type ChickSupplySummary = {
   available_chicks: number;
+  source?: "hatchery" | "manual";
 };
 
 type PerformanceRecord = {
@@ -1173,7 +1174,11 @@ export default function BroilerHomePage() {
             <div>
               <span>Available Chicks</span>
               <strong>{formatNumber(insights.availableChicks)}</strong>
-              <p>Entered as hatchery/chick supply.</p>
+              <p>
+                {chickSupply?.source === "hatchery"
+                  ? "Live from Hatchery Chick Availability."
+                  : "Temporary manual chick supply bridge."}
+              </p>
             </div>
 
             <div>
@@ -1199,7 +1204,11 @@ export default function BroilerHomePage() {
                     ? "Covered"
                     : "Awaiting supply"}
               </strong>
-              <p>Next step is linking this to Hatchery output.</p>
+              <p>
+                {chickSupply?.source === "hatchery"
+                  ? "Live Hatchery supply is connected."
+                  : "Awaiting live Hatchery supply."}
+              </p>
             </div>
           </div>
         </section>

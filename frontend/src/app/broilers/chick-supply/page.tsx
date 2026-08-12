@@ -1,88 +1,171 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import Link from "next/link";
 import BroilerSidebar from "@/components/BroilerSidebar";
+import OviCoreModuleHeader from "@/components/OviCoreModuleHeader";
 
-const API_BASE = '';
+const API_BASE = "";
 
 type ChickSupplyRow = {
   id?: number;
+  company_id?: number;
   week_ending: string;
   available_chicks: number;
   notes?: string | null;
   created_at?: string;
   updated_at?: string;
+  source?: "hatchery" | "manual";
 };
 
 type ChickSupplySummary = {
+  company_id?: number;
   available_chicks: number;
+  source?: "hatchery" | "manual";
 };
 
-type SaveState = "idle" | "saving" | "saved" | "error";
+async function authenticatedFetch(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+) {
+  const response = await fetch(input, {
+    ...init,
+    credentials: "include",
+  });
 
-function formatNumber(value: number | null | undefined) {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) {
-    return "0";
+  if (response.status === 401) {
+    const nextPath =
+      `${window.location.pathname}${window.location.search}`;
+
+    window.location.href =
+      `/login?next=${encodeURIComponent(nextPath)}`;
+
+    throw new Error("Your login session has expired.");
   }
 
-  return Number(value).toLocaleString();
+  return response;
 }
 
-function todayIso() {
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = String(today.getMonth() + 1).padStart(2, "0");
-  const day = String(today.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
+function formatNumber(
+  value: number | null | undefined,
+) {
+  return Number(value || 0).toLocaleString();
 }
 
-function nextSundayIso() {
-  const date = new Date();
-  const day = date.getDay();
-  const daysToSunday = day === 0 ? 0 : 7 - day;
-  date.setDate(date.getDate() + daysToSunday);
-
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const dom = String(date.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${dom}`;
-}
-
-function isoToDisplayDate(value?: string | null) {
+function isoToDisplayDate(
+  value?: string | null,
+) {
   if (!value) return "";
-  const [year, month, day] = value.split("-");
-  if (!year || !month || !day) return value;
+
+  const [year, month, day] =
+    value.split("-");
+
+  if (!year || !month || !day) {
+    return value;
+  }
+
   return `${day}-${month}-${year}`;
 }
 
+function resolveCompanyId() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const params = new URLSearchParams(
+    window.location.search,
+  );
+
+  const urlCompany = Number(
+    params.get("company_id"),
+  );
+
+  if (
+    Number.isInteger(urlCompany) &&
+    urlCompany > 0
+  ) {
+    return urlCompany;
+  }
+
+  const remembered = Number(
+    window.localStorage.getItem(
+      "ovicore_selected_company_id",
+    ),
+  );
+
+  return Number.isInteger(remembered) &&
+    remembered > 0
+    ? remembered
+    : null;
+}
+
 export default function ChickSupplyPage() {
-  const [rows, setRows] = useState<ChickSupplyRow[]>([]);
-  const [summary, setSummary] = useState<ChickSupplySummary | null>(null);
-  const [weekEnding, setWeekEnding] = useState(nextSundayIso());
-  const [availableChicks, setAvailableChicks] = useState("");
-  const [notes, setNotes] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [saveState, setSaveState] = useState<SaveState>("idle");
-  const [message, setMessage] = useState("");
+  const [
+    activeCompanyId,
+    setActiveCompanyId,
+  ] = useState<number | null>(null);
+
+  const [rows, setRows] = useState<
+    ChickSupplyRow[]
+  >([]);
+
+  const [summary, setSummary] =
+    useState<ChickSupplySummary | null>(
+      null,
+    );
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [message, setMessage] =
+    useState("");
+
+  useEffect(() => {
+    setActiveCompanyId(
+      resolveCompanyId(),
+    );
+  }, []);
 
   async function loadData() {
+    if (!activeCompanyId) {
+      setRows([]);
+      setSummary(null);
+      setLoading(false);
+      setMessage(
+        "Select a working company.",
+      );
+      return;
+    }
+
     setLoading(true);
     setMessage("");
 
     try {
-      const [rowsResponse, summaryResponse] = await Promise.all([
-        fetch(`${API_BASE}/api/broilers/chick-supply`, {
-          cache: "no-store",
-        }),
-        fetch(`${API_BASE}/api/broilers/chick-supply-summary`, {
-          cache: "no-store",
-        }),
+      const query =
+        `?company_id=${activeCompanyId}`;
+
+      const [
+        rowsResponse,
+        summaryResponse,
+      ] = await Promise.all([
+        authenticatedFetch(
+          `${API_BASE}/api/broilers/chick-supply${query}`,
+          { cache: "no-store" },
+        ),
+        authenticatedFetch(
+          `${API_BASE}/api/broilers/chick-supply-summary${query}`,
+          { cache: "no-store" },
+        ),
       ]);
 
       if (!rowsResponse.ok) {
-        throw new Error(`Could not load chick supply rows: ${rowsResponse.status}`);
+        throw new Error(
+          `Could not load chick supply rows: ${rowsResponse.status}`,
+        );
       }
 
       if (!summaryResponse.ok) {
@@ -91,17 +174,20 @@ export default function ChickSupplyPage() {
         );
       }
 
-      const rowsData: ChickSupplyRow[] = await rowsResponse.json();
-      const summaryData: ChickSupplySummary = await summaryResponse.json();
+      setRows(
+        await rowsResponse.json(),
+      );
 
-      setRows(rowsData);
-      setSummary(summaryData);
+      setSummary(
+        await summaryResponse.json(),
+      );
     } catch (error) {
       console.error(error);
+
       setMessage(
         error instanceof Error
           ? error.message
-          : "Could not load chick supply data.",
+          : "Could not load chick supply.",
       );
     } finally {
       setLoading(false);
@@ -109,232 +195,172 @@ export default function ChickSupplyPage() {
   }
 
   useEffect(() => {
-    loadData();
-  }, []);
-
-  const totalAvailable = useMemo(() => {
-    return rows.reduce((sum, row) => sum + Number(row.available_chicks || 0), 0);
-  }, [rows]);
+    if (activeCompanyId) {
+      void loadData();
+    }
+  }, [activeCompanyId]);
 
   const nextSupply = useMemo(() => {
-    const today = todayIso();
+    const today = new Date()
+      .toISOString()
+      .slice(0, 10);
 
     return [...rows]
-      .filter((row) => row.week_ending >= today)
-      .sort((a, b) => a.week_ending.localeCompare(b.week_ending))[0];
+      .filter(
+        (row) =>
+          row.week_ending >= today,
+      )
+      .sort((a, b) =>
+        a.week_ending.localeCompare(
+          b.week_ending,
+        ),
+      )[0];
   }, [rows]);
 
-  async function saveSupply(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    const chicks = Number(availableChicks);
-
-    if (!weekEnding) {
-      setSaveState("error");
-      setMessage("Please select a week ending date.");
-      return;
-    }
-
-    if (!Number.isFinite(chicks) || chicks < 0) {
-      setSaveState("error");
-      setMessage("Available chicks must be a valid number.");
-      return;
-    }
-
-    try {
-      setSaveState("saving");
-      setMessage("");
-
-      const response = await fetch(`${API_BASE}/api/broilers/chick-supply`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          week_ending: weekEnding,
-          available_chicks: chicks,
-          notes,
-        }),
-      });
-
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(text || `Could not save chick supply: ${response.status}`);
-      }
-
-      setSaveState("saved");
-      setAvailableChicks("");
-      setNotes("");
-
-      await loadData();
-
-      window.setTimeout(() => {
-        setSaveState("idle");
-      }, 1800);
-    } catch (error) {
-      console.error(error);
-      setSaveState("error");
-      setMessage(
-        error instanceof Error ? error.message : "Could not save chick supply.",
-      );
-    }
-  }
-
-  function editRow(row: ChickSupplyRow) {
-    setWeekEnding(row.week_ending);
-    setAvailableChicks(String(row.available_chicks ?? 0));
-    setNotes(row.notes || "");
-    setSaveState("idle");
-    setMessage("");
-  }
+  const source =
+    summary?.source ||
+    rows[0]?.source ||
+    "manual";
 
   return (
     <div className="page-shell">
       <BroilerSidebar />
 
       <main className="main-panel">
-        <section className="broiler-ai-hero">
-          <div>
-            <h2>Chick Supply</h2>
+        <OviCoreModuleHeader
+          eyebrow="OviCore Broiler Planning"
+          title="Chick Supply"
+          description="Live chick supply position feeding Broiler placement planning."
+          actions={[
+            {
+              label: "Broiler Home",
+              href: "/broilers",
+              type: "home",
+            },
+            {
+              label: "Refresh",
+              type: "refresh",
+              onClick: loadData,
+            },
+          ]}
+        />
+
+        {message && (
+          <div className="supply-message">
+            {message}
+          </div>
+        )}
+
+        <section className="supply-kpi-grid">
+          <article>
+            <span>
+              Available Chicks
+            </span>
+            <strong>
+              {formatNumber(
+                summary?.available_chicks,
+              )}
+            </strong>
             <p>
-              Enter weekly available chicks so Broiler planning can show covered,
-              shortfall, or surplus against required chicks.
+              {source === "hatchery"
+                ? "Live actual availability from Hatchery."
+                : "Temporary manual supply bridge."}
             </p>
-          </div>
+          </article>
 
-          <button className="primary-button" type="button" onClick={loadData}>
-            Refresh
-          </button>
+          <article>
+            <span>
+              Supply Source
+            </span>
+            <strong>
+              {source === "hatchery"
+                ? "Hatchery"
+                : "Manual"}
+            </strong>
+            <p>
+              {source === "hatchery"
+                ? "Hatchery actuals are authoritative."
+                : "Used only until Hatchery actuals are available."}
+            </p>
+          </article>
+
+          <article>
+            <span>
+              Next Supply Week
+            </span>
+            <strong>
+              {nextSupply
+                ? isoToDisplayDate(
+                    nextSupply.week_ending,
+                  )
+                : "None"}
+            </strong>
+            <p>
+              {nextSupply
+                ? `${formatNumber(
+                    nextSupply.available_chicks,
+                  )} chicks available.`
+                : "No future supply week available."}
+            </p>
+          </article>
+
+          <article>
+            <span>
+              Integration
+            </span>
+            <strong>
+              {source === "hatchery"
+                ? "Live"
+                : "Bridge"}
+            </strong>
+            <p>
+              Broiler Home uses this same supply source.
+            </p>
+          </article>
         </section>
 
-        <section className="chick-supply-page-grid">
-          <div className="chick-entry-card">
-            <div className="chick-entry-head">
-              <div>
-                <p className="eyebrow">Hatchery Supply Input</p>
-                <h3>Weekly Chick Availability</h3>
-                <span>
-                  This is a temporary manual bridge. Later it should be fed
-                  directly from Hatchery output.
-                </span>
-              </div>
-
-              <strong
-                className={
-                  saveState === "saved"
-                    ? "save-pill saved"
-                    : saveState === "saving"
-                      ? "save-pill saving"
-                      : saveState === "error"
-                        ? "save-pill error"
-                        : "save-pill"
-                }
-              >
-                {saveState === "saved"
-                  ? "Saved"
-                  : saveState === "saving"
-                    ? "Saving"
-                    : saveState === "error"
-                      ? "Check"
-                      : "Ready"}
-              </strong>
-            </div>
-
-            <form className="chick-entry-form" onSubmit={saveSupply}>
-              <label>
-                <span>Week Ending</span>
-                <input
-                  type="date"
-                  value={weekEnding}
-                  onChange={(event) => setWeekEnding(event.target.value)}
-                />
-              </label>
-
-              <label>
-                <span>Available Chicks</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={availableChicks}
-                  onChange={(event) => setAvailableChicks(event.target.value)}
-                  placeholder="e.g. 200000"
-                />
-              </label>
-
-              <label className="chick-notes-field">
-                <span>Notes</span>
-                <textarea
-                  value={notes}
-                  onChange={(event) => setNotes(event.target.value)}
-                  placeholder="Optional hatchery notes, assumptions, or supply risk."
-                  rows={4}
-                />
-              </label>
-
-              <div className="chick-entry-actions">
-                <button className="primary-button" type="submit">
-                  Save Chick Supply
-                </button>
-
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={() => {
-                    setWeekEnding(nextSundayIso());
-                    setAvailableChicks("");
-                    setNotes("");
-                    setMessage("");
-                    setSaveState("idle");
-                  }}
-                >
-                  Clear
-                </button>
-              </div>
-
-              {message && <p className="chick-form-message">{message}</p>}
-            </form>
-          </div>
-
-          <div className="chick-summary-stack">
-            <div className="chick-summary-card">
-              <span>Total Available Chicks</span>
-              <strong>
-                {formatNumber(summary?.available_chicks ?? totalAvailable)}
-              </strong>
-              <p>Sum of saved chick supply rows.</p>
-            </div>
-
-            <div className="chick-summary-card">
-              <span>Next Supply Week</span>
-              <strong>
-                {nextSupply ? isoToDisplayDate(nextSupply.week_ending) : "None"}
-              </strong>
+        {source === "hatchery" && (
+          <section className="integration-card">
+            <div>
+              <p className="eyebrow">
+                Hatchery Integration
+              </p>
+              <h3>
+                Chick supply is now
+                controlled from Hatchery
+              </h3>
               <p>
-                {nextSupply
-                  ? `${formatNumber(nextSupply.available_chicks)} chicks available.`
-                  : "Add a weekly supply row to activate planning."}
+                Update held chicks,
+                rejected chicks or manual
+                hatch adjustments in
+                Hatchery &gt; Chick
+                Availability. Broiler
+                planning will refresh from
+                the same source.
               </p>
             </div>
 
-            <div className="chick-summary-card">
-              <span>Integration Status</span>
-              <strong>Manual Bridge</strong>
-              <p>
-                Will later move under Hatchery and feed Broiler planning
-                automatically.
-              </p>
-            </div>
-          </div>
-        </section>
+            <Link
+              href={
+                activeCompanyId
+                  ? `/hatchery/chick-availability?company_id=${activeCompanyId}`
+                  : "/hatchery/chick-availability"
+              }
+            >
+              Open Chick Availability
+            </Link>
+          </section>
+        )}
 
-        <section className="grid-card broiler-ai-table-card">
+        <section className="grid-card supply-table-card">
           <div className="grid-card-head">
             <div>
-              <h3>Saved Chick Supply</h3>
+              <h3>
+                Weekly Chick Supply
+              </h3>
               <p>
-                Weekly available chicks used by Broiler Home to compare against
-                required chicks.
+                Weekly available chicks
+                used by Broiler planning.
               </p>
             </div>
           </div>
@@ -344,44 +370,66 @@ export default function ChickSupplyPage() {
               <thead>
                 <tr>
                   <th>Week Ending</th>
-                  <th>Available Chicks</th>
+                  <th>
+                    Available Chicks
+                  </th>
+                  <th>Source</th>
                   <th>Notes</th>
-                  <th>Last Updated</th>
-                  <th>Action</th>
+                  <th>
+                    Last Updated
+                  </th>
                 </tr>
               </thead>
 
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={5}>Loading chick supply...</td>
+                    <td colSpan={5}>
+                      Loading chick
+                      supply...
+                    </td>
                   </tr>
                 ) : rows.length === 0 ? (
                   <tr>
                     <td colSpan={5}>
-                      No chick supply rows saved yet. Add the first weekly
-                      availability above.
+                      No chick supply
+                      available.
                     </td>
                   </tr>
                 ) : (
                   rows.map((row) => (
-                    <tr key={row.id ?? row.week_ending}>
-                      <td>{isoToDisplayDate(row.week_ending)}</td>
-                      <td>{formatNumber(row.available_chicks)}</td>
-                      <td>{row.notes || ""}</td>
+                    <tr
+                      key={
+                        row.id ??
+                        row.week_ending
+                      }
+                    >
                       <td>
-                        {row.updated_at
-                          ? new Date(row.updated_at).toLocaleString()
-                          : ""}
+                        {isoToDisplayDate(
+                          row.week_ending,
+                        )}
                       </td>
                       <td>
-                        <button
-                          type="button"
-                          className="small-table-button"
-                          onClick={() => editRow(row)}
-                        >
-                          Edit
-                        </button>
+                        {formatNumber(
+                          row.available_chicks,
+                        )}
+                      </td>
+                      <td>
+                        {row.source ===
+                        "hatchery"
+                          ? "Hatchery"
+                          : "Manual"}
+                      </td>
+                      <td>
+                        {row.notes ||
+                          ""}
+                      </td>
+                      <td>
+                        {row.updated_at
+                          ? new Date(
+                              row.updated_at,
+                            ).toLocaleString()
+                          : ""}
                       </td>
                     </tr>
                   ))
@@ -390,6 +438,135 @@ export default function ChickSupplyPage() {
             </table>
           </div>
         </section>
+
+        <style jsx>{`
+          .supply-message {
+            margin: 12px 0;
+            padding: 10px 12px;
+            border: 1px solid #e0e9e4;
+            border-radius: 10px;
+            background: #f8fbf9;
+            color: #37564a;
+            font-size: 11px;
+            font-weight: 750;
+          }
+
+          .supply-kpi-grid {
+            display: grid;
+            grid-template-columns:
+              repeat(4, minmax(0, 1fr));
+            gap: 9px;
+            margin: 14px 0;
+          }
+
+          .supply-kpi-grid article {
+            padding: 14px;
+            border: 1px solid #dce9e2;
+            border-radius: 12px;
+            background: #ffffff;
+            box-shadow:
+              0 7px 18px
+              rgba(22, 71, 54, 0.05);
+          }
+
+          .supply-kpi-grid span {
+            color: #60756c;
+            font-size: 8px;
+            font-weight: 900;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+          }
+
+          .supply-kpi-grid strong {
+            display: block;
+            margin-top: 4px;
+            color: #0c573d;
+            font-size: 22px;
+          }
+
+          .supply-kpi-grid p {
+            margin: 3px 0 0;
+            color: #71847c;
+            font-size: 9px;
+            line-height: 1.35;
+          }
+
+          .integration-card {
+            margin-bottom: 14px;
+            padding: 15px 16px;
+            display: flex;
+            align-items: center;
+            justify-content:
+              space-between;
+            gap: 16px;
+            border: 1px solid #cfe5da;
+            border-radius: 13px;
+            background:
+              linear-gradient(
+                135deg,
+                #f0faf5,
+                #ffffff
+              );
+          }
+
+          .integration-card h3 {
+            margin: 3px 0;
+            color: #123e2f;
+            font-size: 18px;
+          }
+
+          .integration-card p {
+            margin: 0;
+            max-width: 760px;
+            color: #657a71;
+            font-size: 10px;
+            line-height: 1.45;
+          }
+
+          .integration-card a {
+            flex: 0 0 auto;
+            padding: 9px 12px;
+            border-radius: 9px;
+            background: #0b6747;
+            color: #ffffff;
+            text-decoration: none;
+            font-size: 10px;
+            font-weight: 900;
+          }
+
+          .eyebrow {
+            color: #19744e !important;
+            font-size: 8px !important;
+            font-weight: 950 !important;
+            letter-spacing:
+              0.12em !important;
+            text-transform:
+              uppercase;
+          }
+
+          .supply-table-card {
+            overflow: hidden;
+          }
+
+          @media (
+            max-width: 900px
+          ) {
+            .supply-kpi-grid {
+              grid-template-columns:
+                repeat(
+                  2,
+                  minmax(0, 1fr)
+                );
+            }
+
+            .integration-card {
+              align-items:
+                flex-start;
+              flex-direction:
+                column;
+            }
+          }
+        `}</style>
       </main>
     </div>
   );
