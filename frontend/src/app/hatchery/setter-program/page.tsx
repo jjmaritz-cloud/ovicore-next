@@ -354,32 +354,48 @@ function SetterProgramContent() {
   }, [loadData]);
 
   const totals = useMemo(() => {
+    const validPlanningBatches = batches.filter(
+      (row) =>
+        Number(row.expected_fertility_pct || 0) > 0 &&
+        Number(row.expected_hatchability_pct || 0) > 0,
+    );
+
     const eggsSet = batches.reduce(
       (sum, row) => sum + row.eggs_set,
       0,
     );
-    const expected = batches.reduce(
+
+    const expected = validPlanningBatches.reduce(
       (sum, row) => sum + row.expected_chicks,
       0,
     );
-    const demand = batches.reduce(
+
+    const demand = validPlanningBatches.reduce(
       (sum, row) => sum + Number(row.broiler_week_demand || 0),
       0,
     );
+
     const balance = expected - demand;
 
+    const weightedEggs = validPlanningBatches.reduce(
+      (sum, row) => sum + row.eggs_set,
+      0,
+    );
+
     const averageHatchability =
-      batches.length > 0
-        ? batches.reduce(
+      weightedEggs > 0
+        ? validPlanningBatches.reduce(
             (sum, row) =>
-              sum + Number(row.expected_hatchability_pct || 0),
+              sum +
+              row.eggs_set *
+                Number(row.expected_hatchability_pct || 0),
             0,
-          ) / batches.length
+          ) / weightedEggs
         : 0;
 
-    const highRiskSets = batches.filter(
+    const highRiskSets = validPlanningBatches.filter(
       (row) =>
-        !["on track", "covered"].includes(
+        !["planned", "on track", "covered"].includes(
           row.status.trim().toLowerCase(),
         ),
     ).length;

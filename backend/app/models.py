@@ -1077,4 +1077,54 @@ class HatcherySetterBatch(Base):
         "HatcheryEggReceipt",
         back_populates="setter_batches",
     )
+    hatch_result = relationship(
+        "HatcheryHatchResult",
+        back_populates="setter_batch",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
 
+
+
+class HatcheryHatchResult(Base):
+    __tablename__ = "hatchery_hatch_results"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
+    setter_batch_id = Column(Integer, ForeignKey("hatchery_setter_batches.id"), nullable=False, unique=True, index=True)
+    hatch_date = Column(Date, nullable=False, index=True)
+    clear_eggs = Column(Integer, nullable=False, default=0)
+    dead_in_shell = Column(Integer, nullable=False, default=0)
+    cull_chicks = Column(Integer, nullable=False, default=0)
+    saleable_chicks = Column(Integer, nullable=False, default=0)
+    status = Column(String(40), nullable=False, default="On Track")
+    notes = Column(Text, nullable=True)
+    last_saved_by = Column(String(255), nullable=True)
+    last_saved_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime, server_default=func.now())
+
+    setter_batch = relationship("HatcherySetterBatch", back_populates="hatch_result")
+    chick_availability = relationship(
+        "HatcheryChickAvailability",
+        back_populates="hatch_result",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
+
+class HatcheryChickAvailability(Base):
+    __tablename__ = "hatchery_chick_availability"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
+    hatch_result_id = Column(Integer, ForeignKey("hatchery_hatch_results.id"), nullable=False, unique=True, index=True)
+    held_chicks = Column(Integer, nullable=False, default=0)
+    rejected_chicks = Column(Integer, nullable=False, default=0)
+    manual_adjustment = Column(Integer, nullable=False, default=0)
+    status = Column(String(40), nullable=False, default="Available")
+    notes = Column(Text, nullable=True)
+    last_saved_by = Column(String(255), nullable=True)
+    last_saved_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime, server_default=func.now())
+
+    hatch_result = relationship("HatcheryHatchResult", back_populates="chick_availability")

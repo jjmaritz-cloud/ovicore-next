@@ -15,6 +15,12 @@ from app.schemas import (
     HatcherySetterBatchCreate,
     HatcherySetterBatchOut,
     HatcherySetterBatchPatch,
+    HatcheryHatchResultCreate,
+    HatcheryHatchResultOut,
+    HatcheryHatchResultPatch,
+    HatcheryChickAvailabilityCreate,
+    HatcheryChickAvailabilityOut,
+    HatcheryChickAvailabilityPatch,
 )
 
 
@@ -738,3 +744,636 @@ def update_setter_batch(
     db.commit()
 
     return build_setter_response(db, batch)
+
+
+def get_setter_batch(
+    db: Session,
+    current_user: models.AppUser,
+    batch_id: int,
+) -> models.HatcherySetterBatch:
+    batch = (
+        db.query(models.HatcherySetterBatch)
+        .options(
+            joinedload(models.HatcherySetterBatch.egg_receipt)
+            .joinedload(models.HatcheryEggReceipt.breeder_production_flock)
+            .joinedload(models.BreederProductionFlock.farm),
+            joinedload(models.HatcherySetterBatch.egg_receipt)
+            .joinedload(models.HatcheryEggReceipt.breeder_production_flock)
+            .joinedload(models.BreederProductionFlock.shed),
+        )
+        .filter(models.HatcherySetterBatch.id == batch_id)
+        .first()
+    )
+
+    if batch is None:
+        raise HTTPException(status_code=404, detail="Setter batch not found")
+
+    receipt = batch.egg_receipt
+    flock = receipt.breeder_production_flock if receipt else None
+
+    if flock is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Setter batch is not linked to a valid Breeder Production flock",
+        )
+
+    if (
+        not current_user.is_global_admin
+        and batch.company_id != current_user.company_id
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have access to this company",
+        )
+
+    if not user_has_farm_access(db, current_user, flock.farm_id):
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have access to this Breeder Production farm",
+        )
+
+    return batch
+
+
+def week_ending_sunday(value: date) -> date:
+    return value + timedelta(days=(6 - value.weekday()) % 7)
+
+
+def broiler_demand_for_week(
+    db: Session,
+    company_id: int,
+    week_ending: date,
+) -> int:
+    week_start = week_ending - timedelta(days=6)
+
+    rows = (
+        db.query(models.BroilerPlacementPlan)
+        .filter(
+            models.BroilerPlacementPlan.company_id == company_id,
+            models.BroilerPlacementPlan.placement_date >= week_start,
+            models.BroilerPlacementPlan.placement_date <= week_ending,
+        )
+        .all()
+    )
+
+    total = 0
+
+    for row in rows:
+        planned = int(row.planned_birds or 0)
+        allowance = float(row.chick_allowance_pct or 0)
+        total += round(planned * (1 + allowance / 100))
+
+    return total
+
+
+def build_hatch_result_response(
+    row: models.HatcheryHatchResult,
+) -> HatcheryHatchResultOut:
+    batch = row.setter_batch
+    receipt = batch.egg_receipt if batch else None
+    flock = receipt.breeder_production_flock if receipt else None
+
+    eggs_set = int(batch.eggs_set or 0) if batch else 0
+    expected_chicks = int(batch.expected_chicks or 0) if batch else 0
+
+    clear_eggs = int(row.clear_eggs or 0)
+    dead_in_shell = int(row.dead_in_shell or 0)
+    cull_chicks = int(row.cull_chicks or 0)
+    saleable_chicks = int(row.saleable_chicks or 0)
+
+    fertile_eggs = max(0, eggs_set - clear_eggs)
+
+    fertility_pct = (
+        round((fertile_eggs / eggs_set) * 100, 3)
+        if eggs_set > 0
+        else None
+    )
+
+    actual_hatch_pct = (
+        round((saleable_chicks / eggs_set) * 100, 3)
+        if eggs_set > 0
+        else None
+    )
+
+    hatch_of_fertile_pct = (
+        round((saleable_chicks / fertile_eggs) * 100, 3)
+        if fertile_eggs > 0
+        else None
+    )
+
+    cull_pct = (
+        round((cull_chicks / (saleable_chicks + cull_chicks)) * 100, 3)
+        if saleable_chicks + cull_chicks > 0
+        else None
+    )
+
+    unexplained = eggs_set - (
+        clear_eggs + dead_in_shell + cull_chicks + saleable_chicks
+    )
+
+    chick_variance = saleable_chicks - expected_chicks
+
+    expected_hatchability = (
+        float(batch.expected_hatchability_pct)
+        if batch and batch.expected_hatchability_pct is not None
+        else None
+    )
+
+    if unexplained != 0:
+        status_value = "Reconcile"
+    elif expected_chicks > 0 and chick_variance <= -max(
+        500,
+        round(expected_chicks * 0.03),
+    ):
+        status_value = "Short Supply"
+    elif (
+        expected_hatchability is not None
+        and hatch_of_fertile_pct is not None
+        and hatch_of_fertile_pct < expected_hatchability - 2
+    ):
+        status_value = "Hatch Review"
+    elif cull_pct is not None and cull_pct > 2:
+        status_value = "Quality Review"
+    else:
+        status_value = "On Track"
+
+    return HatcheryHatchResultOut(
+        id=row.id,
+        company_id=row.company_id,
+        setter_batch_id=row.setter_batch_id,
+        egg_receipt_id=batch.egg_receipt_id if batch else 0,
+        breeder_production_flock_id=(
+            receipt.breeder_production_flock_id if receipt else 0
+        ),
+        set_date=batch.set_date if batch else row.hatch_date,
+        hatch_date=row.hatch_date,
+        setter_name=batch.setter_name if batch else "",
+        breeder_flock_code=flock.flock_code if flock else "",
+        breeder_farm_name=(
+            flock.farm.farm_name if flock and flock.farm else ""
+        ),
+        breeder_shed_name=(
+            flock.shed.shed_name if flock and flock.shed else ""
+        ),
+        eggs_set=eggs_set,
+        expected_chicks=expected_chicks,
+        expected_fertility_pct=(
+            float(batch.expected_fertility_pct)
+            if batch and batch.expected_fertility_pct is not None
+            else None
+        ),
+        expected_hatchability_pct=expected_hatchability,
+        clear_eggs=clear_eggs,
+        dead_in_shell=dead_in_shell,
+        cull_chicks=cull_chicks,
+        saleable_chicks=saleable_chicks,
+        fertile_eggs=fertile_eggs,
+        fertility_pct=fertility_pct,
+        actual_hatch_pct=actual_hatch_pct,
+        hatch_of_fertile_pct=hatch_of_fertile_pct,
+        chick_variance=chick_variance,
+        cull_pct=cull_pct,
+        unexplained_egg_balance=unexplained,
+        status=status_value,
+        notes=row.notes,
+        last_saved_by=row.last_saved_by,
+        last_saved_at=row.last_saved_at,
+    )
+
+
+def get_hatch_result(
+    db: Session,
+    current_user: models.AppUser,
+    result_id: int,
+) -> models.HatcheryHatchResult:
+    row = (
+        db.query(models.HatcheryHatchResult)
+        .options(
+            joinedload(models.HatcheryHatchResult.setter_batch)
+            .joinedload(models.HatcherySetterBatch.egg_receipt)
+            .joinedload(models.HatcheryEggReceipt.breeder_production_flock)
+            .joinedload(models.BreederProductionFlock.farm),
+            joinedload(models.HatcheryHatchResult.setter_batch)
+            .joinedload(models.HatcherySetterBatch.egg_receipt)
+            .joinedload(models.HatcheryEggReceipt.breeder_production_flock)
+            .joinedload(models.BreederProductionFlock.shed),
+        )
+        .filter(models.HatcheryHatchResult.id == result_id)
+        .first()
+    )
+
+    if row is None:
+        raise HTTPException(status_code=404, detail="Hatch result not found")
+
+    get_setter_batch(db, current_user, row.setter_batch_id)
+
+    return row
+
+
+@router.get(
+    "/hatch-results",
+    response_model=list[HatcheryHatchResultOut],
+)
+def list_hatch_results(
+    company_id: Optional[int] = Query(default=None),
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    resolved_company_id = resolve_company_id(current_user, company_id)
+
+    rows = (
+        db.query(models.HatcheryHatchResult)
+        .options(
+            joinedload(models.HatcheryHatchResult.setter_batch)
+            .joinedload(models.HatcherySetterBatch.egg_receipt)
+            .joinedload(models.HatcheryEggReceipt.breeder_production_flock)
+            .joinedload(models.BreederProductionFlock.farm),
+            joinedload(models.HatcheryHatchResult.setter_batch)
+            .joinedload(models.HatcherySetterBatch.egg_receipt)
+            .joinedload(models.HatcheryEggReceipt.breeder_production_flock)
+            .joinedload(models.BreederProductionFlock.shed),
+        )
+        .filter(models.HatcheryHatchResult.company_id == resolved_company_id)
+        .order_by(
+            models.HatcheryHatchResult.hatch_date.desc(),
+            models.HatcheryHatchResult.id.desc(),
+        )
+        .all()
+    )
+
+    return [build_hatch_result_response(row) for row in rows]
+
+
+@router.post(
+    "/hatch-results",
+    response_model=HatcheryHatchResultOut,
+)
+def create_hatch_result(
+    payload: HatcheryHatchResultCreate,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    batch = get_setter_batch(db, current_user, payload.setter_batch_id)
+    resolved_company_id = resolve_company_id(current_user, payload.company_id)
+
+    if batch.company_id != resolved_company_id:
+        raise HTTPException(
+            status_code=400,
+            detail="The selected company does not match the Setter batch",
+        )
+
+    existing = (
+        db.query(models.HatcheryHatchResult)
+        .filter(models.HatcheryHatchResult.setter_batch_id == batch.id)
+        .first()
+    )
+
+    if existing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="A Hatch Result already exists for this Setter batch",
+        )
+
+    values = {
+        "Clear eggs": payload.clear_eggs,
+        "Dead in shell": payload.dead_in_shell,
+        "Cull chicks": payload.cull_chicks,
+        "Saleable chicks": payload.saleable_chicks,
+    }
+
+    for label, value in values.items():
+        if value < 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{label} cannot be negative",
+            )
+
+    if sum(values.values()) != int(batch.eggs_set or 0):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Clear eggs + dead in shell + cull chicks + saleable chicks "
+                f"must equal Eggs Set ({int(batch.eggs_set or 0):,})."
+            ),
+        )
+
+    row = models.HatcheryHatchResult(
+        company_id=batch.company_id,
+        setter_batch_id=batch.id,
+        hatch_date=payload.hatch_date or batch.hatch_date,
+        clear_eggs=payload.clear_eggs,
+        dead_in_shell=payload.dead_in_shell,
+        cull_chicks=payload.cull_chicks,
+        saleable_chicks=payload.saleable_chicks,
+        status="On Track",
+        notes=(payload.notes.strip() if payload.notes else ""),
+        last_saved_by=current_user.full_name,
+        last_saved_at=datetime.utcnow(),
+    )
+
+    db.add(row)
+    batch.status = "Hatched"
+    batch.last_saved_by = current_user.full_name
+    batch.last_saved_at = datetime.utcnow()
+    db.commit()
+    db.refresh(row)
+
+    return build_hatch_result_response(
+        get_hatch_result(db, current_user, row.id)
+    )
+
+
+@router.patch(
+    "/hatch-results/{result_id}",
+    response_model=HatcheryHatchResultOut,
+)
+def update_hatch_result(
+    result_id: int,
+    payload: HatcheryHatchResultPatch,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    row = get_hatch_result(db, current_user, result_id)
+    batch = row.setter_batch
+    data = payload.model_dump(exclude_unset=True)
+
+    for field in (
+        "clear_eggs",
+        "dead_in_shell",
+        "cull_chicks",
+        "saleable_chicks",
+    ):
+        if field in data and data[field] is not None and data[field] < 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{field.replace('_', ' ').title()} cannot be negative",
+            )
+
+    if "notes" in data:
+        data["notes"] = data["notes"].strip() if data["notes"] else ""
+
+    for field, value in data.items():
+        setattr(row, field, value)
+
+    total = (
+        int(row.clear_eggs or 0)
+        + int(row.dead_in_shell or 0)
+        + int(row.cull_chicks or 0)
+        + int(row.saleable_chicks or 0)
+    )
+
+    if total != int(batch.eggs_set or 0):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Clear eggs + dead in shell + cull chicks + saleable chicks "
+                f"must equal Eggs Set ({int(batch.eggs_set or 0):,})."
+            ),
+        )
+
+    row.last_saved_by = current_user.full_name
+    row.last_saved_at = datetime.utcnow()
+    db.commit()
+
+    return build_hatch_result_response(
+        get_hatch_result(db, current_user, row.id)
+    )
+
+
+def build_chick_availability_response(
+    db: Session,
+    row: models.HatcheryChickAvailability,
+) -> HatcheryChickAvailabilityOut:
+    hatch = row.hatch_result
+    batch = hatch.setter_batch if hatch else None
+    receipt = batch.egg_receipt if batch else None
+    flock = receipt.breeder_production_flock if receipt else None
+
+    saleable = int(hatch.saleable_chicks or 0) if hatch else 0
+    held = int(row.held_chicks or 0)
+    rejected = int(row.rejected_chicks or 0)
+    adjustment = int(row.manual_adjustment or 0)
+
+    available = max(0, saleable - held - rejected + adjustment)
+
+    week_ending = week_ending_sunday(hatch.hatch_date)
+    demand = broiler_demand_for_week(db, row.company_id, week_ending)
+    balance = available - demand
+
+    expected_hatchability = (
+        float(batch.expected_hatchability_pct)
+        if batch and batch.expected_hatchability_pct is not None
+        else None
+    )
+
+    actual_hatch_pct = (
+        round((saleable / int(batch.eggs_set or 0)) * 100, 3)
+        if batch and int(batch.eggs_set or 0) > 0
+        else None
+    )
+
+    status_value = (
+        "Shortfall"
+        if balance < 0
+        else "Tight"
+        if demand > 0 and balance <= max(1000, round(demand * 0.03))
+        else "Covered"
+    )
+
+    return HatcheryChickAvailabilityOut(
+        id=row.id,
+        company_id=row.company_id,
+        hatch_result_id=row.hatch_result_id,
+        setter_batch_id=batch.id if batch else 0,
+        hatch_date=hatch.hatch_date,
+        week_ending=week_ending,
+        setter_name=batch.setter_name if batch else "",
+        breeder_flock_code=flock.flock_code if flock else "",
+        breeder_farm_name=(
+            flock.farm.farm_name if flock and flock.farm else ""
+        ),
+        breeder_shed_name=(
+            flock.shed.shed_name if flock and flock.shed else ""
+        ),
+        eggs_set=int(batch.eggs_set or 0) if batch else 0,
+        expected_chicks=int(batch.expected_chicks or 0) if batch else 0,
+        actual_saleable_chicks=saleable,
+        held_chicks=held,
+        rejected_chicks=rejected,
+        manual_adjustment=adjustment,
+        available_chicks=available,
+        broiler_demand=demand,
+        balance_to_demand=balance,
+        actual_hatch_pct=actual_hatch_pct,
+        expected_hatchability_pct=expected_hatchability,
+        status=status_value,
+        notes=row.notes,
+        last_saved_by=row.last_saved_by,
+        last_saved_at=row.last_saved_at,
+    )
+
+
+@router.get(
+    "/chick-availability",
+    response_model=list[HatcheryChickAvailabilityOut],
+)
+def list_chick_availability(
+    company_id: Optional[int] = Query(default=None),
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    resolved_company_id = resolve_company_id(current_user, company_id)
+
+    rows = (
+        db.query(models.HatcheryChickAvailability)
+        .options(
+            joinedload(models.HatcheryChickAvailability.hatch_result)
+            .joinedload(models.HatcheryHatchResult.setter_batch)
+            .joinedload(models.HatcherySetterBatch.egg_receipt)
+            .joinedload(models.HatcheryEggReceipt.breeder_production_flock)
+            .joinedload(models.BreederProductionFlock.farm),
+            joinedload(models.HatcheryChickAvailability.hatch_result)
+            .joinedload(models.HatcheryHatchResult.setter_batch)
+            .joinedload(models.HatcherySetterBatch.egg_receipt)
+            .joinedload(models.HatcheryEggReceipt.breeder_production_flock)
+            .joinedload(models.BreederProductionFlock.shed),
+        )
+        .filter(models.HatcheryChickAvailability.company_id == resolved_company_id)
+        .order_by(models.HatcheryChickAvailability.id.desc())
+        .all()
+    )
+
+    return [build_chick_availability_response(db, row) for row in rows]
+
+
+@router.post(
+    "/chick-availability",
+    response_model=HatcheryChickAvailabilityOut,
+)
+def create_chick_availability(
+    payload: HatcheryChickAvailabilityCreate,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    hatch = get_hatch_result(db, current_user, payload.hatch_result_id)
+    resolved_company_id = resolve_company_id(current_user, payload.company_id)
+
+    if hatch.company_id != resolved_company_id:
+        raise HTTPException(
+            status_code=400,
+            detail="The selected company does not match the Hatch Result",
+        )
+
+    existing = (
+        db.query(models.HatcheryChickAvailability)
+        .filter(models.HatcheryChickAvailability.hatch_result_id == hatch.id)
+        .first()
+    )
+    if existing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Chick Availability already exists for this Hatch Result",
+        )
+
+    held = int(payload.held_chicks or 0)
+    rejected = int(payload.rejected_chicks or 0)
+    adjustment = int(payload.manual_adjustment or 0)
+
+    if held < 0 or rejected < 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Held and rejected chicks cannot be negative",
+        )
+
+    if held + rejected > int(hatch.saleable_chicks or 0) + max(0, adjustment):
+        raise HTTPException(
+            status_code=400,
+            detail="Held and rejected chicks cannot exceed available saleable chick output",
+        )
+
+    row = models.HatcheryChickAvailability(
+        company_id=hatch.company_id,
+        hatch_result_id=hatch.id,
+        held_chicks=held,
+        rejected_chicks=rejected,
+        manual_adjustment=adjustment,
+        status="Available",
+        notes=(payload.notes.strip() if payload.notes else ""),
+        last_saved_by=current_user.full_name,
+        last_saved_at=datetime.utcnow(),
+    )
+
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+
+    return build_chick_availability_response(db, row)
+
+
+@router.patch(
+    "/chick-availability/{availability_id}",
+    response_model=HatcheryChickAvailabilityOut,
+)
+def update_chick_availability(
+    availability_id: int,
+    payload: HatcheryChickAvailabilityPatch,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    row = (
+        db.query(models.HatcheryChickAvailability)
+        .options(
+            joinedload(models.HatcheryChickAvailability.hatch_result)
+            .joinedload(models.HatcheryHatchResult.setter_batch)
+            .joinedload(models.HatcherySetterBatch.egg_receipt)
+            .joinedload(models.HatcheryEggReceipt.breeder_production_flock)
+            .joinedload(models.BreederProductionFlock.farm),
+            joinedload(models.HatcheryChickAvailability.hatch_result)
+            .joinedload(models.HatcheryHatchResult.setter_batch)
+            .joinedload(models.HatcherySetterBatch.egg_receipt)
+            .joinedload(models.HatcheryEggReceipt.breeder_production_flock)
+            .joinedload(models.BreederProductionFlock.shed),
+        )
+        .filter(models.HatcheryChickAvailability.id == availability_id)
+        .first()
+    )
+
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Chick Availability record not found",
+        )
+
+    get_hatch_result(db, current_user, row.hatch_result_id)
+    data = payload.model_dump(exclude_unset=True)
+
+    for field in ("held_chicks", "rejected_chicks"):
+        if field in data and data[field] is not None and data[field] < 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{field.replace('_', ' ').title()} cannot be negative",
+            )
+
+    if "notes" in data:
+        data["notes"] = data["notes"].strip() if data["notes"] else ""
+
+    for field, value in data.items():
+        setattr(row, field, value)
+
+    hatch = row.hatch_result
+
+    if (
+        int(row.held_chicks or 0) + int(row.rejected_chicks or 0)
+        > int(hatch.saleable_chicks or 0)
+        + max(0, int(row.manual_adjustment or 0))
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Held and rejected chicks cannot exceed available saleable chick output",
+        )
+
+    row.last_saved_by = current_user.full_name
+    row.last_saved_at = datetime.utcnow()
+    db.commit()
+
+    return build_chick_availability_response(db, row)

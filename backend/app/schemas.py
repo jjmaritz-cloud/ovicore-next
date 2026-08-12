@@ -1443,3 +1443,104 @@ class HatcherySetterBatchOut(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+
+
+class HatcheryHatchResultCreate(BaseModel):
+    company_id: int
+    setter_batch_id: int
+    hatch_date: Optional[date] = None
+    clear_eggs: int = 0
+    dead_in_shell: int = 0
+    cull_chicks: int = 0
+    saleable_chicks: int = 0
+    notes: Optional[str] = None
+
+
+class HatcheryHatchResultPatch(BaseModel):
+    hatch_date: Optional[date] = None
+    clear_eggs: Optional[int] = None
+    dead_in_shell: Optional[int] = None
+    cull_chicks: Optional[int] = None
+    saleable_chicks: Optional[int] = None
+    notes: Optional[str] = None
+
+
+class HatcheryHatchResultOut(BaseModel):
+    id: int
+    company_id: int
+    setter_batch_id: int
+    egg_receipt_id: int
+    breeder_production_flock_id: int
+    set_date: date
+    hatch_date: date
+    setter_name: str
+    breeder_flock_code: str
+    breeder_farm_name: str
+    breeder_shed_name: str
+    eggs_set: int
+    expected_chicks: int = 0
+    expected_fertility_pct: Optional[float] = None
+    expected_hatchability_pct: Optional[float] = None
+    clear_eggs: int
+    dead_in_shell: int
+    cull_chicks: int
+    saleable_chicks: int
+    fertile_eggs: int = 0
+    fertility_pct: Optional[float] = None
+    actual_hatch_pct: Optional[float] = None
+    hatch_of_fertile_pct: Optional[float] = None
+    chick_variance: int = 0
+    cull_pct: Optional[float] = None
+    unexplained_egg_balance: int = 0
+    status: str
+    notes: Optional[str] = None
+    last_saved_by: Optional[str] = None
+    last_saved_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class HatcheryChickAvailabilityCreate(BaseModel):
+    company_id: int
+    hatch_result_id: int
+    held_chicks: int = 0
+    rejected_chicks: int = 0
+    manual_adjustment: int = 0
+    notes: Optional[str] = None
+
+
+class HatcheryChickAvailabilityPatch(BaseModel):
+    held_chicks: Optional[int] = None
+    rejected_chicks: Optional[int] = None
+    manual_adjustment: Optional[int] = None
+    notes: Optional[str] = None
+
+
+class HatcheryChickAvailabilityOut(BaseModel):
+    id: int
+    company_id: int
+    hatch_result_id: int
+    setter_batch_id: int
+    hatch_date: date
+    week_ending: date
+    setter_name: str
+    breeder_flock_code: str
+    breeder_farm_name: str
+    breeder_shed_name: str
+    eggs_set: int
+    expected_chicks: int
+    actual_saleable_chicks: int
+    held_chicks: int
+    rejected_chicks: int
+    manual_adjustment: int
+    available_chicks: int
+    broiler_demand: int = 0
+    balance_to_demand: int = 0
+    actual_hatch_pct: Optional[float] = None
+    expected_hatchability_pct: Optional[float] = None
+    status: str
+    notes: Optional[str] = None
+    last_saved_by: Optional[str] = None
+    last_saved_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
