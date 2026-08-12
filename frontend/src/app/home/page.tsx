@@ -140,6 +140,7 @@ const modules: ModuleCard[] = [
     description:
       "Egg receiving, setters, hatchability, chick output and weekly chick availability.",
     tags: ["Eggs set", "Hatch %", "Chicks available"],
+    href: "/hatchery",
     status: "Paid add-on",
     statusClass: "home-status-planned",
     icon: Egg,
