@@ -790,7 +790,7 @@ export default function BroilerHomePage() {
     <div className="page-shell">
       <BroilerSidebar />
 
-      <main className="main-panel">
+      <main className="main-panel broiler-home-density">
         <OviCoreModuleHeader
           eyebrow="OviCore Broiler Module"
           title="Broiler Home"
@@ -1507,6 +1507,155 @@ export default function BroilerHomePage() {
 
             .broiler-home-dual-grid :global(.chick-supply-grid) {
               grid-template-columns: repeat(4, minmax(0, 1fr));
+            }
+          }
+
+
+          /* Dense desktop canvas:
+             roughly the footprint of a 75% browser view while preserving
+             near-90% text sizing. We compress whitespace, not typography. */
+          @media (min-width: 1260px) {
+            :global(.broiler-home-density) {
+              --home-gap: 6px;
+            }
+
+            :global(.broiler-home-density > *) {
+              margin-top: 0;
+            }
+
+            :global(.broiler-home-density .chick-supply-card) {
+              padding: 8px 10px;
+              margin-bottom: var(--home-gap);
+              border-radius: 11px;
+            }
+
+            :global(.broiler-home-density .chick-supply-head) {
+              margin-bottom: 5px;
+              gap: 7px;
+            }
+
+            :global(.broiler-home-density .chick-supply-head h3) {
+              margin: 1px 0;
+              line-height: 1.05;
+            }
+
+            :global(.broiler-home-density .chick-supply-head span) {
+              line-height: 1.15;
+            }
+
+            :global(.broiler-home-density .chick-supply-grid) {
+              gap: 5px;
+            }
+
+            :global(.broiler-home-density .chick-supply-grid > div) {
+              padding: 7px 9px;
+              border-radius: 9px;
+            }
+
+            :global(.broiler-home-density .chick-supply-grid > div p) {
+              margin-top: 1px;
+              line-height: 1.12;
+            }
+
+            :global(.broiler-home-density .weather-drawer-card) {
+              margin-bottom: var(--home-gap);
+              border-radius: 11px;
+            }
+
+            :global(.broiler-home-density .weather-drawer-toggle) {
+              padding: 7px 10px;
+            }
+
+            :global(.broiler-home-density .weather-drawer-toggle h3) {
+              margin: 1px 0;
+              line-height: 1.05;
+            }
+
+            :global(.broiler-home-density .weather-drawer-toggle span) {
+              line-height: 1.15;
+            }
+
+            :global(.broiler-home-density .broiler-ai-layout) {
+              gap: 6px;
+              margin-bottom: var(--home-gap);
+            }
+
+            :global(.broiler-home-density .broiler-ai-card) {
+              padding: 8px 10px;
+              border-radius: 11px;
+            }
+
+            :global(.broiler-home-density .broiler-ai-card-head) {
+              margin-bottom: 4px;
+            }
+
+            :global(.broiler-home-density .broiler-ai-card-head h3) {
+              margin: 1px 0 0;
+              line-height: 1.05;
+            }
+
+            :global(.broiler-home-density .ai-briefing-stack),
+            :global(.broiler-home-density .ai-action-stack) {
+              gap: 4px;
+            }
+
+            :global(.broiler-home-density .ai-brief-row) {
+              padding: 5px 7px;
+              border-radius: 8px;
+            }
+
+            :global(.broiler-home-density .ai-brief-row p) {
+              line-height: 1.12;
+            }
+
+            :global(.broiler-home-density .ai-action-card) {
+              padding: 6px 8px;
+              border-radius: 8px;
+            }
+
+            :global(.broiler-home-density .ai-action-card p) {
+              margin-top: 1px;
+              line-height: 1.08;
+            }
+
+            .broiler-home-dual-grid {
+              gap: 6px;
+              margin-bottom: var(--home-gap);
+            }
+
+            :global(.broiler-home-density .broiler-ai-table-card) {
+              margin-bottom: var(--home-gap);
+              border-radius: 11px;
+            }
+
+            :global(.broiler-home-density .grid-card-head) {
+              padding: 7px 10px;
+            }
+
+            :global(.broiler-home-density .grid-card-head h3) {
+              margin: 0 0 1px;
+              line-height: 1.05;
+            }
+
+            :global(.broiler-home-density .grid-card-head p) {
+              margin: 0;
+              line-height: 1.15;
+            }
+
+            :global(.broiler-home-density .ai-home-table th),
+            :global(.broiler-home-density .ai-home-table td) {
+              padding-top: 5px;
+              padding-bottom: 5px;
+            }
+
+            /* Keep the typography essentially where it is now. */
+            :global(.broiler-home-density h3),
+            :global(.broiler-home-density strong),
+            :global(.broiler-home-density p),
+            :global(.broiler-home-density span),
+            :global(.broiler-home-density th),
+            :global(.broiler-home-density td) {
+              font-size-adjust: none;
             }
           }
 
