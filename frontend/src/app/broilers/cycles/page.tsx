@@ -44,7 +44,49 @@ type BroilerCycleRow = {
   lastSavedBy: string | null;
 };
 
-const API_BASE = '';
+
+const API_BASE = "";
+
+async function authenticatedFetch(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+) {
+  const response = await fetch(input, {
+    ...init,
+    credentials: "include",
+  });
+
+  if (response.status === 401) {
+    const nextPath =
+      `${window.location.pathname}${window.location.search}`;
+
+    window.location.href =
+      `/login?next=${encodeURIComponent(nextPath)}`;
+
+    throw new Error("Your login session has expired.");
+  }
+
+  return response;
+}
+
+function getActiveCompanyId() {
+  if (typeof window === "undefined") return null;
+
+  const searchParams = new URLSearchParams(window.location.search);
+  const companyFromUrl = Number(searchParams.get("company_id"));
+
+  if (Number.isInteger(companyFromUrl) && companyFromUrl > 0) {
+    return companyFromUrl;
+  }
+
+  const rememberedCompany = Number(
+    window.localStorage.getItem("ovicore_selected_company_id"),
+  );
+
+  return Number.isInteger(rememberedCompany) && rememberedCompany > 0
+    ? rememberedCompany
+    : null;
+}
 
 function isoToDisplayDate(value: string | null | undefined) {
   if (!value) return "";
@@ -147,6 +189,7 @@ function ReviewPill(params: ICellRendererParams) {
 export default function BroilerCycleRegisterPage() {
   const gridRef = useRef<AgGridReact<BroilerCycleRow>>(null);
 
+  const [activeCompanyId, setActiveCompanyId] = useState<number | null>(null);
   const [rows, setRows] = useState<BroilerCycleRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -155,16 +198,28 @@ export default function BroilerCycleRegisterPage() {
   const dirtyRowIds = useRef<Set<number>>(new Set());
 
   const fetchRows = useCallback(async () => {
+    if (!activeCompanyId) {
+      setRows([]);
+      setLoading(false);
+      alert("Select a working company before loading Broiler Cycles.");
+      return;
+    }
+
     setLoading(true);
 
     try {
-      const response = await fetch(`${API_BASE}/api/broilers/demand-plans`, {
-        cache: "no-store",
-      });
+      const response = await authenticatedFetch(
+        `${API_BASE}/api/broilers/demand-plans?company_id=${activeCompanyId}`,
+        {
+          cache: "no-store",
+        },
+      );
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Could not load cycles. ${response.status}: ${errorText}`);
+        throw new Error(
+          `Could not load cycles. ${response.status}: ${errorText}`,
+        );
       }
 
       const data = await response.json();
@@ -200,15 +255,29 @@ export default function BroilerCycleRegisterPage() {
       dirtyRowIds.current.clear();
     } catch (error) {
       console.error(error);
-      alert("Could not load broiler cycles. Check that the backend is running.");
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Could not load broiler cycles.",
+      );
     } finally {
       setLoading(false);
     }
+  }, [activeCompanyId]);
+  useEffect(() => {
+    setActiveCompanyId(getActiveCompanyId());
   }, []);
 
   useEffect(() => {
-    fetchRows();
-  }, [fetchRows]);
+    if (activeCompanyId) {
+      window.localStorage.setItem(
+        "ovicore_selected_company_id",
+        String(activeCompanyId),
+      );
+
+      void fetchRows();
+    }
+  }, [activeCompanyId, fetchRows]);
 
   const defaultColDef = useMemo<ColDef<BroilerCycleRow>>(
     () => ({
@@ -398,7 +467,7 @@ export default function BroilerCycleRegisterPage() {
           return;
         }
 
-        const response = await fetch(`${API_BASE}/api/broilers/demand-plans/${id}`, {
+        const response = await authenticatedFetch(`${API_BASE}/api/broilers/demand-plans/${id}`, {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
@@ -464,7 +533,7 @@ export default function BroilerCycleRegisterPage() {
     setSaving(true);
 
     try {
-      const response = await fetch(`${API_BASE}/api/broilers/demand-plans/${row.id}`, {
+      const response = await authenticatedFetch(`${API_BASE}/api/broilers/demand-plans/${row.id}`, {
         method: "DELETE",
       });
 
