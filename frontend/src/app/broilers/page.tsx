@@ -1085,7 +1085,8 @@ export default function BroilerHomePage() {
           </div>
         </section>
 
-        <section className="chick-supply-card">
+        <div className="broiler-home-dual-grid">
+          <section className="chick-supply-card">
           <div className="chick-supply-head">
             <div>
               <p className="eyebrow">Live Production Position</p>
@@ -1136,9 +1137,9 @@ export default function BroilerHomePage() {
               <p>Current closing birds vs planned birds.</p>
             </div>
           </div>
-        </section>
+          </section>
 
-        <section className="chick-supply-card">
+          <section className="chick-supply-card">
           <div className="chick-supply-head">
             <div>
               <p className="eyebrow">Chick Supply Pressure</p>
@@ -1211,7 +1212,9 @@ export default function BroilerHomePage() {
               </p>
             </div>
           </div>
-        </section>
+          </section>
+
+        </div>
 
         <section className="grid-card broiler-ai-table-card">
           <div className="grid-card-head">
@@ -1339,6 +1342,186 @@ export default function BroilerHomePage() {
             </table>
           </div>
         </section>
+        <style jsx>{`
+          :global(.main-panel) {
+            padding-top: 10px;
+          }
+
+          :global(.chick-supply-card) {
+            padding: 12px 14px;
+            margin-bottom: 10px;
+            border-radius: 14px;
+          }
+
+          :global(.chick-supply-head) {
+            margin-bottom: 8px;
+            gap: 10px;
+          }
+
+          :global(.chick-supply-head h3) {
+            margin-top: 2px;
+            margin-bottom: 2px;
+          }
+
+          :global(.chick-supply-head span) {
+            line-height: 1.3;
+          }
+
+          :global(.chick-supply-grid) {
+            gap: 8px;
+          }
+
+          :global(.chick-supply-grid > div) {
+            padding: 10px 12px;
+            min-height: 0;
+          }
+
+          :global(.chick-supply-grid > div strong) {
+            margin-top: 2px;
+            margin-bottom: 1px;
+          }
+
+          :global(.chick-supply-grid > div p) {
+            margin-top: 2px;
+            line-height: 1.25;
+          }
+
+          :global(.weather-drawer-card) {
+            margin-bottom: 10px;
+            border-radius: 14px;
+          }
+
+          :global(.weather-drawer-toggle) {
+            padding: 10px 14px;
+            min-height: 0;
+          }
+
+          :global(.weather-drawer-toggle h3) {
+            margin-top: 2px;
+            margin-bottom: 2px;
+          }
+
+          :global(.weather-drawer-body) {
+            padding: 10px 12px 12px;
+          }
+
+          :global(.weather-summary-grid) {
+            gap: 8px;
+            margin-bottom: 8px;
+          }
+
+          :global(.weather-summary-card) {
+            padding: 9px 10px;
+          }
+
+          :global(.weather-content-grid) {
+            gap: 8px;
+          }
+
+          :global(.broiler-ai-layout) {
+            gap: 10px;
+            margin-bottom: 10px;
+          }
+
+          :global(.broiler-ai-card) {
+            padding: 12px 14px;
+            border-radius: 14px;
+          }
+
+          :global(.broiler-ai-card-head) {
+            margin-bottom: 7px;
+          }
+
+          :global(.broiler-ai-card-head h3) {
+            margin-top: 2px;
+            margin-bottom: 0;
+          }
+
+          :global(.ai-briefing-stack) {
+            gap: 6px;
+          }
+
+          :global(.ai-brief-row) {
+            padding: 7px 9px;
+            min-height: 0;
+          }
+
+          :global(.ai-brief-row p) {
+            line-height: 1.25;
+          }
+
+          :global(.ai-action-stack) {
+            gap: 6px;
+          }
+
+          :global(.ai-action-card) {
+            padding: 8px 10px;
+            min-height: 0;
+          }
+
+          :global(.ai-action-card p) {
+            margin-top: 2px;
+            line-height: 1.2;
+          }
+
+          .broiler-home-dual-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+            align-items: stretch;
+            margin-bottom: 10px;
+          }
+
+          .broiler-home-dual-grid :global(.chick-supply-card) {
+            height: 100%;
+            margin-bottom: 0;
+          }
+
+          .broiler-home-dual-grid :global(.chick-supply-grid) {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+
+          :global(.broiler-ai-table-card) {
+            margin-bottom: 10px;
+            border-radius: 14px;
+          }
+
+          :global(.grid-card-head) {
+            padding: 10px 14px;
+          }
+
+          :global(.grid-card-head h3) {
+            margin-bottom: 2px;
+          }
+
+          :global(.ai-home-table th),
+          :global(.ai-home-table td) {
+            padding-top: 7px;
+            padding-bottom: 7px;
+          }
+
+          @media (max-width: 1250px) {
+            .broiler-home-dual-grid {
+              grid-template-columns: 1fr;
+            }
+
+            .broiler-home-dual-grid :global(.chick-supply-grid) {
+              grid-template-columns: repeat(4, minmax(0, 1fr));
+            }
+          }
+
+          @media (max-width: 800px) {
+            :global(.chick-supply-card),
+            :global(.broiler-ai-card) {
+              padding: 11px;
+            }
+
+            .broiler-home-dual-grid :global(.chick-supply-grid) {
+              grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+          }
+        `}</style>
+
       </main>
     </div>
   );
