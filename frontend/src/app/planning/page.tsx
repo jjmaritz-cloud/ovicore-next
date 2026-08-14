@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
   CalendarDays,
@@ -244,6 +244,24 @@ export default function PlanningPage() {
   const [timelineHeight, setTimelineHeight] = useState(390);
   const resizeStartY = useRef(0);
   const resizeStartHeight = useRef(390);
+  const timelineHeightStorageKey = "ovicore:planning:timeline-height";
+
+  useEffect(() => {
+    const savedHeight = window.localStorage.getItem(timelineHeightStorageKey);
+    if (!savedHeight) return;
+
+    const parsedHeight = Number(savedHeight);
+    if (Number.isFinite(parsedHeight)) {
+      setTimelineHeight(Math.min(760, Math.max(250, parsedHeight)));
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      timelineHeightStorageKey,
+      String(timelineHeight)
+    );
+  }, [timelineHeight]);
 
   const beginTimelineResize = (event: React.PointerEvent<HTMLDivElement>) => {
     if (timelineExpanded) return;
@@ -599,7 +617,6 @@ export default function PlanningPage() {
                   title="Drag to show more or fewer rows"
                 >
                   <span className="resize-grip-line" />
-                  <span className="resize-grip-label">Drag to show more or fewer rows</span>
                 </div>
               )}
             </section>
@@ -1289,7 +1306,7 @@ export default function PlanningPage() {
 
         .timeline-resize-handle {
           position: relative;
-          flex: 0 0 30px;
+          flex: 0 0 16px;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -1307,23 +1324,11 @@ export default function PlanningPage() {
 
         .resize-grip-line {
           position: absolute;
-          top: 5px;
+          top: 6px;
           width: 48px;
           height: 4px;
           border-radius: 999px;
           background: #79aa9c;
-        }
-
-        .resize-grip-label {
-          margin-top: 8px;
-          padding: 2px 7px;
-          border: 1px solid #aebdb8;
-          background: #fff;
-          color: #4f615c;
-          font-size: 9px;
-          line-height: 1.2;
-          white-space: nowrap;
-          box-shadow: 0 1px 2px rgba(16, 42, 38, 0.05);
         }
 
         .dot {
