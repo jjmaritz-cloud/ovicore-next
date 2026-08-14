@@ -1094,14 +1094,15 @@ export default function PlanningPage() {
 
         .weeks span {
           text-align: center;
-          padding: 6px 1px;
-          font-size: 8px;
-          color: #788b86;
+          padding: 7px 2px;
+          font-size: 10px;
+          font-weight: 700;
+          color: #536a64;
           border-right: 1px solid #edf2f0;
         }
 
         .timeline-row {
-          min-height: 39px;
+          min-height: 44px;
           border-bottom: 1px solid #edf2f0;
         }
 
@@ -1119,23 +1120,25 @@ export default function PlanningPage() {
 
         .timeline-label strong {
           display: block;
-          font-size: 10px;
-          color: #21423a;
+          font-size: 12px;
+          font-weight: 800;
+          color: #173c33;
         }
 
         .timeline-label small {
           display: block;
-          margin-top: 1px;
-          font-size: 8px;
-          color: #84948f;
+          margin-top: 2px;
+          font-size: 9px;
+          font-weight: 600;
+          color: #647a74;
         }
 
         .type-pill {
-          min-width: 42px;
+          min-width: 48px;
           border-radius: 6px;
-          padding: 3px 4px;
+          padding: 4px 5px;
           text-align: center;
-          font-size: 8px;
+          font-size: 9px;
           font-weight: 900;
         }
 
@@ -1164,7 +1167,7 @@ export default function PlanningPage() {
         .timeline-bar {
           position: absolute;
           top: 7px;
-          height: 24px;
+          height: 30px;
           border-radius: 6px;
           min-width: 35px;
           overflow: hidden;
@@ -1172,10 +1175,12 @@ export default function PlanningPage() {
 
         .timeline-bar span {
           display: block;
-          padding: 5px 7px;
+          padding: 7px 9px;
           color: #fff;
-          font-size: 8px;
-          font-weight: 800;
+          font-size: 10px;
+          font-weight: 900;
+          line-height: 16px;
+          text-shadow: 0 1px 1px rgba(0, 0, 0, 0.18);
           white-space: nowrap;
           text-overflow: ellipsis;
           overflow: hidden;
@@ -1267,7 +1272,7 @@ export default function PlanningPage() {
         }
 
         .timeline-expanded .timeline-row {
-          min-height: 54px;
+          min-height: 58px;
         }
 
         .timeline-expanded .timeline-label {
@@ -1275,27 +1280,28 @@ export default function PlanningPage() {
         }
 
         .timeline-expanded .timeline-label strong {
-          font-size: 12px;
+          font-size: 14px;
         }
 
         .timeline-expanded .timeline-label small {
-          font-size: 9px;
+          font-size: 11px;
         }
 
         .timeline-expanded .weeks span {
-          padding: 9px 2px;
-          font-size: 9px;
+          padding: 10px 2px;
+          font-size: 11px;
           font-weight: 700;
         }
 
         .timeline-expanded .timeline-bar {
           top: 10px;
-          height: 33px;
+          height: 37px;
         }
 
         .timeline-expanded .timeline-bar span {
-          padding: 8px 10px;
-          font-size: 9px;
+          padding: 9px 11px;
+          font-size: 11px;
+          line-height: 18px;
         }
 
         .timeline-expanded .type-pill {
