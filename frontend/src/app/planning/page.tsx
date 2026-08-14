@@ -7,6 +7,8 @@ import {
   CircleAlert,
   House,
   Layers3,
+  Maximize2,
+  Minimize2,
   RefreshCw,
   ShieldAlert,
   Sparkles,
@@ -238,6 +240,7 @@ function statusClass(status: Status) {
 
 export default function PlanningPage() {
   const [view, setView] = useState<"layers" | "broilers">("layers");
+  const [timelineExpanded, setTimelineExpanded] = useState(false);
 
   const kpis = useMemo(() => {
     const rearingCapacity = 420000;
@@ -491,16 +494,27 @@ export default function PlanningPage() {
               </div>
             </section>
 
-            <section className="timeline-card">
+            <section className={`timeline-card ${timelineExpanded ? "timeline-expanded" : ""}`}>
               <div className="section-head">
                 <div>
                   <div className="eyebrow">12 WEEK HOUSING OUTLOOK</div>
                   <h3>Rearing & Layer Shed Capacity Timeline</h3>
                 </div>
-                <div className="legend">
-                  <span><i className="dot green" /> Allocated</span>
-                  <span><i className="dot amber" /> Pressure</span>
-                  <span><i className="dot red" /> Unfilled</span>
+                <div className="timeline-actions">
+                  <div className="legend">
+                    <span><i className="dot green" /> Allocated</span>
+                    <span><i className="dot amber" /> Pressure</span>
+                    <span><i className="dot red" /> Unfilled</span>
+                  </div>
+                  <button
+                    className="expand-button"
+                    type="button"
+                    onClick={() => setTimelineExpanded((value) => !value)}
+                    title={timelineExpanded ? "Exit expanded view" : "Expand timeline"}
+                  >
+                    {timelineExpanded ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+                    <span>{timelineExpanded ? "Exit full screen" : "Enlarge"}</span>
+                  </button>
                 </div>
               </div>
 
@@ -586,19 +600,19 @@ export default function PlanningPage() {
         }
 
         .command-bar h2 {
-          font-size: 18px;
+          font-size: 20px;
         }
 
         .command-bar p {
           margin: 4px 0 0;
           color: #647772;
-          font-size: 12px;
+          font-size: 13px;
         }
 
         .eyebrow {
           color: #0d7b60;
           font-weight: 800;
-          font-size: 9px;
+          font-size: 10px;
           letter-spacing: 0.14em;
         }
 
@@ -669,7 +683,7 @@ export default function PlanningPage() {
 
         .kpi-card span {
           display: block;
-          font-size: 8px;
+          font-size: 9px;
           color: #6a7d78;
           font-weight: 800;
           letter-spacing: 0.09em;
@@ -687,7 +701,7 @@ export default function PlanningPage() {
           display: block;
           margin-top: 6px;
           color: #7c8d89;
-          font-size: 9px;
+          font-size: 10px;
           line-height: 1.25;
         }
 
@@ -724,7 +738,7 @@ export default function PlanningPage() {
         }
 
         .section-head h3 {
-          font-size: 14px;
+          font-size: 15px;
         }
 
         .soft-badge,
@@ -733,7 +747,7 @@ export default function PlanningPage() {
           align-items: center;
           border-radius: 999px;
           padding: 4px 7px;
-          font-size: 8px;
+          font-size: 9px;
           font-weight: 800;
           white-space: nowrap;
         }
@@ -786,7 +800,7 @@ export default function PlanningPage() {
 
         .flow-node span {
           display: block;
-          font-size: 8px;
+          font-size: 9px;
           color: #68807a;
           font-weight: 800;
           letter-spacing: 0.07em;
@@ -801,7 +815,7 @@ export default function PlanningPage() {
         .flow-node small {
           display: block;
           color: #7b8c87;
-          font-size: 9px;
+          font-size: 10px;
           margin-top: 2px;
         }
 
@@ -825,7 +839,7 @@ export default function PlanningPage() {
           border: 1px solid #e6b5ad;
           padding: 5px 8px;
           color: #9a3b33;
-          font-size: 9px;
+          font-size: 10px;
           font-weight: 800;
         }
 
@@ -848,7 +862,7 @@ export default function PlanningPage() {
 
         .brief-stat strong {
           color: #163b33;
-          font-size: 12px;
+          font-size: 13px;
         }
 
         .brief-button {
@@ -890,22 +904,22 @@ export default function PlanningPage() {
           width: 100%;
           border-collapse: collapse;
           min-width: 1180px;
-          font-size: 9px;
+          font-size: 10px;
         }
 
         th {
-          padding: 7px 8px;
+          padding: 8px 9px;
           text-align: left;
           color: #637873;
           background: #f8fbfa;
           border-bottom: 1px solid #dfe8e5;
-          font-size: 7px;
+          font-size: 8px;
           letter-spacing: 0.06em;
           white-space: nowrap;
         }
 
         td {
-          padding: 7px 8px;
+          padding: 8px 9px;
           border-bottom: 1px solid #edf2f0;
           color: #425a54;
           vertical-align: middle;
@@ -919,7 +933,7 @@ export default function PlanningPage() {
         td strong {
           display: block;
           color: #183b33;
-          font-size: 9px;
+          font-size: 10px;
         }
 
         td span:not(.status) {
@@ -945,7 +959,7 @@ export default function PlanningPage() {
           min-width: 62px;
           border-radius: 999px;
           padding: 4px 7px;
-          font-size: 7px;
+          font-size: 8px;
           font-weight: 900;
           letter-spacing: 0.04em;
         }
@@ -990,7 +1004,7 @@ export default function PlanningPage() {
 
         .timeline-label-head {
           padding: 6px 8px;
-          font-size: 7px;
+          font-size: 8px;
           font-weight: 900;
           letter-spacing: 0.06em;
           color: #647a74;
@@ -1005,7 +1019,7 @@ export default function PlanningPage() {
         .weeks span {
           text-align: center;
           padding: 6px 1px;
-          font-size: 7px;
+          font-size: 8px;
           color: #788b86;
           border-right: 1px solid #edf2f0;
         }
@@ -1029,14 +1043,14 @@ export default function PlanningPage() {
 
         .timeline-label strong {
           display: block;
-          font-size: 9px;
+          font-size: 10px;
           color: #21423a;
         }
 
         .timeline-label small {
           display: block;
           margin-top: 1px;
-          font-size: 7px;
+          font-size: 8px;
           color: #84948f;
         }
 
@@ -1045,7 +1059,7 @@ export default function PlanningPage() {
           border-radius: 6px;
           padding: 3px 4px;
           text-align: center;
-          font-size: 7px;
+          font-size: 8px;
           font-weight: 900;
         }
 
@@ -1084,7 +1098,7 @@ export default function PlanningPage() {
           display: block;
           padding: 5px 7px;
           color: #fff;
-          font-size: 7px;
+          font-size: 8px;
           font-weight: 800;
           white-space: nowrap;
           text-overflow: ellipsis;
@@ -1114,7 +1128,7 @@ export default function PlanningPage() {
         .legend {
           display: flex;
           gap: 10px;
-          font-size: 8px;
+          font-size: 9px;
           color: #6a7c77;
         }
 
@@ -1122,6 +1136,94 @@ export default function PlanningPage() {
           display: inline-flex;
           align-items: center;
           gap: 4px;
+        }
+
+        .timeline-actions {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
+        .expand-button {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          border: 1px solid #cfded9;
+          background: #fff;
+          color: #31554b;
+          border-radius: 8px;
+          padding: 6px 9px;
+          font: inherit;
+          font-size: 10px;
+          font-weight: 800;
+          cursor: pointer;
+          white-space: nowrap;
+        }
+
+        .expand-button:hover {
+          background: #f3f8f6;
+          border-color: #aac7bd;
+        }
+
+        .timeline-expanded {
+          position: fixed;
+          inset: 10px;
+          z-index: 9999;
+          display: flex;
+          flex-direction: column;
+          padding: 16px 18px;
+          border-radius: 14px;
+          box-shadow: 0 18px 60px rgba(8, 44, 35, 0.28);
+          overflow: hidden;
+        }
+
+        .timeline-expanded .timeline {
+          flex: 1;
+          margin-top: 12px;
+          overflow: auto;
+        }
+
+        .timeline-expanded .timeline-header,
+        .timeline-expanded .timeline-row {
+          grid-template-columns: 260px minmax(1100px, 1fr);
+        }
+
+        .timeline-expanded .timeline-row {
+          min-height: 54px;
+        }
+
+        .timeline-expanded .timeline-label {
+          padding: 9px 12px;
+        }
+
+        .timeline-expanded .timeline-label strong {
+          font-size: 12px;
+        }
+
+        .timeline-expanded .timeline-label small {
+          font-size: 9px;
+        }
+
+        .timeline-expanded .weeks span {
+          padding: 9px 2px;
+          font-size: 9px;
+          font-weight: 700;
+        }
+
+        .timeline-expanded .timeline-bar {
+          top: 10px;
+          height: 33px;
+        }
+
+        .timeline-expanded .timeline-bar span {
+          padding: 8px 10px;
+          font-size: 9px;
+        }
+
+        .timeline-expanded .type-pill {
+          min-width: 52px;
+          padding: 4px 6px;
+          font-size: 9px;
         }
 
         .dot {
