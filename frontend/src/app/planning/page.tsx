@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
   CalendarDays,
@@ -241,6 +241,38 @@ function statusClass(status: Status) {
 export default function PlanningPage() {
   const [view, setView] = useState<"layers" | "broilers">("layers");
   const [timelineExpanded, setTimelineExpanded] = useState(false);
+  const [timelineHeight, setTimelineHeight] = useState(390);
+  const resizeStartY = useRef(0);
+  const resizeStartHeight = useRef(390);
+
+  const beginTimelineResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (timelineExpanded) return;
+
+    resizeStartY.current = event.clientY;
+    resizeStartHeight.current = timelineHeight;
+
+    const onPointerMove = (moveEvent: PointerEvent) => {
+      const delta = moveEvent.clientY - resizeStartY.current;
+      const nextHeight = Math.min(
+        760,
+        Math.max(250, resizeStartHeight.current + delta)
+      );
+      setTimelineHeight(nextHeight);
+    };
+
+    const onPointerUp = () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    document.body.style.cursor = "ns-resize";
+    document.body.style.userSelect = "none";
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+  };
 
   const kpis = useMemo(() => {
     const rearingCapacity = 420000;
@@ -494,7 +526,10 @@ export default function PlanningPage() {
               </div>
             </section>
 
-            <section className={`timeline-card ${timelineExpanded ? "timeline-expanded" : ""}`}>
+            <section
+              className={`timeline-card ${timelineExpanded ? "timeline-expanded" : ""}`}
+              style={timelineExpanded ? undefined : { height: `${timelineHeight}px` }}
+            >
               <div className="section-head">
                 <div>
                   <div className="eyebrow">12 WEEK HOUSING OUTLOOK</div>
@@ -553,6 +588,20 @@ export default function PlanningPage() {
                   </div>
                 ))}
               </div>
+
+              {!timelineExpanded && (
+                <div
+                  className="timeline-resize-handle"
+                  onPointerDown={beginTimelineResize}
+                  role="separator"
+                  aria-orientation="horizontal"
+                  aria-label="Resize timeline height"
+                  title="Drag to show more or fewer rows"
+                >
+                  <span className="resize-grip-line" />
+                  <span className="resize-grip-label">Drag to show more or fewer rows</span>
+                </div>
+              )}
             </section>
           </>
         )}
@@ -728,6 +777,14 @@ export default function PlanningPage() {
         .briefing-card,
         .timeline-card {
           padding: 11px 12px;
+        }
+
+        .timeline-card {
+          display: flex;
+          flex-direction: column;
+          min-height: 250px;
+          max-height: 760px;
+          overflow: hidden;
         }
 
         .section-head {
@@ -985,10 +1042,12 @@ export default function PlanningPage() {
         }
 
         .timeline {
+          flex: 1;
+          min-height: 0;
           margin-top: 9px;
           border: 1px solid #e1e9e6;
           border-radius: 9px;
-          overflow: hidden;
+          overflow: auto;
         }
 
         .timeline-header,
@@ -1171,6 +1230,8 @@ export default function PlanningPage() {
           z-index: 9999;
           display: flex;
           flex-direction: column;
+          height: auto !important;
+          max-height: none;
           padding: 16px 18px;
           border-radius: 14px;
           box-shadow: 0 18px 60px rgba(8, 44, 35, 0.28);
@@ -1224,6 +1285,45 @@ export default function PlanningPage() {
           min-width: 52px;
           padding: 4px 6px;
           font-size: 9px;
+        }
+
+        .timeline-resize-handle {
+          position: relative;
+          flex: 0 0 30px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: ns-resize;
+          touch-action: none;
+          margin: 3px -4px -6px;
+          border-top: 1px solid #edf2f0;
+          background: #fbfdfc;
+          user-select: none;
+        }
+
+        .timeline-resize-handle:hover {
+          background: #f5faf8;
+        }
+
+        .resize-grip-line {
+          position: absolute;
+          top: 5px;
+          width: 48px;
+          height: 4px;
+          border-radius: 999px;
+          background: #79aa9c;
+        }
+
+        .resize-grip-label {
+          margin-top: 8px;
+          padding: 2px 7px;
+          border: 1px solid #aebdb8;
+          background: #fff;
+          color: #4f615c;
+          font-size: 9px;
+          line-height: 1.2;
+          white-space: nowrap;
+          box-shadow: 0 1px 2px rgba(16, 42, 38, 0.05);
         }
 
         .dot {
