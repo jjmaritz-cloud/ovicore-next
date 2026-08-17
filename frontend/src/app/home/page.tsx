@@ -455,7 +455,6 @@ export default function HomePage() {
             </section>
           );
           })}
-        }
 
         {!filteredModules.length && (
           <section className="home-module-empty">
