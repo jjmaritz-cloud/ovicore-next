@@ -2,7 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import BroilerSidebar from "@/components/BroilerSidebar";
-import OviCoreModuleHeader from "@/components/OviCoreModuleHeader";
+import {
+  CloudRain,
+  CloudSun,
+  House,
+  RefreshCw,
+  Sun,
+  TriangleAlert,
+} from "lucide-react";
 
 const API_BASE = "";
 
@@ -791,27 +798,79 @@ export default function BroilerHomePage() {
       <BroilerSidebar />
 
       <main className="main-panel broiler-home-density">
-        <OviCoreModuleHeader
-          eyebrow="OviCore Broiler Module"
-          title="Broiler Home"
-          description="Command view for placement pressure, chick supply, Daily House Sheet actuals, weather risk and processing readiness."
-          actions={[
-            {
-              label: "OviCore Home",
-              href: "/home",
-              type: "home",
-            },
-            {
-              label: "Refresh",
-              type: "refresh",
-              onClick: loadData,
-            },
-            {
-              label: `Weather: ${getWeatherRisk(insights.tomorrowWeather)}`,
-              type: "warning",
-            },
-          ]}
-        />
+        <section className="broiler-module-header">
+          <div className="broiler-module-header-copy">
+            <p className="broiler-module-eyebrow">OviCore Broiler Module</p>
+            <h1>Broiler Home</h1>
+            <p className="broiler-module-description">
+              Command view for placement pressure, chick supply, Daily House Sheet actuals,
+              weather risk and processing readiness.
+            </p>
+          </div>
+
+          <div className="broiler-header-actions" aria-label="Broiler page actions">
+            <a
+              className="broiler-header-btn broiler-header-btn-secondary"
+              href="/home"
+              title="Return to OviCore Home"
+            >
+              <House size={16} strokeWidth={2.2} aria-hidden="true" />
+              <span>Home</span>
+            </a>
+
+            <button
+              type="button"
+              className="broiler-header-btn broiler-header-btn-secondary"
+              onClick={() => void loadData()}
+              disabled={loading}
+              title="Refresh broiler data"
+            >
+              <RefreshCw
+                size={16}
+                strokeWidth={2.2}
+                aria-hidden="true"
+                className={loading ? "broiler-refresh-spinning" : ""}
+              />
+              <span>{loading ? "Refreshing" : "Refresh"}</span>
+            </button>
+
+            <button
+              type="button"
+              className={`broiler-weather-pill broiler-weather-${getWeatherRisk(
+                insights.tomorrowWeather,
+              ).toLowerCase()}`}
+              onClick={() => setWeatherOpen((current) => !current)}
+              aria-expanded={weatherOpen}
+              title="Open weather intelligence"
+            >
+              <span className="broiler-weather-icon" aria-hidden="true">
+                {insights.tomorrowWeather.rainMm >= 5 ? (
+                  <CloudRain size={18} strokeWidth={2.2} />
+                ) : insights.tomorrowWeather.maxTempC >= 30 ? (
+                  <Sun size={18} strokeWidth={2.2} />
+                ) : getWeatherRisk(insights.tomorrowWeather) === "High" ? (
+                  <TriangleAlert size={18} strokeWidth={2.2} />
+                ) : (
+                  <CloudSun size={18} strokeWidth={2.2} />
+                )}
+              </span>
+
+              <span className="broiler-weather-copy">
+                <span className="broiler-weather-label">Tomorrow</span>
+                <strong>
+                  {insights.tomorrowWeather.maxTempC}°C ·{" "}
+                  {getWeatherRisk(insights.tomorrowWeather)} risk
+                </strong>
+              </span>
+
+              <span className="broiler-weather-meta">
+                {insights.tomorrowWeather.rainMm > 0
+                  ? `${insights.tomorrowWeather.rainMm} mm rain`
+                  : `${insights.tomorrowWeather.rainChancePct}% rain`}
+              </span>
+            </button>
+          </div>
+        </section>
 
         <section className="chick-supply-card">
           <div className="chick-supply-head">
@@ -1347,6 +1406,134 @@ export default function BroilerHomePage() {
             padding-top: 10px;
           }
 
+          .broiler-module-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 18px;
+            padding: 16px 18px;
+            margin-bottom: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 16px;
+            background:
+              radial-gradient(circle at 92% 12%, rgba(45, 212, 191, 0.24), transparent 28%),
+              linear-gradient(115deg, #064e3b 0%, #047857 48%, #0f766e 100%);
+            box-shadow: 0 10px 28px rgba(6, 78, 59, 0.16);
+            color: white;
+          }
+
+          .broiler-module-header-copy { min-width: 0; }
+          .broiler-module-eyebrow {
+            margin: 0 0 4px;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: rgba(236, 253, 245, 0.84);
+          }
+          .broiler-module-header h1 {
+            margin: 0;
+            font-size: clamp(24px, 2vw, 34px);
+            line-height: 1;
+            letter-spacing: -0.035em;
+            color: white;
+          }
+          .broiler-module-description {
+            margin: 6px 0 0;
+            max-width: 820px;
+            font-size: 13px;
+            line-height: 1.35;
+            color: rgba(240, 253, 250, 0.88);
+          }
+          .broiler-header-actions {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 8px;
+            flex: 0 0 auto;
+          }
+          .broiler-header-btn,
+          .broiler-weather-pill { font: inherit; border: 0; cursor: pointer; }
+          .broiler-header-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            min-height: 38px;
+            padding: 0 12px;
+            border-radius: 11px;
+            text-decoration: none;
+            font-size: 12px;
+            font-weight: 750;
+            transition: transform 140ms ease, background 140ms ease, border-color 140ms ease;
+          }
+          .broiler-header-btn:hover,
+          .broiler-weather-pill:hover { transform: translateY(-1px); }
+          .broiler-header-btn:disabled { cursor: wait; opacity: 0.72; transform: none; }
+          .broiler-header-btn-secondary {
+            border: 1px solid rgba(255, 255, 255, 0.22);
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            backdrop-filter: blur(8px);
+          }
+          .broiler-header-btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.17);
+            border-color: rgba(255, 255, 255, 0.34);
+          }
+          .broiler-refresh-spinning { animation: broiler-spin 0.9s linear infinite; }
+          @keyframes broiler-spin { to { transform: rotate(360deg); } }
+          .broiler-weather-pill {
+            display: grid;
+            grid-template-columns: auto auto auto;
+            align-items: center;
+            gap: 9px;
+            min-height: 44px;
+            padding: 6px 10px 6px 8px;
+            border-radius: 13px;
+            box-shadow: 0 6px 18px rgba(2, 44, 34, 0.18);
+            transition: transform 140ms ease, box-shadow 140ms ease, background 140ms ease;
+          }
+          .broiler-weather-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 31px;
+            height: 31px;
+            border-radius: 9px;
+            background: rgba(255, 255, 255, 0.7);
+          }
+          .broiler-weather-copy {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            min-width: 0;
+          }
+          .broiler-weather-label {
+            font-size: 9px;
+            font-weight: 800;
+            line-height: 1.05;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            opacity: 0.72;
+          }
+          .broiler-weather-copy strong {
+            margin-top: 2px;
+            white-space: nowrap;
+            font-size: 12px;
+            line-height: 1.1;
+          }
+          .broiler-weather-meta {
+            padding-left: 9px;
+            border-left: 1px solid currentColor;
+            white-space: nowrap;
+            font-size: 10px;
+            font-weight: 700;
+            opacity: 0.72;
+          }
+          .broiler-weather-normal { background: #ecfdf5; color: #065f46; }
+          .broiler-weather-watch { background: #fffbeb; color: #92400e; }
+          .broiler-weather-high { background: #fff1f2; color: #9f1239; }
+
           :global(.chick-supply-card) {
             padding: 12px 14px;
             margin-bottom: 10px;
@@ -1659,7 +1846,27 @@ export default function BroilerHomePage() {
             }
           }
 
+          @media (max-width: 1050px) {
+            .broiler-module-header {
+              align-items: flex-start;
+              flex-direction: column;
+            }
+            .broiler-header-actions {
+              width: 100%;
+              justify-content: flex-start;
+              flex-wrap: wrap;
+            }
+          }
+
           @media (max-width: 800px) {
+            .broiler-module-header {
+              padding: 13px;
+              border-radius: 13px;
+            }
+            .broiler-header-btn span { display: none; }
+            .broiler-header-btn { width: 38px; padding: 0; }
+            .broiler-weather-pill { flex: 1 1 210px; }
+            .broiler-weather-meta { display: none; }
             :global(.chick-supply-card),
             :global(.broiler-ai-card) {
               padding: 11px;
