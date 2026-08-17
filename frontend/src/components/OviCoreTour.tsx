@@ -37,6 +37,22 @@ const overviewSteps: TourStep[] = [
       "This is more than a dashboard. OviCore compares the flock with age-matched standards, watches the direction of change, identifies abnormal combinations across growth, mortality, feed, water and density, and then explains the likely pressure and the action worth checking first. The aim is to tell a manager what changed, why it matters and where to look — without making them interpret every graph manually.",
   },
   {
+    route: "/broilers/insights",
+    target: "main",
+    eyebrow: "Performance Comparison",
+    title: "Compare flocks at the same age — not just on the same date",
+    body:
+      "Performance Comparison lets you compare the current flock with previous flocks from the same shed or with selected flocks across other farms and sheds. OviCore aligns each series by flock age, so Day 14 is compared with Day 14 rather than calendar dates. Use Bodyweight, Cumulative Mortality, Feed Intake, Water Intake and Estimated FCR to see whether a problem is shed-specific, farm-specific or repeating across cycles.",
+  },
+  {
+    route: "/broilers",
+    target: '[data-tour="broiler-command"]',
+    eyebrow: "Integrated poultry chain",
+    title: "A breeder change can become a broiler supply problem weeks later",
+    body:
+      "OviCore is designed to connect the chain rather than treat each module separately. Breeder egg production, fertility and hatchability determine how many saleable chicks the Hatchery can supply. Hatchery chick availability then constrains Broiler placements. If fertility or hatch drops, Broiler demand may exceed chick supply; if breeder output improves, extra chicks need shed capacity and processing demand. The goal is to show that knock-on effect early enough to change placements, flock timing or processing plans.",
+  },
+  {
     route: "/planning",
     target: '[data-tour="planning-command"]',
     eyebrow: "Integrated planning",

@@ -2,11 +2,9 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import OviCoreTour from "@/components/OviCoreTour";
 
 import {
   Bird,
-  Compass,
   ChartNoAxesCombined,
   Drumstick,
   Egg,
@@ -189,20 +187,6 @@ const modules: ModuleCard[] = [
     group: "People, Safety & Compliance",
   },
   {
-    name: "Guided Tour",
-    eyebrow: "Explore OviCore",
-    description:
-      "Take a short guided walkthrough of the main modules, Intelligence, Planning and Audit Readiness.",
-    tags: ["Overview", "Features", "Feedback"],
-    href: "/tour",
-    status: "Start here",
-    statusClass: "home-status-live",
-    icon: Compass,
-    iconClass: "home-icon-planning",
-    group: "Management & Setup",
-    featured: true,
-  },
-  {
     name: "Admin",
     eyebrow: "OviCore setup",
     description:
@@ -237,6 +221,7 @@ function ModuleCardView({
   compact?: boolean;
 }) {
   const Icon = module.icon;
+  const isGuidedTour = module.name === "Guided Tour";
 
   const content = (
     <>
@@ -293,7 +278,7 @@ function ModuleCardView({
       <article
         className={`home-module-card home-module-card-disabled${
           compact ? " home-module-card-compact" : ""
-        }`}
+        }${isGuidedTour ? " home-module-card-tour" : ""}`}
         aria-disabled="true"
       >
         {content}
@@ -305,7 +290,7 @@ function ModuleCardView({
     <Link
       className={`home-module-card${
         compact ? " home-module-card-compact" : ""
-      }`}
+      }${isGuidedTour ? " home-module-card-tour" : ""}`}
       href={module.href}
     >
       {content}
@@ -351,7 +336,7 @@ export default function HomePage() {
 
   return (
     <main className="ovicore-home-shell">
-      <section className="ovicore-home-content" data-tour="module-selector">
+      <section className="ovicore-home-content">
         <header className="home-select-header">
           <div className="home-select-title">
             <span className="home-hero-eyebrow">
@@ -492,7 +477,6 @@ export default function HomePage() {
           </section>
         )}
       </section>
-      <OviCoreTour />
     </main>
   );
 }

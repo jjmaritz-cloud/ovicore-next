@@ -212,6 +212,56 @@ export default function GuidedTourPage() {
           </div>
         </section>
 
+
+        <section className="tour-chain">
+          <div className="tour-chain-copy">
+            <span>Integrated production chain</span>
+            <h2>One change upstream can move the whole plan</h2>
+            <p>
+              OviCore is being built so breeder performance, hatchery chick
+              supply and broiler demand are not isolated numbers. A fertility
+              or hatchability change should flow through to expected chick
+              availability, future broiler placements, shed demand and
+              processing output.
+            </p>
+          </div>
+
+          <div className="tour-chain-flow">
+            <article>
+              <strong>Breeders</strong>
+              <span>Eggs · fertility · hatch eggs</span>
+              <em>↓ hatchable supply</em>
+            </article>
+            <ArrowRight size={20} />
+            <article>
+              <strong>Hatchery</strong>
+              <span>Eggs set · hatch % · chicks</span>
+              <em>↓ chicks available</em>
+            </article>
+            <ArrowRight size={20} />
+            <article>
+              <strong>Broilers</strong>
+              <span>Placements · shed capacity · demand</span>
+              <em>↓ live bird output</em>
+            </article>
+            <ArrowRight size={20} />
+            <article>
+              <strong>Processing</strong>
+              <span>Weekly load · liveweight · throughput</span>
+              <em>future output</em>
+            </article>
+          </div>
+
+          <div className="tour-chain-example">
+            <strong>Example:</strong>
+            <span>
+              fertility drops → fewer chicks available → planned broiler
+              placements become short → processing output falls unless timing
+              or alternative supply is changed.
+            </span>
+          </div>
+        </section>
+
         <section className="tour-feedback" data-tour="tour-feedback">
           <div>
             <span>Feedback guide</span>
@@ -312,7 +362,7 @@ export default function GuidedTourPage() {
           flex-wrap: wrap;
         }
 
-        .tour-hero-start {
+        :global(.tour-hero-start) {
           min-height: 44px;
           display: inline-flex;
           align-items: center;
@@ -332,14 +382,14 @@ export default function GuidedTourPage() {
           transition: transform 140ms ease, box-shadow 140ms ease;
         }
 
-        .tour-hero-start:hover {
+        :global(.tour-hero-start):hover {
           transform: translateY(-1px);
           box-shadow:
             0 14px 32px rgba(0, 0, 0, 0.2),
             inset 0 0 0 1px rgba(255, 255, 255, 0.55);
         }
 
-        .tour-home-link {
+        :global(.tour-home-link) {
           min-height: 38px;
           display: inline-flex;
           align-items: center;
@@ -351,6 +401,34 @@ export default function GuidedTourPage() {
           font-size: 11px;
           font-weight: 900;
           text-decoration: none;
+        }
+
+
+        :global(a.tour-hero-start) {
+          min-height: 46px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 9px;
+          padding: 0 18px;
+          border: 0;
+          border-radius: 12px;
+          background: #ffffff;
+          color: #075e49 !important;
+          font-size: 11px;
+          font-weight: 1000;
+          letter-spacing: 0.045em;
+          text-decoration: none !important;
+          box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+        }
+
+        :global(a.tour-home-link) {
+          color: rgba(255, 255, 255, 0.94) !important;
+          text-decoration: none !important;
+        }
+
+        :global(a.tour-start) {
+          text-decoration: none !important;
         }
 
         .tour-complete {
@@ -528,7 +606,7 @@ export default function GuidedTourPage() {
           line-height: 1.45;
         }
 
-        .tour-start,
+        :global(.tour-start),
         .tour-soon {
           margin-top: auto;
           min-height: 34px;
@@ -542,7 +620,7 @@ export default function GuidedTourPage() {
           text-decoration: none;
         }
 
-        .tour-start {
+        :global(.tour-start) {
           background: #08735a;
           color: white;
         }
@@ -637,7 +715,7 @@ export default function GuidedTourPage() {
           font-weight: 850;
         }
 
-        .tour-start-featured {
+        :global(.tour-start)-featured {
           min-height: 42px;
           padding: 0 15px;
           gap: 8px;
@@ -702,6 +780,105 @@ export default function GuidedTourPage() {
           gap: 10px;
         }
 
+
+        .tour-chain {
+          margin-top: 18px;
+          padding: 20px;
+          border: 1px solid #cfe2da;
+          border-radius: 18px;
+          background:
+            radial-gradient(circle at 90% 10%, rgba(14, 116, 144, 0.07), transparent 30%),
+            linear-gradient(135deg, #ffffff, #f5fbf8);
+        }
+
+        .tour-chain-copy > span {
+          display: block;
+          color: #0b7b5f;
+          font-size: 10px;
+          font-weight: 950;
+          letter-spacing: 0.14em;
+          text-transform: uppercase;
+        }
+
+        .tour-chain-copy h2 {
+          margin: 4px 0 0;
+          color: #0d332b;
+          font-size: 21px;
+          letter-spacing: -0.035em;
+        }
+
+        .tour-chain-copy p {
+          max-width: 980px;
+          margin: 7px 0 0;
+          color: #62766f;
+          font-size: 12px;
+          line-height: 1.5;
+        }
+
+        .tour-chain-flow {
+          display: grid;
+          grid-template-columns: 1fr 28px 1fr 28px 1fr 28px 1fr;
+          gap: 7px;
+          align-items: center;
+          margin-top: 15px;
+        }
+
+        .tour-chain-flow > svg {
+          justify-self: center;
+          color: #7ba99b;
+        }
+
+        .tour-chain-flow article {
+          min-height: 104px;
+          padding: 13px;
+          border: 1px solid #d8e6e1;
+          border-radius: 14px;
+          background: #ffffff;
+        }
+
+        .tour-chain-flow strong {
+          display: block;
+          color: #123c32;
+          font-size: 13px;
+        }
+
+        .tour-chain-flow span {
+          display: block;
+          margin-top: 5px;
+          color: #667a74;
+          font-size: 10px;
+          line-height: 1.35;
+        }
+
+        .tour-chain-flow em {
+          display: inline-flex;
+          margin-top: 10px;
+          border-radius: 999px;
+          padding: 5px 7px;
+          background: #e9f6f1;
+          color: #08715a;
+          font-size: 9px;
+          font-style: normal;
+          font-weight: 900;
+        }
+
+        .tour-chain-example {
+          display: flex;
+          gap: 7px;
+          margin-top: 11px;
+          padding: 9px 11px;
+          border-radius: 11px;
+          background: #eef8f4;
+          color: #49685f;
+          font-size: 10px;
+          line-height: 1.4;
+        }
+
+        .tour-chain-example strong {
+          color: #075e49;
+        }
+
+
         .tour-feedback {
           margin-top: 20px;
           padding: 17px;
@@ -748,6 +925,14 @@ export default function GuidedTourPage() {
           .tour-feedback-grid {
             grid-template-columns: 1fr;
           }
+
+          .tour-chain-flow {
+            grid-template-columns: 1fr;
+          }
+
+          .tour-chain-flow > svg {
+            transform: rotate(90deg);
+          }
         }
 
         @media (max-width: 650px) {
@@ -765,8 +950,8 @@ export default function GuidedTourPage() {
             justify-content: stretch;
           }
 
-          .tour-hero-start,
-          .tour-home-link {
+          :global(.tour-hero-start),
+          :global(.tour-home-link) {
             flex: 1;
             justify-content: center;
           }
