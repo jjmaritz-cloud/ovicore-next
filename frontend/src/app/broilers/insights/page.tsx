@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import BroilerSidebar from "@/components/BroilerSidebar";
+import OviCoreTour from "@/components/OviCoreTour";
 
 const API_BASE = "";
 
@@ -277,6 +278,7 @@ export default function BroilerInsightsPage() {
           </button>
         </section>
 
+        <div data-tour="performance-comparison">
         <section className="compare-toolbar">
           <label>
             Primary flock
@@ -426,6 +428,8 @@ export default function BroilerInsightsPage() {
           )}
         </section>
 
+        </div>
+
         <section className="compare-card">
           <div className="compare-card-head">
             <div>
@@ -470,6 +474,8 @@ export default function BroilerInsightsPage() {
             </table>
           </div>
         </section>
+
+        <OviCoreTour />
 
         <style jsx>{`
           .compare-page { min-width: 0; }

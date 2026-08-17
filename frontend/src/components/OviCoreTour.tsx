@@ -38,11 +38,11 @@ const overviewSteps: TourStep[] = [
   },
   {
     route: "/broilers/insights",
-    target: "main",
+    target: '[data-tour="performance-comparison"]',
     eyebrow: "Performance Comparison",
-    title: "Compare flocks at the same age — not just on the same date",
+    title: "Compare the right flock against the right history",
     body:
-      "Performance Comparison lets you compare the current flock with previous flocks from the same shed or with selected flocks across other farms and sheds. OviCore aligns each series by flock age, so Day 14 is compared with Day 14 rather than calendar dates. Use Bodyweight, Cumulative Mortality, Feed Intake, Water Intake and Estimated FCR to see whether a problem is shed-specific, farm-specific or repeating across cycles.",
+      "Start with a primary flock, then choose how you want to benchmark it. Current vs previous compares the flock with the prior cycle in the same shed. Last 3 in shed shows whether the same shed is repeating a pattern. Compare farms / sheds lets you select up to six flocks across different farms and sheds. Then switch between Bodyweight, Cumulative Mortality, Feed Intake, Water Intake and Estimated FCR. Every line is aligned by flock age, so Day 14 is compared with Day 14 — not with the same calendar date. This helps separate a one-off flock issue from a recurring shed, farm or management pattern.",
   },
   {
     route: "/broilers",
