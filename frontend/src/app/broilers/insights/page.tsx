@@ -278,7 +278,7 @@ export default function BroilerInsightsPage() {
           </button>
         </section>
 
-        <div data-tour="performance-comparison">
+        <div data-tour="performance-comparison-controls">
         <section className="compare-toolbar">
           <label>
             Primary flock
@@ -354,6 +354,7 @@ export default function BroilerInsightsPage() {
             </button>
           ))}
         </section>
+        </div>
 
         {message && <p className="compare-message">{message}</p>}
 
@@ -427,8 +428,6 @@ export default function BroilerInsightsPage() {
             </>
           )}
         </section>
-
-        </div>
 
         <section className="compare-card">
           <div className="compare-card-head">

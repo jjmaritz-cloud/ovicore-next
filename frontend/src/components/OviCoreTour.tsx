@@ -38,11 +38,11 @@ const overviewSteps: TourStep[] = [
   },
   {
     route: "/broilers/insights",
-    target: '[data-tour="performance-comparison"]',
+    target: '[data-tour="performance-comparison-controls"]',
     eyebrow: "Performance Comparison",
     title: "Compare the right flock against the right history",
     body:
-      "Start with a primary flock, then choose how you want to benchmark it. Current vs previous compares the flock with the prior cycle in the same shed. Last 3 in shed shows whether the same shed is repeating a pattern. Compare farms / sheds lets you select up to six flocks across different farms and sheds. Then switch between Bodyweight, Cumulative Mortality, Feed Intake, Water Intake and Estimated FCR. Every line is aligned by flock age, so Day 14 is compared with Day 14 — not with the same calendar date. This helps separate a one-off flock issue from a recurring shed, farm or management pattern.",
+      "Use these controls to decide what you want to compare. Current vs previous checks the flock against the prior cycle in the same shed. Last 3 in shed shows whether the same shed is repeating a pattern. Compare farms / sheds lets you pick up to six flocks from different farms and sheds. Then choose Bodyweight, Cumulative Mortality, Feed Intake, Water Intake or Estimated FCR. The graph directly below updates automatically and aligns every flock by age — Day 14 against Day 14 — so you can tell whether a problem belongs to one flock, one shed or a wider management pattern.",
   },
   {
     route: "/broilers",
