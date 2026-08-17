@@ -1,15 +1,12 @@
+"use client";
+
 import Link from "next/link";
 
 import OviCoreKpiStrip from "@/components/ovicore/OviCoreKpiStrip";
 import OviCorePageHeader from "@/components/ovicore/OviCorePageHeader";
 import OviCoreShell from "@/components/ovicore/OviCoreShell";
 import OviCoreTableCard from "@/components/ovicore/OviCoreTableCard";
-
-const currentUser = {
-  name: "JJ",
-  isGlobalAdmin: true,
-  isCompanyAdmin: true,
-};
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 const globalAdminCards = [
   {
@@ -81,7 +78,36 @@ const companyAdminCards = [
 ];
 
 export default function AdminHomePage() {
-  const canSeeAdmin = currentUser.isGlobalAdmin || currentUser.isCompanyAdmin;
+  const { currentUser, loadingUser, userError } = useCurrentUser();
+
+  if (loadingUser) {
+    return (
+      <OviCoreShell module="admin">
+        <OviCorePageHeader
+          title="Admin Command Centre"
+          subtitle="Loading your access and company permissions..."
+        />
+      </OviCoreShell>
+    );
+  }
+
+  if (userError || !currentUser) {
+    return (
+      <OviCoreShell module="admin">
+        <OviCorePageHeader
+          title="Could not load admin access"
+          subtitle={userError || "Your signed-in user could not be loaded."}
+        >
+          <Link href="/home" className="ovicore-btn ovicore-btn-primary">
+            Return Home
+          </Link>
+        </OviCorePageHeader>
+      </OviCoreShell>
+    );
+  }
+
+  const canSeeAdmin =
+    currentUser.is_global_admin || currentUser.is_company_admin;
 
   if (!canSeeAdmin) {
     return (
@@ -105,26 +131,26 @@ export default function AdminHomePage() {
         subtitle="Controlled setup workspace for companies, farms, sheds, users, module settings and access control."
       >
         <span className="ovicore-pill ovicore-pill-green">
-          {currentUser.isGlobalAdmin ? "Global Admin" : "Company Admin"}
+          {currentUser.is_global_admin ? "Global Admin" : "Company Admin"}
         </span>
       </OviCorePageHeader>
 
       <OviCoreKpiStrip
         items={[
-          { label: "Signed In", value: currentUser.name },
+          { label: "Signed In", value: currentUser.full_name },
           {
             label: "Global Admin",
-            value: currentUser.isGlobalAdmin ? "Yes" : "No",
+            value: currentUser.is_global_admin ? "Yes" : "No",
           },
           {
             label: "Company Admin",
-            value: currentUser.isCompanyAdmin ? "Yes" : "No",
+            value: currentUser.is_company_admin ? "Yes" : "No",
           },
           { label: "Setup Control", value: "OviCore" },
         ]}
       />
 
-      {currentUser.isGlobalAdmin ? (
+      {currentUser.is_global_admin ? (
         <OviCoreTableCard
           title="Global Admin Setup"
           subtitle="Setup actions controlled by OviCore Global Admin. These are the areas that can attract an admin/setup fee."
@@ -151,7 +177,7 @@ export default function AdminHomePage() {
         </OviCoreTableCard>
       ) : null}
 
-      {currentUser.isCompanyAdmin ? (
+      {currentUser.is_company_admin ? (
         <div style={{ marginTop: 12 }}>
           <OviCoreTableCard
             title="Company Admin Operations"
