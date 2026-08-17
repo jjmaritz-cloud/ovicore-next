@@ -279,7 +279,11 @@ function ModuleCardView({
 
       <div className="home-module-footer">
         <span>
-          {module.href ? "Open module" : "Module not enabled"}
+          {isGuidedTour
+            ? "Take the tour"
+            : module.href
+              ? "Open module"
+              : "Module not enabled"}
         </span>
         <span className="home-module-arrow">
           {module.href ? "→" : "•"}
@@ -492,6 +496,106 @@ export default function HomePage() {
           </section>
         )}
       </section>
+
+      <style jsx global>{`
+        .home-module-card-tour {
+          position: relative;
+          overflow: hidden;
+          border: 1px solid rgba(8, 115, 90, 0.5) !important;
+          background:
+            radial-gradient(circle at 88% 18%, rgba(45, 212, 191, 0.24), transparent 34%),
+            linear-gradient(135deg, #dff7ef 0%, #e8f8f3 52%, #edf8fb 100%) !important;
+          box-shadow:
+            0 10px 28px rgba(8, 115, 90, 0.14),
+            inset 0 0 0 1px rgba(255, 255, 255, 0.82) !important;
+        }
+
+        .home-module-card-tour::before {
+          content: "";
+          position: absolute;
+          inset: 0 auto 0 0;
+          width: 5px;
+          background: linear-gradient(180deg, #0f8a69, #14b8a6);
+        }
+
+        .home-module-card-tour .home-module-icon {
+          background: linear-gradient(135deg, #08735a, #14b8a6) !important;
+          color: #fff !important;
+          box-shadow: 0 7px 18px rgba(8, 115, 90, 0.22);
+        }
+
+        .home-module-card-tour .home-module-heading h2 {
+          color: #064e3b !important;
+          font-size: 17px !important;
+        }
+
+        .home-module-card-tour .home-module-eyebrow {
+          color: #08735a !important;
+          font-weight: 950 !important;
+        }
+
+        .home-module-card-tour .home-module-status {
+          background: #08735a !important;
+          color: #fff !important;
+          border-color: #08735a !important;
+          box-shadow: 0 5px 14px rgba(8, 115, 90, 0.16);
+        }
+
+        .home-module-card-tour .home-module-description {
+          color: #345f54 !important;
+          font-weight: 780 !important;
+        }
+
+        .home-module-card-tour .home-module-tags span {
+          background: rgba(255, 255, 255, 0.76) !important;
+          border-color: rgba(8, 115, 90, 0.18) !important;
+          color: #08735a !important;
+        }
+
+        .home-module-card-tour .home-module-footer > span:first-child {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 29px;
+          padding: 0 11px;
+          border-radius: 999px;
+          background: #08735a;
+          color: #fff !important;
+          font-weight: 950 !important;
+          box-shadow: 0 6px 16px rgba(8, 115, 90, 0.18);
+        }
+
+        .home-module-card-tour .home-module-arrow {
+          width: 30px !important;
+          height: 30px !important;
+          background: #064e3b !important;
+          color: #fff !important;
+          box-shadow: 0 6px 16px rgba(6, 78, 59, 0.2);
+        }
+
+        .home-module-card-tour::after {
+          content: "NEW";
+          position: absolute;
+          right: 12px;
+          bottom: 10px;
+          border-radius: 999px;
+          padding: 4px 7px;
+          background: rgba(255, 255, 255, 0.88);
+          color: #08735a;
+          border: 1px solid rgba(8, 115, 90, 0.18);
+          font-size: 8px;
+          font-weight: 1000;
+          letter-spacing: 0.1em;
+        }
+
+        .home-module-card-tour:hover {
+          border-color: rgba(8, 115, 90, 0.75) !important;
+          transform: translateY(-2px);
+          box-shadow:
+            0 16px 36px rgba(8, 115, 90, 0.2),
+            inset 0 0 0 1px rgba(255, 255, 255, 0.9) !important;
+        }
+      `}</style>
     </main>
   );
 }
