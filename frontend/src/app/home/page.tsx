@@ -23,6 +23,7 @@ type ModuleGroup =
   | "Broiler Production"
   | "Breeder & Hatchery"
   | "Planning & Operations"
+  | "People, Safety & Compliance"
   | "Management & Setup";
 
 type FilterKey = "All" | ModuleGroup;
@@ -160,6 +161,31 @@ const modules: ModuleCard[] = [
     group: "Planning & Operations",
   },
   {
+    name: "Feed Mill Management",
+    eyebrow: "Feed manufacturing",
+    description:
+      "Raw materials, formulations, batching, production, quality, inventory, dispatch and mill performance.",
+    tags: ["Production", "Quality", "Traceability"],
+    status: "Planned",
+    statusClass: "home-status-planned",
+    icon: Factory,
+    iconClass: "home-icon-processing",
+    group: "Planning & Operations",
+  },
+  {
+    name: "People, Safety & Compliance",
+    eyebrow: "Workforce and assurance",
+    description:
+      "Safety, training, incident management, audit readiness, corrective actions and compliance oversight.",
+    tags: ["Safety", "Training", "Audit readiness"],
+    href: "/compliance",
+    status: "Core",
+    statusClass: "home-status-foundation",
+    icon: ShieldCheck,
+    iconClass: "home-icon-admin",
+    group: "People, Safety & Compliance",
+  },
+  {
     name: "Admin",
     eyebrow: "OviCore setup",
     description:
@@ -180,6 +206,7 @@ const groupOrder: ModuleGroup[] = [
   "Broiler Production",
   "Breeder & Hatchery",
   "Planning & Operations",
+  "People, Safety & Compliance",
   "Management & Setup",
 ];
 
