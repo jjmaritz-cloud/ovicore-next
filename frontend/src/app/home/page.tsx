@@ -26,7 +26,7 @@ type ModuleGroup =
   | "People, Safety & Compliance"
   | "Management & Setup";
 
-type FilterKey = "All" | ModuleGroup;
+type FilterKey = "All" | "Frequently Used" | ModuleGroup;
 
 type ModuleCard = {
   name: string;
@@ -210,7 +210,7 @@ const groupOrder: ModuleGroup[] = [
   "Management & Setup",
 ];
 
-const filters: FilterKey[] = ["All", ...groupOrder];
+const filters: FilterKey[] = ["All", "Frequently Used", ...groupOrder];
 
 function ModuleCardView({
   module,
@@ -308,7 +308,9 @@ export default function HomePage() {
       modules.filter((module) => {
         const matchesFilter =
           activeFilter === "All" ||
-          module.group === activeFilter;
+          (activeFilter === "Frequently Used"
+            ? Boolean(module.featured && module.href)
+            : module.group === activeFilter);
 
         const searchText = [
           module.name,
@@ -329,13 +331,6 @@ export default function HomePage() {
       }),
     [activeFilter, normalisedQuery],
   );
-
-  const featuredModules = modules.filter(
-    (module) => module.featured && module.href,
-  );
-
-  const showFeatured =
-    activeFilter === "All" && !normalisedQuery;
 
   return (
     <main className="ovicore-home-shell">
@@ -392,9 +387,9 @@ export default function HomePage() {
           ))}
         </nav>
 
-        {showFeatured && (
+        {activeFilter === "Frequently Used" && (
           <section
-            className="home-module-section home-featured-section"
+            className="home-module-section"
             aria-labelledby="frequently-used-heading"
           >
             <div className="home-section-heading">
@@ -404,22 +399,26 @@ export default function HomePage() {
                   Frequently used
                 </h2>
               </div>
-              <p>Your main operational and setup modules.</p>
+              <p>
+                {filteredModules.length} module
+                {filteredModules.length === 1 ? "" : "s"}
+              </p>
             </div>
 
-            <div className="home-featured-grid">
-              {featuredModules.map((module) => (
+            <div className="home-module-grid home-module-grid-sorted">
+              {filteredModules.map((module) => (
                 <ModuleCardView
                   key={module.name}
                   module={module}
-                  compact
                 />
               ))}
             </div>
           </section>
         )}
 
-        {groupOrder.map((group) => {
+        {activeFilter !== "Frequently Used" &&
+          groupOrder.map((group) => {
+
           const groupModules = filteredModules.filter(
             (module) => module.group === group,
           );
@@ -455,7 +454,8 @@ export default function HomePage() {
               </div>
             </section>
           );
-        })}
+          })}
+        }
 
         {!filteredModules.length && (
           <section className="home-module-empty">
