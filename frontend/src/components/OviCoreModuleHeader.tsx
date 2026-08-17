@@ -143,7 +143,7 @@ export default function OviCoreModuleHeader({
 					color: rgba(255, 255, 255, 0.86);
 				}
 
-				.ovicore-module-header-actions {
+				:global(.ovicore-module-header-actions) {
 					position: relative;
 					z-index: 1;
 					display: flex;
@@ -153,7 +153,7 @@ export default function OviCoreModuleHeader({
 					flex-wrap: wrap;
 				}
 
-				.ovicore-module-header-action {
+				:global(.ovicore-module-header-action) {
 					min-height: 34px;
 					display: inline-flex;
 					align-items: center;
@@ -173,12 +173,21 @@ export default function OviCoreModuleHeader({
 					transition: all 0.16s ease;
 				}
 
-				.ovicore-module-header-action:hover {
+				:global(.ovicore-module-header-action:hover) {
 					transform: translateY(-1px);
 					background: rgba(255, 255, 255, 0.14);
 				}
 
-				.ovicore-module-header-action.warning {
+				:global(button.ovicore-module-header-action) {
+					font-family: inherit;
+				}
+
+				:global(.ovicore-module-header-action:focus-visible) {
+					outline: 2px solid rgba(167, 243, 208, 0.95);
+					outline-offset: 2px;
+				}
+
+				:global(.ovicore-module-header-action.warning) {
 					border-color: rgba(253, 230, 138, 0.42);
 					background: rgba(245, 158, 11, 0.18);
 					color: #fef3c7;
@@ -191,7 +200,7 @@ export default function OviCoreModuleHeader({
 						padding: 18px;
 					}
 
-					.ovicore-module-header-actions {
+					:global(.ovicore-module-header-actions) {
 						justify-content: flex-start;
 					}
 				}
