@@ -80,9 +80,17 @@ export default function GuidedTourPage() {
             </p>
           </div>
 
-          <Link href="/home" className="tour-home-link">
-            Back to modules
-          </Link>
+          <div className="tour-hero-actions">
+            <Link href="/home?tour=overview&step=0" className="tour-hero-start">
+              <PlayCircle size={18} />
+              <span>TAKE THE TOUR</span>
+              <ArrowRight size={17} />
+            </Link>
+
+            <Link href="/home" className="tour-home-link">
+              Back to modules
+            </Link>
+          </div>
         </header>
 
         {justCompleted ? (
@@ -296,8 +304,43 @@ export default function GuidedTourPage() {
           line-height: 1.4;
         }
 
+        .tour-hero-actions {
+          display: flex;
+          align-items: center;
+          justify-content: flex-end;
+          gap: 9px;
+          flex-wrap: wrap;
+        }
+
+        .tour-hero-start {
+          min-height: 44px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          padding: 0 16px;
+          border-radius: 12px;
+          background: #ffffff;
+          color: #075e49;
+          font-size: 11px;
+          font-weight: 1000;
+          letter-spacing: 0.035em;
+          text-decoration: none;
+          box-shadow:
+            0 10px 26px rgba(0, 0, 0, 0.16),
+            inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+          transition: transform 140ms ease, box-shadow 140ms ease;
+        }
+
+        .tour-hero-start:hover {
+          transform: translateY(-1px);
+          box-shadow:
+            0 14px 32px rgba(0, 0, 0, 0.2),
+            inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+        }
+
         .tour-home-link {
-          min-height: 36px;
+          min-height: 38px;
           display: inline-flex;
           align-items: center;
           padding: 0 13px;
@@ -351,28 +394,49 @@ export default function GuidedTourPage() {
 
         .tour-intro-grid article {
           display: grid;
-          grid-template-columns: 30px minmax(0, 1fr);
-          column-gap: 8px;
-          padding: 16px 17px;
+          grid-template-columns: 38px minmax(0, 1fr);
+          grid-template-rows: auto auto;
+          column-gap: 11px;
+          row-gap: 4px;
+          align-items: start;
+          min-height: 104px;
+          padding: 17px 18px;
           border: 1px solid #dbe8e3;
           border-radius: 14px;
           background: white;
         }
 
         .tour-intro-grid svg {
+          grid-column: 1;
           grid-row: 1 / span 2;
+          width: 22px;
+          height: 22px;
+          margin-top: 1px;
           color: #0b7b5f;
         }
 
         .tour-intro-grid strong {
-          font-size: 12px;
+          grid-column: 2;
+          grid-row: 1;
+          display: block;
+          min-width: 0;
+          color: #173c33;
+          font-size: 13px;
+          line-height: 1.25;
         }
 
         .tour-intro-grid p {
-          margin: 3px 0 0;
-          color: #697c76;
-          font-size: 10px;
-          line-height: 1.35;
+          grid-column: 2;
+          grid-row: 2;
+          width: 100%;
+          min-width: 0;
+          margin: 0;
+          color: #637771;
+          font-size: 11px;
+          line-height: 1.45;
+          white-space: normal;
+          overflow-wrap: normal;
+          word-break: normal;
         }
 
         .tour-section-head {
@@ -695,8 +759,15 @@ export default function GuidedTourPage() {
             grid-template-columns: 44px minmax(0, 1fr);
           }
 
-          .tour-home-link {
+          .tour-hero-actions {
             grid-column: 1 / -1;
+            width: 100%;
+            justify-content: stretch;
+          }
+
+          .tour-hero-start,
+          .tour-home-link {
+            flex: 1;
             justify-content: center;
           }
 
