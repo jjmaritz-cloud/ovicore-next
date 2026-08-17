@@ -154,6 +154,7 @@ const modules: ModuleCard[] = [
     description:
       "Connect supply, capacity, placements and demand in one integrated planning view.",
     tags: ["Supply vs demand", "Risk weeks", "Capacity"],
+    href: "/planning?company_id=2",
     status: "Paid add-on",
     statusClass: "home-status-foundation",
     icon: Network,
