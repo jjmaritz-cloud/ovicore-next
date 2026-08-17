@@ -126,32 +126,82 @@ export default function GuidedTourPage() {
           {completed ? <em>Overview completed ✓</em> : null}
         </div>
 
-        <section className="tour-grid">
-          {tours.map(({ title, description, duration, icon: Icon, href, available }) => (
-            <article
-              className={`tour-card ${available ? "" : "tour-card-disabled"}`}
-              key={title}
-            >
-              <div className="tour-card-top">
-                <span className="tour-card-icon">
-                  <Icon size={20} />
-                </span>
-                <span className="tour-duration">{duration}</span>
-              </div>
+        <section className="tour-showcase">
+          {tours.filter((tour) => tour.available).map(
+            ({ title, description, duration, icon: Icon, href }) => (
+              <article className="tour-featured-card" key={title}>
+                <div className="tour-featured-copy">
+                  <div className="tour-featured-top">
+                    <span className="tour-featured-icon">
+                      <Icon size={26} />
+                    </span>
+                    <span className="tour-duration">{duration}</span>
+                  </div>
 
-              <h3>{title}</h3>
-              <p>{description}</p>
+                  <span className="tour-featured-eyebrow">Recommended first</span>
+                  <h3>{title}</h3>
+                  <p>{description}</p>
 
-              {available && href ? (
-                <Link href={href} className="tour-start">
-                  {completed ? "Take tour again" : "Start guided tour"}
-                  <ArrowRight size={15} />
-                </Link>
-              ) : (
-                <span className="tour-soon">In development</span>
-              )}
-            </article>
-          ))}
+                  <div className="tour-featured-points">
+                    <span>Module selector</span>
+                    <span>Broiler operations</span>
+                    <span>AI Intelligence</span>
+                    <span>Planning</span>
+                    <span>Audit readiness</span>
+                  </div>
+
+                  {href ? (
+                    <Link href={href} className="tour-start tour-start-featured">
+                      <PlayCircle size={17} />
+                      {completed ? "Take overview tour again" : "Start OviCore overview"}
+                      <ArrowRight size={16} />
+                    </Link>
+                  ) : null}
+                </div>
+
+                <div className="tour-featured-visual" aria-hidden="true">
+                  <div className="tour-map-step">
+                    <span>1</span>
+                    <div><strong>Operations</strong><small>See the current position</small></div>
+                  </div>
+                  <div className="tour-map-line" />
+                  <div className="tour-map-step">
+                    <span>2</span>
+                    <div><strong>Intelligence</strong><small>Understand what changed</small></div>
+                  </div>
+                  <div className="tour-map-line" />
+                  <div className="tour-map-step">
+                    <span>3</span>
+                    <div><strong>Planning</strong><small>Act before the gap occurs</small></div>
+                  </div>
+                  <div className="tour-map-line" />
+                  <div className="tour-map-step">
+                    <span>4</span>
+                    <div><strong>Assurance</strong><small>Stay audit ready</small></div>
+                  </div>
+                </div>
+              </article>
+            ),
+          )}
+
+          <div className="tour-secondary-grid">
+            {tours.filter((tour) => !tour.available).map(
+              ({ title, description, duration, icon: Icon }) => (
+                <article className="tour-card tour-card-disabled" key={title}>
+                  <div className="tour-card-top">
+                    <span className="tour-card-icon">
+                      <Icon size={20} />
+                    </span>
+                    <span className="tour-duration">{duration}</span>
+                  </div>
+
+                  <h3>{title}</h3>
+                  <p>{description}</p>
+                  <span className="tour-soon">In development</span>
+                </article>
+              ),
+            )}
+          </div>
         </section>
 
         <section className="tour-feedback" data-tour="tour-feedback">
@@ -189,7 +239,7 @@ export default function GuidedTourPage() {
         }
 
         .tour-wrap {
-          width: min(1180px, 100%);
+          width: min(1480px, 100%);
           margin: 0 auto;
         }
 
@@ -198,7 +248,7 @@ export default function GuidedTourPage() {
           grid-template-columns: 54px minmax(0, 1fr) auto;
           gap: 14px;
           align-items: center;
-          padding: 20px 22px;
+          padding: 24px 28px;
           border-radius: 20px;
           color: white;
           background:
@@ -233,7 +283,7 @@ export default function GuidedTourPage() {
 
         .tour-hero h1 {
           margin: 4px 0 0;
-          font-size: clamp(27px, 3vw, 39px);
+          font-size: clamp(30px, 3vw, 44px);
           line-height: 1;
           letter-spacing: -0.055em;
         }
@@ -303,7 +353,7 @@ export default function GuidedTourPage() {
           display: grid;
           grid-template-columns: 30px minmax(0, 1fr);
           column-gap: 8px;
-          padding: 13px 14px;
+          padding: 16px 17px;
           border: 1px solid #dbe8e3;
           border-radius: 14px;
           background: white;
@@ -438,6 +488,156 @@ export default function GuidedTourPage() {
           color: #70827c;
         }
 
+        .tour-showcase {
+          display: grid;
+          gap: 12px;
+        }
+
+        .tour-featured-card {
+          min-height: 300px;
+          display: grid;
+          grid-template-columns: minmax(0, 1.15fr) minmax(360px, 0.85fr);
+          gap: 20px;
+          padding: 22px;
+          border: 1px solid #cfe2da;
+          border-radius: 20px;
+          background:
+            radial-gradient(circle at 88% 18%, rgba(16, 185, 129, 0.1), transparent 34%),
+            linear-gradient(135deg, #ffffff, #f7fcfa);
+          box-shadow: 0 14px 35px rgba(16, 42, 38, 0.07);
+        }
+
+        .tour-featured-copy {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+        }
+
+        .tour-featured-top {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+        }
+
+        .tour-featured-icon {
+          width: 50px;
+          height: 50px;
+          display: grid;
+          place-items: center;
+          border-radius: 15px;
+          background: linear-gradient(135deg, #075e49, #0d8a68);
+          color: white;
+          box-shadow: 0 10px 24px rgba(8, 115, 90, 0.2);
+        }
+
+        .tour-featured-eyebrow {
+          margin-top: 18px;
+          color: #0b7b5f;
+          font-size: 10px;
+          font-weight: 950;
+          letter-spacing: 0.14em;
+          text-transform: uppercase;
+        }
+
+        .tour-featured-card h3 {
+          margin: 5px 0 0;
+          color: #0b3028;
+          font-size: 26px;
+          letter-spacing: -0.045em;
+        }
+
+        .tour-featured-card p {
+          max-width: 720px;
+          margin: 8px 0 13px;
+          color: #5f756e;
+          font-size: 13px;
+          line-height: 1.55;
+        }
+
+        .tour-featured-points {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+          margin-bottom: 18px;
+        }
+
+        .tour-featured-points span {
+          border: 1px solid #d6e6e0;
+          border-radius: 999px;
+          padding: 6px 9px;
+          background: #f5faf8;
+          color: #3f6258;
+          font-size: 10px;
+          font-weight: 850;
+        }
+
+        .tour-start-featured {
+          min-height: 42px;
+          padding: 0 15px;
+          gap: 8px;
+          font-size: 11px;
+          box-shadow: 0 10px 24px rgba(8, 115, 90, 0.18);
+        }
+
+        .tour-featured-visual {
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          padding: 20px;
+          border: 1px solid #d9e7e2;
+          border-radius: 17px;
+          background:
+            linear-gradient(180deg, rgba(6, 78, 59, 0.035), rgba(15, 118, 110, 0.015)),
+            white;
+        }
+
+        .tour-map-step {
+          display: grid;
+          grid-template-columns: 34px minmax(0, 1fr);
+          gap: 10px;
+          align-items: center;
+        }
+
+        .tour-map-step > span {
+          width: 34px;
+          height: 34px;
+          display: grid;
+          place-items: center;
+          border-radius: 11px;
+          background: #e4f5ee;
+          color: #08735a;
+          font-size: 11px;
+          font-weight: 950;
+        }
+
+        .tour-map-step strong {
+          display: block;
+          color: #163c33;
+          font-size: 12px;
+        }
+
+        .tour-map-step small {
+          display: block;
+          margin-top: 2px;
+          color: #70827c;
+          font-size: 10px;
+        }
+
+        .tour-map-line {
+          width: 2px;
+          height: 22px;
+          margin: 3px 0 3px 16px;
+          background: linear-gradient(#9fd6c4, #d8ebe4);
+        }
+
+        .tour-secondary-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 10px;
+        }
+
         .tour-feedback {
           margin-top: 20px;
           padding: 17px;
@@ -472,8 +672,12 @@ export default function GuidedTourPage() {
         }
 
         @media (max-width: 900px) {
-          .tour-grid {
-            grid-template-columns: repeat(2, 1fr);
+          .tour-featured-card {
+            grid-template-columns: 1fr;
+          }
+
+          .tour-secondary-grid {
+            grid-template-columns: repeat(3, 1fr);
           }
 
           .tour-intro-grid,
@@ -496,8 +700,16 @@ export default function GuidedTourPage() {
             justify-content: center;
           }
 
-          .tour-grid {
+          .tour-secondary-grid {
             grid-template-columns: 1fr;
+          }
+
+          .tour-featured-card {
+            padding: 16px;
+          }
+
+          .tour-featured-visual {
+            padding: 14px;
           }
         }
       `}</style>

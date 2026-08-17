@@ -32,17 +32,17 @@ const overviewSteps: TourStep[] = [
     route: "/broilers/intelligence",
     target: '[data-tour="broiler-intelligence"]',
     eyebrow: "OviCore Intelligence",
-    title: "Move from data to decisions",
+    title: "The AI turns flock data into a management story",
     body:
-      "The Intelligence page compares actual flock performance with standards, surfaces exceptions and tells the manager what is changing and what deserves attention.",
+      "This is more than a dashboard. OviCore compares the flock with age-matched standards, watches the direction of change, identifies abnormal combinations across growth, mortality, feed, water and density, and then explains the likely pressure and the action worth checking first. The aim is to tell a manager what changed, why it matters and where to look — without making them interpret every graph manually.",
   },
   {
     route: "/planning",
     target: '[data-tour="planning-command"]',
     eyebrow: "Integrated planning",
-    title: "Fill future demand with available supply",
+    title: "Match future bird demand to real housing capacity",
     body:
-      "Planning connects rearing supply, shed capacity, placements and destination demand so gaps are visible before they become operational problems.",
+      "Think of Planning as a supply-and-demand bridge. OviCore starts with the birds you expect to have available in rearing, checks when those birds are ready to move, compares that supply with layer sheds becoming available, and then allocates birds into future destination sheds. If a destination needs 48,000 birds but no suitable rearing flock is available — or a flock is too young, too small or clashes with shed timing — OviCore flags the gap early so placements, depletion dates or supply plans can be adjusted before the problem reaches the farm.",
   },
   {
     route: "/compliance",
@@ -191,7 +191,7 @@ export default function OviCoreTour() {
 
   return (
     <div className="ovicore-tour-layer" role="dialog" aria-modal="true">
-      <div className="ovicore-tour-dim" />
+      {!spotlight ? <div className="ovicore-tour-dim" /> : null}
 
       {spotlight ? (
         <div
@@ -286,11 +286,13 @@ export default function OviCoreTour() {
         .ovicore-tour-spotlight {
           position: fixed;
           z-index: 2;
-          border: 2px solid rgba(167, 243, 208, 0.98);
+          border: 3px solid rgba(110, 231, 183, 1);
           border-radius: 18px;
+          background: transparent;
           box-shadow:
-            0 0 0 9999px rgba(2, 20, 17, 0.32),
-            0 0 0 5px rgba(16, 185, 129, 0.17),
+            0 0 0 9999px rgba(2, 20, 17, 0.54),
+            0 0 0 7px rgba(16, 185, 129, 0.18),
+            0 0 32px rgba(52, 211, 153, 0.42),
             0 18px 60px rgba(0, 0, 0, 0.28);
           pointer-events: none;
           transition:
@@ -303,10 +305,10 @@ export default function OviCoreTour() {
         .ovicore-tour-panel {
           position: fixed;
           z-index: 3;
-          width: min(430px, calc(100vw - 32px));
+          width: min(470px, calc(100vw - 32px));
           border: 1px solid rgba(255, 255, 255, 0.7);
           border-radius: 20px;
-          padding: 18px;
+          padding: 20px;
           background: rgba(255, 255, 255, 0.98);
           box-shadow: 0 24px 80px rgba(2, 20, 17, 0.34);
           color: #102a26;
@@ -343,7 +345,7 @@ export default function OviCoreTour() {
         .ovicore-tour-panel h2 {
           margin: 0;
           color: #0b2f28;
-          font-size: 19px;
+          font-size: 20px;
           line-height: 1.1;
           letter-spacing: -0.035em;
         }
@@ -351,9 +353,9 @@ export default function OviCoreTour() {
         .ovicore-tour-panel > p {
           margin: 13px 0 15px;
           color: #526b65;
-          font-size: 13px;
+          font-size: 13.5px;
           font-weight: 650;
-          line-height: 1.5;
+          line-height: 1.55;
         }
 
         .ovicore-tour-close {
