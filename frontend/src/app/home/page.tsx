@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 
 import {
   Bird,
+  Compass,
   ChartNoAxesCombined,
   Drumstick,
   Egg,
@@ -185,6 +186,20 @@ const modules: ModuleCard[] = [
     icon: ShieldCheck,
     iconClass: "home-icon-admin",
     group: "People, Safety & Compliance",
+  },
+  {
+    name: "Guided Tour",
+    eyebrow: "Explore OviCore",
+    description:
+      "Take a guided walkthrough of OviCore operations, Intelligence, flock comparison, integrated planning and Audit Readiness.",
+    tags: ["Overview", "AI", "Planning", "Feedback"],
+    href: "/tour",
+    status: "Start here",
+    statusClass: "home-status-live",
+    icon: Compass,
+    iconClass: "home-icon-planning",
+    group: "Management & Setup",
+    featured: true,
   },
   {
     name: "Admin",
