@@ -16,6 +16,7 @@ import {
   Search,
   ShieldCheck,
   Sprout,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 
@@ -176,6 +177,19 @@ const modules: ModuleCard[] = [
     group: "Planning & Operations",
   },
   {
+    name: "Biosecurity & People Tracker",
+    eyebrow: "People movement & site protection",
+    description:
+      "Track people, vehicles and biosecurity risk across farms with QR sign-in, movement history, entry screening and traceability.",
+    tags: ["QR sign-in", "People tracker", "Risk alerts"],
+    href: "/biosecurity",
+    status: "Paid add-on",
+    statusClass: "home-status-future",
+    icon: Users,
+    iconClass: "home-icon-admin",
+    group: "People, Safety & Compliance",
+  },
+  {
     name: "People, Safety & Compliance",
     eyebrow: "Workforce and assurance",
     description:
@@ -238,6 +252,7 @@ function ModuleCardView({
 }) {
   const Icon = module.icon;
   const isGuidedTour = module.name === "Guided Tour";
+  const isBiosecurity = module.name === "Biosecurity & People Tracker";
 
   const content = (
     <>
@@ -298,7 +313,7 @@ function ModuleCardView({
       <article
         className={`home-module-card home-module-card-disabled${
           compact ? " home-module-card-compact" : ""
-        }${isGuidedTour ? " home-module-card-tour" : ""}`}
+        }${isGuidedTour ? " home-module-card-tour" : ""}${isBiosecurity ? " home-module-card-biosecurity" : ""}`}
         aria-disabled="true"
       >
         {content}
@@ -310,7 +325,7 @@ function ModuleCardView({
     <Link
       className={`home-module-card${
         compact ? " home-module-card-compact" : ""
-      }${isGuidedTour ? " home-module-card-tour" : ""}`}
+      }${isGuidedTour ? " home-module-card-tour" : ""}${isBiosecurity ? " home-module-card-biosecurity" : ""}`}
       href={module.href}
     >
       {content}
@@ -501,6 +516,53 @@ export default function HomePage() {
       <OviCoreTour />
 
       <style jsx global>{`
+
+        .home-module-card-biosecurity {
+          position: relative;
+          overflow: hidden;
+          border: 1px solid rgba(68, 82, 122, 0.35) !important;
+          background:
+            radial-gradient(circle at 86% 14%, rgba(79, 70, 229, 0.16), transparent 34%),
+            radial-gradient(circle at 10% 100%, rgba(14, 165, 233, 0.10), transparent 32%),
+            linear-gradient(135deg, #f8fafc 0%, #f4f6ff 54%, #eef7ff 100%) !important;
+          box-shadow: 0 10px 26px rgba(37, 51, 89, 0.09) !important;
+        }
+
+        .home-module-card-biosecurity::before {
+          content: "";
+          position: absolute;
+          inset: 0 auto 0 0;
+          width: 5px;
+          background: linear-gradient(180deg, #4338ca, #0ea5e9);
+        }
+
+        .home-module-card-biosecurity .home-module-icon {
+          background: linear-gradient(135deg, #312e81, #4f46e5 58%, #0ea5e9) !important;
+          color: #fff !important;
+          box-shadow: 0 8px 20px rgba(67, 56, 202, 0.2);
+        }
+
+        .home-module-card-biosecurity .home-module-heading h2 {
+          color: #1e1b4b !important;
+        }
+
+        .home-module-card-biosecurity .home-module-eyebrow {
+          color: #4338ca !important;
+          font-weight: 950 !important;
+        }
+
+        .home-module-card-biosecurity .home-module-status {
+          background: #eef2ff !important;
+          color: #3730a3 !important;
+          border-color: rgba(67, 56, 202, 0.18) !important;
+        }
+
+        .home-module-card-biosecurity:hover {
+          border-color: rgba(67, 56, 202, 0.62) !important;
+          transform: translateY(-2px);
+          box-shadow: 0 16px 38px rgba(67, 56, 202, 0.16) !important;
+        }
+
         .home-module-card-tour {
           position: relative;
           overflow: hidden;
