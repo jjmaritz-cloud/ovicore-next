@@ -4,6 +4,7 @@ import Link from "next/link";
 import {
   Activity,
   AlertTriangle,
+  ArrowLeft,
   ArrowRight,
   Car,
   CheckCircle2,
@@ -47,7 +48,7 @@ export default function BiosecurityPreviewPage() {
 
       <section className="bio-wrap">
         <header className="topbar">
-          <Link href="/home" className="back-link">← Back to modules</Link>
+          <Link href="/home" className="back-button"><ArrowLeft size={16} /> Back to modules</Link>
           <div className="addon-pill"><Sparkles size={14} /> Paid add-on</div>
         </header>
 
@@ -203,8 +204,8 @@ export default function BiosecurityPreviewPage() {
         .bio-glow-two { background:#0ea5e9; left:-180px; top:760px; }
         .bio-wrap { width:min(1540px, calc(100% - 40px)); margin:0 auto; padding:18px 0 30px; position:relative; z-index:1; }
         .topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
-        .back-link { color:#9fb0c8; text-decoration:none; font-weight:800; font-size:14px; }
-        .back-link:hover { color:#fff; }
+        .back-button { display:inline-flex; align-items:center; gap:7px; color:#dbeafe; text-decoration:none; font-weight:900; font-size:13px; padding:8px 11px; border-radius:10px; border:1px solid rgba(148,163,184,.18); background:rgba(15,23,42,.72); box-shadow:inset 0 1px 0 rgba(255,255,255,.03); transition:.18s ease; }
+        .back-button:hover { color:#fff; border-color:rgba(129,140,248,.42); background:rgba(30,41,59,.9); transform:translateY(-1px); }
         .addon-pill,.hero-kicker,.preview-note,.footer-badge { display:inline-flex; align-items:center; gap:7px; }
         .addon-pill { border:1px solid rgba(129,140,248,.28); background:rgba(79,70,229,.12); color:#c7d2fe; padding:7px 11px; border-radius:999px; font-size:11px; font-weight:950; letter-spacing:.04em; text-transform:uppercase; }
         .hero { display:grid; grid-template-columns:minmax(0,1.08fr) minmax(500px,.92fr); gap:42px; align-items:center; min-height:440px; padding:16px 0 28px; }
