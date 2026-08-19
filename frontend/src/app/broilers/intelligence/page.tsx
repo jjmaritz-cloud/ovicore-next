@@ -1046,95 +1046,6 @@ function MobileStylePerformanceChart({
     );
   }
 
-  const chartInsight = (() => {
-    if (
-      selected?.actual === null ||
-      selected?.actual === undefined
-    ) {
-      return {
-        headline: "No selected value yet.",
-        detail:
-          "Move across the chart to inspect the flock trajectory.",
-        tone: "neutral",
-      };
-    }
-
-    if (
-      selected.standard !== null &&
-      selected.standard !== undefined
-    ) {
-      const difference =
-        selected.actual -
-        selected.standard;
-
-      const absDifference =
-        Math.abs(difference);
-
-      const direction =
-        difference < 0
-          ? "below"
-          : difference > 0
-            ? "above"
-            : "on";
-
-      const improving =
-        selectedIndex > 0 &&
-        chart.data[selectedIndex - 1]
-          ?.actual !== null &&
-        chart.data[selectedIndex - 1]
-          ?.actual !== undefined &&
-        chart.data[selectedIndex - 1]
-          ?.standard !== null &&
-        chart.data[selectedIndex - 1]
-          ?.standard !== undefined
-          ? Math.abs(
-              selected.actual -
-                selected.standard,
-            ) <
-            Math.abs(
-              Number(
-                chart.data[
-                  selectedIndex - 1
-                ].actual,
-              ) -
-                Number(
-                  chart.data[
-                    selectedIndex - 1
-                  ].standard,
-                ),
-            )
-          : null;
-
-      return {
-        headline:
-          difference === 0
-            ? `${chart.title} is on standard.`
-            : `${chart.title} is ${absDifference.toFixed(
-                chart.decimals,
-              )} ${chart.unit} ${direction} standard.`,
-        detail:
-          improving === true
-            ? "The gap is narrowing at the selected point."
-            : improving === false
-              ? "The gap is widening at the selected point."
-              : "Keep watching the trajectory against standard.",
-        tone:
-          difference < 0
-            ? "watch"
-            : "good",
-      };
-    }
-
-    return {
-      headline: `${chart.title}: ${selected.actual.toFixed(
-        chart.decimals,
-      )} ${chart.unit}.`,
-      detail:
-        "No age-matched standard is available for this metric.",
-      tone: "neutral",
-    };
-  })();
-
 
   return (
     <article
@@ -1426,24 +1337,6 @@ function MobileStylePerformanceChart({
         </div>
       )}
 
-      <div
-        className={`bi-modern-chart-insight bi-modern-chart-insight-${chartInsight.tone}`}
-      >
-        <span className="bi-modern-chart-insight-icon">
-          {chartInsight.tone === "good"
-            ? "✓"
-            : chartInsight.tone === "watch"
-              ? "!"
-              : "i"}
-        </span>
-
-        <div>
-          <strong>
-            {chartInsight.headline}
-          </strong>
-          <p>{chartInsight.detail}</p>
-        </div>
-      </div>
 
       {metric === "bodyweight" &&
       !hasStandard ? (
