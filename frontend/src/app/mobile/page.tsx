@@ -170,7 +170,7 @@ type PerformanceRecord = {
   last_saved_at?: string | null;
 };
 
-type MobileTab = "home" | "entry" | "insights" | "more";
+type MobileTab = "home" | "entry" | "capture" | "insights" | "more";
 type EntryStage = "select" | "form" | "saved";
 
 type EntryForm = {
@@ -204,6 +204,75 @@ type SavedSummary = {
   feed: number | null;
   water: number | null;
   weight: number | null;
+};
+
+
+type PaperCaptureSource = {
+  template_id: string;
+  opening_birds_am?: number | null;
+  opening_birds_pm?: number | null;
+
+  mortality_front_am?: number | null;
+  mortality_front_pm?: number | null;
+  mortality_middle_am?: number | null;
+  mortality_middle_pm?: number | null;
+  mortality_back_am?: number | null;
+  mortality_back_pm?: number | null;
+  mortality_other_am?: number | null;
+  mortality_other_pm?: number | null;
+
+  cull_legs_am?: number | null;
+  cull_legs_pm?: number | null;
+  cull_runts_am?: number | null;
+  cull_runts_pm?: number | null;
+  cull_beak_am?: number | null;
+  cull_beak_pm?: number | null;
+  cull_other_am?: number | null;
+  cull_other_pm?: number | null;
+
+  feed_kg_am?: number | null;
+  feed_kg_pm?: number | null;
+  water_litres_am?: number | null;
+  water_litres_pm?: number | null;
+  body_weight_kg_am?: number | null;
+  body_weight_kg_pm?: number | null;
+
+  observations?: string | null;
+  actions_taken?: string | null;
+  confidence: Record<string, number>;
+};
+
+type PaperCaptureReview = {
+  opening_birds: number | null;
+  mortality_front: number;
+  mortality_middle: number;
+  mortality_back: number;
+  mortality_other: number;
+  cull_legs: number;
+  cull_runts: number;
+  cull_beak: number;
+  cull_other: number;
+  feed_kg: number | null;
+  water_litres: number | null;
+  body_weight_kg: number | null;
+  notes: string | null;
+};
+
+type PaperCaptureResult = {
+  id: number;
+  company_id: number;
+  placement_plan_id: number;
+  template_id: string;
+  entry_date: string;
+  farm_name?: string | null;
+  shed_name?: string | null;
+  cycle_code?: string | null;
+  age_days?: number | null;
+  status: string;
+  overall_confidence?: number | null;
+  source: PaperCaptureSource;
+  proposed: PaperCaptureReview;
+  warnings: string[];
 };
 
 type MobileDataCache = {
@@ -2524,6 +2593,7 @@ export default function MobileBroilerApp() {
             records={records}
             managerInsights={managerInsights}
             openEntryForPlan={openEntryForPlan}
+            openPaperCapture={() => setTab("capture")}
             resetKey={homeResetKey}
           />
         )}
@@ -2591,6 +2661,17 @@ export default function MobileBroilerApp() {
           </>
         )}
 
+        {tab === "capture" && (
+          <PaperCaptureScreen
+            companyId={companyId}
+            online={online}
+            onSaved={async () => {
+              await loadData();
+              setHomeResetKey((current) => current + 1);
+            }}
+          />
+        )}
+
         {tab === "insights" && (
           <InsightsScreen
             managerInsights={managerInsights}
@@ -2647,6 +2728,12 @@ export default function MobileBroilerApp() {
           }}
         />
         <NavButton
+          active={tab === "capture"}
+          label="Capture"
+          icon="▣"
+          onClick={() => setTab("capture")}
+        />
+        <NavButton
           active={tab === "insights"}
           label="Insights"
           icon="↗"
@@ -2672,6 +2759,7 @@ function HomeScreen({
   records,
   managerInsights,
   openEntryForPlan,
+  openPaperCapture,
   resetKey,
 }: {
   displayName: string;
@@ -2694,6 +2782,7 @@ function HomeScreen({
     mortalityRate: number;
   };
   openEntryForPlan: (planId?: number) => void;
+  openPaperCapture: () => void;
   resetKey: number;
 }) {
   const farms = useMemo(
@@ -2764,6 +2853,21 @@ function HomeScreen({
             .map((part) => part[0])
             .join("")
             .toUpperCase()}
+        </button>
+      </section>
+
+      <section className={styles.paperCaptureQuickAction}>
+        <div className={styles.paperCaptureQuickIcon}>▣</div>
+        <div>
+          <small>PAPER CAPTURE</small>
+          <strong>Capture completed sheet</strong>
+          <span>Take a photo, let OviCore read it, then review and save.</span>
+        </div>
+        <button
+          type="button"
+          onClick={openPaperCapture}
+        >
+          Open camera
         </button>
       </section>
 
@@ -4361,6 +4465,583 @@ function EntrySavedScreen({
   );
 }
 
+
+function PaperCaptureScreen({
+  companyId,
+  online,
+  onSaved,
+}: {
+  companyId: number | null;
+  online: boolean;
+  onSaved: () => Promise<void>;
+}) {
+  const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [capture, setCapture] =
+    useState<PaperCaptureResult | null>(null);
+  const [review, setReview] =
+    useState<PaperCaptureReview | null>(null);
+  const [analysing, setAnalysing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [captureMessage, setCaptureMessage] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  function selectCaptureFile(nextFile: File | null) {
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+    }
+
+    setFile(nextFile);
+    setPreviewUrl(
+      nextFile ? URL.createObjectURL(nextFile) : "",
+    );
+    setCapture(null);
+    setReview(null);
+    setCaptureMessage("");
+    setSaved(false);
+  }
+
+  async function analysePaperSheet() {
+    if (!file || !companyId) return;
+
+    if (!online) {
+      setCaptureMessage(
+        "Paper Capture needs an internet connection to read handwriting. You can take the photo now and analyse it when the device is online.",
+      );
+      return;
+    }
+
+    setAnalysing(true);
+    setCaptureMessage("");
+    setCapture(null);
+    setReview(null);
+    setSaved(false);
+
+    try {
+      const formData = new FormData();
+      formData.set("company_id", String(companyId));
+      formData.set("image", file);
+
+      const response = await authenticatedFetch(
+        `${API_BASE}/api/paper-capture/broilers/extract`,
+        {
+          method: "POST",
+          body: formData,
+        },
+      );
+
+      if (!response.ok) {
+        const detail = await response.text();
+        throw new Error(
+          `Could not read the sheet (${response.status}). ${detail}`,
+        );
+      }
+
+      const result: PaperCaptureResult =
+        await response.json();
+
+      setCapture(result);
+      setReview(result.proposed);
+    } catch (error) {
+      setCaptureMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not analyse the completed sheet.",
+      );
+    } finally {
+      setAnalysing(false);
+    }
+  }
+
+  function updatePaperReview(
+    field: keyof PaperCaptureReview,
+    value: string,
+  ) {
+    setReview((current) => {
+      if (!current) return current;
+
+      if (field === "notes") {
+        return {
+          ...current,
+          notes: value,
+        };
+      }
+
+      const nullable =
+        field === "opening_birds" ||
+        field === "feed_kg" ||
+        field === "water_litres" ||
+        field === "body_weight_kg";
+
+      return {
+        ...current,
+        [field]:
+          value.trim() === "" && nullable
+            ? null
+            : Number(value || 0),
+      };
+    });
+  }
+
+  async function approvePaperCapture() {
+    if (!capture || !review || !online) return;
+
+    setSaving(true);
+    setCaptureMessage("");
+
+    try {
+      const response = await authenticatedFetch(
+        `${API_BASE}/api/paper-capture/broilers/${capture.id}/approve`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            reviewed: review,
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        const detail = await response.text();
+        throw new Error(
+          `Could not save the sheet (${response.status}). ${detail}`,
+        );
+      }
+
+      setSaved(true);
+      setCaptureMessage(
+        "Paper sheet approved and saved to Broiler Daily Data Entry.",
+      );
+      await onSaved();
+    } catch (error) {
+      setCaptureMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not save the reviewed sheet.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const sourceRows = capture
+    ? [
+        ["Opening Birds", "opening_birds_am", "opening_birds_pm"],
+        ["Mortality – Front", "mortality_front_am", "mortality_front_pm"],
+        ["Mortality – Middle", "mortality_middle_am", "mortality_middle_pm"],
+        ["Mortality – Back", "mortality_back_am", "mortality_back_pm"],
+        ["Mortality – Other", "mortality_other_am", "mortality_other_pm"],
+        ["Culls – Legs", "cull_legs_am", "cull_legs_pm"],
+        ["Culls – Runts", "cull_runts_am", "cull_runts_pm"],
+        ["Culls – Beak", "cull_beak_am", "cull_beak_pm"],
+        ["Culls – Other", "cull_other_am", "cull_other_pm"],
+        ["Feed kg", "feed_kg_am", "feed_kg_pm"],
+        ["Water L", "water_litres_am", "water_litres_pm"],
+        ["Bodyweight kg", "body_weight_kg_am", "body_weight_kg_pm"],
+      ] as const
+    : [];
+
+  return (
+    <>
+      <ScreenTitle
+        eyebrow="PAPER CAPTURE"
+        title="Capture completed sheet"
+        detail="Take a clear photo of the entire Broiler Daily Sheet. OviCore reads the handwriting and asks you to review it before saving."
+      />
+
+      {!online && (
+        <div className={styles.captureOfflineNotice}>
+          <strong>Offline</strong>
+          <span>
+            You can take/select the photo, but AI analysis and saving require a connection.
+          </span>
+        </div>
+      )}
+
+      {captureMessage && (
+        <div
+          className={`${styles.message} ${
+            saved ? styles.captureSuccessMessage : ""
+          }`}
+        >
+          <span>{captureMessage}</span>
+          <button
+            type="button"
+            onClick={() => setCaptureMessage("")}
+            aria-label="Dismiss message"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      <section className={styles.captureMobileCard}>
+        <div className={styles.captureStepHeader}>
+          <span>1</span>
+          <div>
+            <strong>Photograph the completed sheet</strong>
+            <small>
+              Keep the full page and top-right template ID visible.
+            </small>
+          </div>
+        </div>
+
+        <label className={styles.captureCameraArea}>
+          {previewUrl ? (
+            <img
+              src={previewUrl}
+              alt="Completed Broiler Daily Sheet preview"
+            />
+          ) : (
+            <div>
+              <span className={styles.captureCameraIcon}>◎</span>
+              <strong>Take photo</strong>
+              <small>or choose an existing image</small>
+            </div>
+          )}
+
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            capture="environment"
+            onChange={(event) =>
+              selectCaptureFile(
+                event.target.files?.[0] ?? null,
+              )
+            }
+          />
+        </label>
+
+        <div className={styles.captureActionRow}>
+          {file && (
+            <button
+              type="button"
+              className={styles.captureSecondaryButton}
+              onClick={() => selectCaptureFile(null)}
+              disabled={analysing}
+            >
+              Retake
+            </button>
+          )}
+
+          <button
+            type="button"
+            className={styles.captureAnalyseButton}
+            disabled={
+              !file ||
+              !companyId ||
+              analysing ||
+              !online
+            }
+            onClick={() => void analysePaperSheet()}
+          >
+            {analysing ? "Reading handwriting…" : "Analyse sheet"}
+          </button>
+        </div>
+      </section>
+
+      {capture && review && (
+        <>
+          <section className={styles.captureMobileCard}>
+            <div className={styles.captureStepHeader}>
+              <span>2</span>
+              <div>
+                <strong>Detected sheet</strong>
+                <small>
+                  Confirm OviCore has matched the correct flock and date.
+                </small>
+              </div>
+            </div>
+
+            <div className={styles.captureDetectedGrid}>
+              <div>
+                <span>Farm</span>
+                <strong>{capture.farm_name || "—"}</strong>
+              </div>
+              <div>
+                <span>Shed</span>
+                <strong>{capture.shed_name || "—"}</strong>
+              </div>
+              <div>
+                <span>Flock / Batch</span>
+                <strong>{capture.cycle_code || "—"}</strong>
+              </div>
+              <div>
+                <span>Date</span>
+                <strong>{formatDate(capture.entry_date)}</strong>
+              </div>
+              <div>
+                <span>Age</span>
+                <strong>
+                  {capture.age_days === null ||
+                  capture.age_days === undefined
+                    ? "—"
+                    : `${capture.age_days} days`}
+                </strong>
+              </div>
+              <div>
+                <span>AI confidence</span>
+                <strong>
+                  {capture.overall_confidence === null ||
+                  capture.overall_confidence === undefined
+                    ? "—"
+                    : `${Math.round(capture.overall_confidence * 100)}%`}
+                </strong>
+              </div>
+            </div>
+
+            {capture.warnings.length > 0 && (
+              <div className={styles.captureWarnings}>
+                {capture.warnings.map((warning) => (
+                  <p key={warning}>⚠ {warning}</p>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className={styles.captureMobileCard}>
+            <div className={styles.captureStepHeader}>
+              <span>3</span>
+              <div>
+                <strong>AM / PM readings</strong>
+                <small>
+                  Low-confidence values should be checked against the photo.
+                </small>
+              </div>
+            </div>
+
+            <div className={styles.captureSourceList}>
+              {sourceRows.map(([label, amField, pmField]) => {
+                const amConfidence =
+                  capture.source.confidence[amField];
+                const pmConfidence =
+                  capture.source.confidence[pmField];
+
+                return (
+                  <div
+                    className={styles.captureSourceRow}
+                    key={label}
+                  >
+                    <strong>{label}</strong>
+                    <div>
+                      <span>AM</span>
+                      <b>{paperSourceValue(capture.source[amField])}</b>
+                      <small
+                        data-low={
+                          amConfidence !== undefined &&
+                          amConfidence < 0.8
+                        }
+                      >
+                        {paperConfidence(amConfidence)}
+                      </small>
+                    </div>
+                    <div>
+                      <span>PM</span>
+                      <b>{paperSourceValue(capture.source[pmField])}</b>
+                      <small
+                        data-low={
+                          pmConfidence !== undefined &&
+                          pmConfidence < 0.8
+                        }
+                      >
+                        {paperConfidence(pmConfidence)}
+                      </small>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className={styles.captureMobileCard}>
+            <div className={styles.captureStepHeader}>
+              <span>4</span>
+              <div>
+                <strong>Review final Daily Entry</strong>
+                <small>
+                  Edit anything the AI misread, then approve.
+                </small>
+              </div>
+            </div>
+
+            <div className={styles.captureReviewGrid}>
+              <PaperReviewField
+                label="Opening birds"
+                value={review.opening_birds}
+                onChange={(value) =>
+                  updatePaperReview("opening_birds", value)
+                }
+              />
+              <PaperReviewField
+                label="Mortality – Front"
+                value={review.mortality_front}
+                onChange={(value) =>
+                  updatePaperReview("mortality_front", value)
+                }
+              />
+              <PaperReviewField
+                label="Mortality – Middle"
+                value={review.mortality_middle}
+                onChange={(value) =>
+                  updatePaperReview("mortality_middle", value)
+                }
+              />
+              <PaperReviewField
+                label="Mortality – Back"
+                value={review.mortality_back}
+                onChange={(value) =>
+                  updatePaperReview("mortality_back", value)
+                }
+              />
+              <PaperReviewField
+                label="Mortality – Other"
+                value={review.mortality_other}
+                onChange={(value) =>
+                  updatePaperReview("mortality_other", value)
+                }
+              />
+              <PaperReviewField
+                label="Culls – Legs"
+                value={review.cull_legs}
+                onChange={(value) =>
+                  updatePaperReview("cull_legs", value)
+                }
+              />
+              <PaperReviewField
+                label="Culls – Runts"
+                value={review.cull_runts}
+                onChange={(value) =>
+                  updatePaperReview("cull_runts", value)
+                }
+              />
+              <PaperReviewField
+                label="Culls – Beak"
+                value={review.cull_beak}
+                onChange={(value) =>
+                  updatePaperReview("cull_beak", value)
+                }
+              />
+              <PaperReviewField
+                label="Culls – Other"
+                value={review.cull_other}
+                onChange={(value) =>
+                  updatePaperReview("cull_other", value)
+                }
+              />
+              <PaperReviewField
+                label="Feed kg"
+                value={review.feed_kg}
+                step="0.01"
+                onChange={(value) =>
+                  updatePaperReview("feed_kg", value)
+                }
+              />
+              <PaperReviewField
+                label="Water L"
+                value={review.water_litres}
+                step="0.01"
+                onChange={(value) =>
+                  updatePaperReview("water_litres", value)
+                }
+              />
+              <PaperReviewField
+                label="Bodyweight kg"
+                value={review.body_weight_kg}
+                step="0.001"
+                onChange={(value) =>
+                  updatePaperReview("body_weight_kg", value)
+                }
+              />
+
+              <label className={styles.captureNotesField}>
+                <span>Notes</span>
+                <textarea
+                  rows={4}
+                  value={review.notes ?? ""}
+                  onChange={(event) =>
+                    updatePaperReview(
+                      "notes",
+                      event.target.value,
+                    )
+                  }
+                />
+              </label>
+            </div>
+
+            <button
+              type="button"
+              className={styles.captureApproveButton}
+              disabled={saving || saved || !online}
+              onClick={() => void approvePaperCapture()}
+            >
+              {saved
+                ? "Saved to Daily Data Entry"
+                : saving
+                  ? "Saving…"
+                  : "Approve & Save"}
+            </button>
+          </section>
+        </>
+      )}
+    </>
+  );
+}
+
+function PaperReviewField({
+  label,
+  value,
+  step = "1",
+  onChange,
+}: {
+  label: string;
+  value: number | null;
+  step?: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className={styles.captureReviewField}>
+      <span>{label}</span>
+      <input
+        type="number"
+        min="0"
+        step={step}
+        inputMode={step === "1" ? "numeric" : "decimal"}
+        value={value ?? ""}
+        onChange={(event) =>
+          onChange(event.target.value)
+        }
+      />
+    </label>
+  );
+}
+
+function paperSourceValue(
+  value: number | string | null | undefined,
+) {
+  if (
+    value === null ||
+    value === undefined ||
+    value === ""
+  ) {
+    return "—";
+  }
+
+  return String(value);
+}
+
+function paperConfidence(
+  value: number | null | undefined,
+) {
+  if (value === null || value === undefined) {
+    return "—";
+  }
+
+  return `${Math.round(value * 100)}%`;
+}
+
+
 function InsightsScreen({
   managerInsights,
   plans,
@@ -4603,14 +5284,15 @@ function MoreScreen({
           <div>
             <strong>Broiler mobile workspace</strong>
             <small>
-              Daily House Sheet entry, operational insights,
-              alerts and offline sync only.
+              Daily House Sheet entry, Paper Capture, operational insights,
+              alerts and offline sync.
             </small>
           </div>
         </div>
 
         <div className={styles.mobileScopeItems}>
           <span>Daily entry</span>
+          <span>Paper capture</span>
           <span>Insights</span>
           <span>Notifications</span>
           <span>Offline sync</span>
