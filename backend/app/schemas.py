@@ -677,6 +677,94 @@ class BroilerDailyPerformanceOut(BaseModel):
     class Config:
         from_attributes = True
 
+
+class BroilerPaperCaptureValue(BaseModel):
+    value: Optional[float] = None
+    confidence: Optional[float] = None
+
+
+class BroilerPaperCaptureSourceData(BaseModel):
+    template_id: str
+    opening_birds_am: Optional[int] = None
+    opening_birds_pm: Optional[int] = None
+
+    mortality_front_am: Optional[int] = None
+    mortality_front_pm: Optional[int] = None
+    mortality_middle_am: Optional[int] = None
+    mortality_middle_pm: Optional[int] = None
+    mortality_back_am: Optional[int] = None
+    mortality_back_pm: Optional[int] = None
+    mortality_other_am: Optional[int] = None
+    mortality_other_pm: Optional[int] = None
+
+    cull_legs_am: Optional[int] = None
+    cull_legs_pm: Optional[int] = None
+    cull_runts_am: Optional[int] = None
+    cull_runts_pm: Optional[int] = None
+    cull_beak_am: Optional[int] = None
+    cull_beak_pm: Optional[int] = None
+    cull_other_am: Optional[int] = None
+    cull_other_pm: Optional[int] = None
+
+    feed_kg_am: Optional[float] = None
+    feed_kg_pm: Optional[float] = None
+    water_litres_am: Optional[float] = None
+    water_litres_pm: Optional[float] = None
+    body_weight_kg_am: Optional[float] = None
+    body_weight_kg_pm: Optional[float] = None
+
+    observations: Optional[str] = None
+    actions_taken: Optional[str] = None
+
+    confidence: dict[str, float] = {}
+
+
+class BroilerPaperCaptureReview(BaseModel):
+    opening_birds: Optional[int] = None
+
+    mortality_front: int = 0
+    mortality_middle: int = 0
+    mortality_back: int = 0
+    mortality_other: int = 0
+
+    cull_legs: int = 0
+    cull_runts: int = 0
+    cull_beak: int = 0
+    cull_other: int = 0
+
+    feed_kg: Optional[float] = None
+    water_litres: Optional[float] = None
+    body_weight_kg: Optional[float] = None
+    notes: Optional[str] = None
+
+
+class BroilerPaperCaptureExtractOut(BaseModel):
+    id: int
+    company_id: int
+    placement_plan_id: int
+    template_id: str
+    entry_date: date
+    farm_name: Optional[str] = None
+    shed_name: Optional[str] = None
+    cycle_code: Optional[str] = None
+    age_days: Optional[int] = None
+    status: str
+    overall_confidence: Optional[float] = None
+    source: BroilerPaperCaptureSourceData
+    proposed: BroilerPaperCaptureReview
+    warnings: list[str] = []
+
+
+class BroilerPaperCaptureApproveIn(BaseModel):
+    reviewed: BroilerPaperCaptureReview
+
+
+class BroilerPaperCaptureApproveOut(BaseModel):
+    capture_id: int
+    performance_entry: BroilerDailyPerformanceOut
+    status: str
+
+
 class AppNoteBase(BaseModel):
     module: str = "broilers"
     page: Optional[str] = None

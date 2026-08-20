@@ -1,4 +1,9 @@
 import os
+import base64
+import json
+import re
+import urllib.error
+import urllib.request
 from datetime import date, datetime, timedelta
 from io import BytesIO
 from fastapi import Body, Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
@@ -26,6 +31,7 @@ from .models import (
     BroilerShed,
     BroilerPlacementPlan,
     BroilerDailyPerformance,
+    BroilerPaperCapture,
 )
 from .schemas import (
     BroilerDemandPlanCreate,
@@ -40,6 +46,11 @@ from .schemas import (
     BroilerDailyPerformanceCreate,
     BroilerDailyPerformancePatch,
     BroilerDailyPerformanceOut,
+    BroilerPaperCaptureSourceData,
+    BroilerPaperCaptureReview,
+    BroilerPaperCaptureExtractOut,
+    BroilerPaperCaptureApproveIn,
+    BroilerPaperCaptureApproveOut,
     LayerRearingFlockCreate,
     LayerRearingFlockPatch,
     LayerRearingFlockOut,
@@ -2338,6 +2349,827 @@ def recalculate_broiler_performance_cycle(
         "placement_plan_id": placement_plan_id,
         "rows_recalculated": len(entries),
     }
+
+
+# ---------------------------------------------------------------------
+# Broiler Paper Capture
+# Handwritten AM / PM shed sheet -> AI extraction -> human review -> save
+# ---------------------------------------------------------------------
+
+PAPER_CAPTURE_TEMPLATE_VERSION = "broiler-v1"
+PAPER_CAPTURE_MODEL = os.getenv(
+    "PAPER_CAPTURE_MODEL",
+    "gpt-5.6-luna",
+).strip()
+
+
+def _paper_capture_template_parts(
+    template_id: str,
+) -> tuple[int, date] | None:
+    match = re.fullmatch(
+        r"BRS-(\d+)-(\d{8})",
+        (template_id or "").strip().upper(),
+    )
+
+    if not match:
+        return None
+
+    try:
+        plan_id = int(match.group(1))
+        entry_date = datetime.strptime(
+            match.group(2),
+            "%Y%m%d",
+        ).date()
+    except (TypeError, ValueError):
+        return None
+
+    return plan_id, entry_date
+
+
+def _paper_capture_number(value):
+    if value is None or value == "":
+        return None
+
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+
+    return number
+
+
+def _paper_capture_int(value) -> int | None:
+    number = _paper_capture_number(value)
+    if number is None:
+        return None
+    return int(round(number))
+
+
+def _paper_capture_float(value) -> float | None:
+    number = _paper_capture_number(value)
+    if number is None:
+        return None
+    return float(number)
+
+
+def _paper_capture_sum_int(*values) -> int:
+    return sum(
+        value
+        for value in (
+            _paper_capture_int(item)
+            for item in values
+        )
+        if value is not None
+    )
+
+
+def _paper_capture_sum_float(*values) -> float | None:
+    cleaned = [
+        value
+        for value in (
+            _paper_capture_float(item)
+            for item in values
+        )
+        if value is not None
+    ]
+
+    if not cleaned:
+        return None
+
+    return round(sum(cleaned), 2)
+
+
+def _paper_capture_proposed(
+    source: dict,
+) -> tuple[dict, list[str]]:
+    warnings: list[str] = []
+
+    opening_am = _paper_capture_int(
+        source.get("opening_birds_am")
+    )
+    opening_pm = _paper_capture_int(
+        source.get("opening_birds_pm")
+    )
+
+    opening_birds = (
+        opening_am
+        if opening_am is not None
+        else opening_pm
+    )
+
+    if (
+        opening_am is not None
+        and opening_pm is not None
+        and opening_am != opening_pm
+    ):
+        warnings.append(
+            "AM and PM Opening Birds differ. "
+            "OviCore proposed the AM value; confirm it during review."
+        )
+
+    body_am = _paper_capture_float(
+        source.get("body_weight_kg_am")
+    )
+    body_pm = _paper_capture_float(
+        source.get("body_weight_kg_pm")
+    )
+
+    body_weight = (
+        body_pm
+        if body_pm is not None
+        else body_am
+    )
+
+    if (
+        body_am is not None
+        and body_pm is not None
+        and abs(body_am - body_pm) > 0.02
+    ):
+        warnings.append(
+            "Both AM and PM bodyweights were recorded and differ. "
+            "OviCore proposed the PM value; confirm it during review."
+        )
+
+    observations = (
+        str(source.get("observations") or "").strip()
+    )
+    actions = (
+        str(source.get("actions_taken") or "").strip()
+    )
+
+    note_parts = []
+    if observations:
+        note_parts.append(
+            f"Paper observations: {observations}"
+        )
+    if actions:
+        note_parts.append(
+            f"Actions taken: {actions}"
+        )
+
+    proposed = {
+        "opening_birds": opening_birds,
+
+        "mortality_front": _paper_capture_sum_int(
+            source.get("mortality_front_am"),
+            source.get("mortality_front_pm"),
+        ),
+        "mortality_middle": _paper_capture_sum_int(
+            source.get("mortality_middle_am"),
+            source.get("mortality_middle_pm"),
+        ),
+        "mortality_back": _paper_capture_sum_int(
+            source.get("mortality_back_am"),
+            source.get("mortality_back_pm"),
+        ),
+        "mortality_other": _paper_capture_sum_int(
+            source.get("mortality_other_am"),
+            source.get("mortality_other_pm"),
+        ),
+
+        "cull_legs": _paper_capture_sum_int(
+            source.get("cull_legs_am"),
+            source.get("cull_legs_pm"),
+        ),
+        "cull_runts": _paper_capture_sum_int(
+            source.get("cull_runts_am"),
+            source.get("cull_runts_pm"),
+        ),
+        "cull_beak": _paper_capture_sum_int(
+            source.get("cull_beak_am"),
+            source.get("cull_beak_pm"),
+        ),
+        "cull_other": _paper_capture_sum_int(
+            source.get("cull_other_am"),
+            source.get("cull_other_pm"),
+        ),
+
+        "feed_kg": _paper_capture_sum_float(
+            source.get("feed_kg_am"),
+            source.get("feed_kg_pm"),
+        ),
+        "water_litres": _paper_capture_sum_float(
+            source.get("water_litres_am"),
+            source.get("water_litres_pm"),
+        ),
+        "body_weight_kg": body_weight,
+        "notes": "\n".join(note_parts) or None,
+    }
+
+    return proposed, warnings
+
+
+def _paper_capture_json_schema() -> dict:
+    nullable_integer = {
+        "anyOf": [
+            {"type": "integer"},
+            {"type": "null"},
+        ]
+    }
+    nullable_number = {
+        "anyOf": [
+            {"type": "number"},
+            {"type": "null"},
+        ]
+    }
+    nullable_string = {
+        "anyOf": [
+            {"type": "string"},
+            {"type": "null"},
+        ]
+    }
+
+    integer_fields = [
+        "opening_birds_am",
+        "opening_birds_pm",
+        "mortality_front_am",
+        "mortality_front_pm",
+        "mortality_middle_am",
+        "mortality_middle_pm",
+        "mortality_back_am",
+        "mortality_back_pm",
+        "mortality_other_am",
+        "mortality_other_pm",
+        "cull_legs_am",
+        "cull_legs_pm",
+        "cull_runts_am",
+        "cull_runts_pm",
+        "cull_beak_am",
+        "cull_beak_pm",
+        "cull_other_am",
+        "cull_other_pm",
+    ]
+
+    number_fields = [
+        "feed_kg_am",
+        "feed_kg_pm",
+        "water_litres_am",
+        "water_litres_pm",
+        "body_weight_kg_am",
+        "body_weight_kg_pm",
+    ]
+
+    confidence_fields = [
+        "template_id",
+        *integer_fields,
+        *number_fields,
+        "observations",
+        "actions_taken",
+    ]
+
+    properties = {
+        "template_id": {"type": "string"},
+        **{
+            field: nullable_integer
+            for field in integer_fields
+        },
+        **{
+            field: nullable_number
+            for field in number_fields
+        },
+        "observations": nullable_string,
+        "actions_taken": nullable_string,
+        "confidence": {
+            "type": "object",
+            "properties": {
+                field: {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                }
+                for field in confidence_fields
+            },
+            "required": confidence_fields,
+            "additionalProperties": False,
+        },
+    }
+
+    return {
+        "type": "object",
+        "properties": properties,
+        "required": list(properties.keys()),
+        "additionalProperties": False,
+    }
+
+
+def _paper_capture_extract_with_openai(
+    image_bytes: bytes,
+    content_type: str,
+) -> dict:
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+
+    if not api_key:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Paper Capture AI is not configured. "
+                "Set OPENAI_API_KEY on the backend service."
+            ),
+        )
+
+    encoded = base64.b64encode(
+        image_bytes
+    ).decode("ascii")
+
+    data_url = (
+        f"data:{content_type};base64,{encoded}"
+    )
+
+    prompt = """
+You are reading an OviCore Broiler Shed Daily Record V1.
+The form has printed labels and handwritten AM / PM entries.
+
+Return only the requested structured data.
+
+Rules:
+- Read the printed Template ID in the top-right area. It looks like
+  BRS-<placement_plan_id>-<YYYYMMDD>.
+- Read handwritten values only from their labelled AM / PM cells.
+- Do not invent missing numbers. Use null when a cell is blank, crossed
+  out, unreadable, or genuinely uncertain.
+- Whole bird counts must be integers.
+- Feed and water may contain decimals.
+- Bodyweight is kilograms.
+- observations is the handwritten text under Observations / Issues Noticed.
+- actions_taken is the handwritten text under Actions Taken Today.
+- confidence values are 0 to 1 and must reflect confidence in the exact
+  value read from that cell.
+- Ignore the printed OK / Issue, Normal / Issue and No / Yes guide text
+  for this V1 extraction.
+"""
+
+    request_body = {
+        "model": PAPER_CAPTURE_MODEL,
+        "input": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": prompt,
+                    },
+                    {
+                        "type": "input_image",
+                        "image_url": data_url,
+                        "detail": "high",
+                    },
+                ],
+            }
+        ],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "ovicore_broiler_paper_capture",
+                "strict": True,
+                "schema": _paper_capture_json_schema(),
+            }
+        },
+    }
+
+    request = urllib.request.Request(
+        "https://api.openai.com/v1/responses",
+        data=json.dumps(request_body).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(
+            request,
+            timeout=90,
+        ) as response:
+            response_json = json.loads(
+                response.read().decode("utf-8")
+            )
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode(
+            "utf-8",
+            errors="replace",
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Paper Capture AI request failed. "
+                f"OpenAI returned {exc.code}: {detail[:600]}"
+            ),
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Paper Capture AI request failed: {exc}",
+        )
+
+    output_text = ""
+
+    for output_item in response_json.get(
+        "output",
+        [],
+    ):
+        for content_item in output_item.get(
+            "content",
+            [],
+        ):
+            if content_item.get("type") == "output_text":
+                output_text = content_item.get(
+                    "text",
+                    "",
+                )
+                break
+        if output_text:
+            break
+
+    if not output_text:
+        raise HTTPException(
+            status_code=502,
+            detail="Paper Capture AI returned no readable extraction.",
+        )
+
+    try:
+        return json.loads(output_text)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Paper Capture AI returned invalid structured data: "
+                f"{exc}"
+            ),
+        )
+
+
+def _paper_capture_overall_confidence(
+    source: dict,
+) -> float | None:
+    confidence = source.get("confidence") or {}
+
+    values = [
+        float(value)
+        for value in confidence.values()
+        if isinstance(value, (int, float))
+    ]
+
+    if not values:
+        return None
+
+    return round(sum(values) / len(values), 3)
+
+
+@app.post(
+    "/api/paper-capture/broilers/extract",
+    response_model=BroilerPaperCaptureExtractOut,
+)
+async def extract_broiler_paper_capture(
+    company_id: int | None = Form(None),
+    image: UploadFile = File(...),
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    resolved_company_id = resolve_company_id(
+        current_user,
+        company_id,
+    )
+
+    content_type = (
+        image.content_type
+        or "application/octet-stream"
+    ).lower()
+
+    allowed_types = {
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+    }
+
+    if content_type not in allowed_types:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Upload a JPG, PNG or WEBP photo of the completed sheet."
+            ),
+        )
+
+    image_bytes = await image.read()
+
+    if not image_bytes:
+        raise HTTPException(
+            status_code=400,
+            detail="The uploaded image is empty.",
+        )
+
+    if len(image_bytes) > 12 * 1024 * 1024:
+        raise HTTPException(
+            status_code=400,
+            detail="The uploaded image must be 12 MB or smaller.",
+        )
+
+    source = _paper_capture_extract_with_openai(
+        image_bytes,
+        content_type,
+    )
+
+    template_id = str(
+        source.get("template_id")
+        or ""
+    ).strip().upper()
+
+    template_parts = _paper_capture_template_parts(
+        template_id
+    )
+
+    if template_parts is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "OviCore could not read a valid template ID from the sheet. "
+                "Retake the photo with the top-right template area visible."
+            ),
+        )
+
+    plan_id, entry_date = template_parts
+
+    plan = (
+        db.query(BroilerPlacementPlan)
+        .options(
+            joinedload(BroilerPlacementPlan.farm),
+            joinedload(BroilerPlacementPlan.shed),
+        )
+        .filter(
+            BroilerPlacementPlan.id == plan_id,
+            BroilerPlacementPlan.company_id
+            == resolved_company_id,
+        )
+        .first()
+    )
+
+    if not plan:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "The sheet template does not match an OviCore "
+                "broiler cycle for this company."
+            ),
+        )
+
+    require_farm_access(
+        db,
+        current_user,
+        plan.farm_id,
+    )
+
+    proposed, warnings = _paper_capture_proposed(
+        source
+    )
+
+    confidence = _paper_capture_overall_confidence(
+        source
+    )
+
+    low_confidence_fields = [
+        field
+        for field, value in (
+            source.get("confidence") or {}
+        ).items()
+        if isinstance(value, (int, float))
+        and value < 0.80
+    ]
+
+    if low_confidence_fields:
+        warnings.append(
+            "Low-confidence fields require review: "
+            + ", ".join(
+                field.replace("_", " ")
+                for field in low_confidence_fields
+            )
+            + "."
+        )
+
+    capture = BroilerPaperCapture(
+        company_id=resolved_company_id,
+        placement_plan_id=plan.id,
+        template_id=template_id,
+        template_version=PAPER_CAPTURE_TEMPLATE_VERSION,
+        entry_date=entry_date,
+        source_filename=image.filename,
+        source_mime_type=content_type,
+        source_image_base64=base64.b64encode(
+            image_bytes
+        ).decode("ascii"),
+        raw_extraction_json=json.dumps(
+            source,
+            ensure_ascii=False,
+        ),
+        reviewed_json=json.dumps(
+            proposed,
+            ensure_ascii=False,
+        ),
+        overall_confidence=confidence,
+        status="Review Required",
+        extracted_by_model=PAPER_CAPTURE_MODEL,
+    )
+
+    db.add(capture)
+    db.commit()
+    db.refresh(capture)
+
+    age_days = (
+        (entry_date - plan.placement_date).days
+        if plan.placement_date
+        else None
+    )
+
+    return BroilerPaperCaptureExtractOut(
+        id=capture.id,
+        company_id=capture.company_id,
+        placement_plan_id=capture.placement_plan_id,
+        template_id=capture.template_id,
+        entry_date=capture.entry_date,
+        farm_name=(
+            plan.farm.farm_name
+            if plan.farm
+            else None
+        ),
+        shed_name=(
+            plan.shed.shed_name
+            if plan.shed
+            else None
+        ),
+        cycle_code=plan.cycle_code,
+        age_days=age_days,
+        status=capture.status,
+        overall_confidence=capture.overall_confidence,
+        source=BroilerPaperCaptureSourceData.model_validate(
+            source
+        ),
+        proposed=BroilerPaperCaptureReview.model_validate(
+            proposed
+        ),
+        warnings=warnings,
+    )
+
+
+@app.post(
+    "/api/paper-capture/broilers/{capture_id}/approve",
+    response_model=BroilerPaperCaptureApproveOut,
+)
+def approve_broiler_paper_capture(
+    capture_id: int,
+    payload: BroilerPaperCaptureApproveIn,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    capture = (
+        db.query(BroilerPaperCapture)
+        .filter(
+            BroilerPaperCapture.id == capture_id
+        )
+        .first()
+    )
+
+    if not capture:
+        raise HTTPException(
+            status_code=404,
+            detail="Paper Capture record not found.",
+        )
+
+    plan = (
+        db.query(BroilerPlacementPlan)
+        .options(
+            joinedload(BroilerPlacementPlan.farm),
+            joinedload(BroilerPlacementPlan.shed),
+        )
+        .filter(
+            BroilerPlacementPlan.id
+            == capture.placement_plan_id
+        )
+        .first()
+    )
+
+    if not plan:
+        raise HTTPException(
+            status_code=404,
+            detail="The linked Broiler cycle no longer exists.",
+        )
+
+    require_farm_access(
+        db,
+        current_user,
+        plan.farm_id,
+    )
+
+    if (
+        not current_user.is_global_admin
+        and capture.company_id
+        != current_user.company_id
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have access to this company.",
+        )
+
+    existing = (
+        db.query(BroilerDailyPerformance)
+        .filter(
+            BroilerDailyPerformance.company_id
+            == capture.company_id,
+            BroilerDailyPerformance.placement_plan_id
+            == capture.placement_plan_id,
+            BroilerDailyPerformance.entry_date
+            == capture.entry_date,
+        )
+        .first()
+    )
+
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Daily Data Entry already contains a record for this "
+                "cycle and date. Review the existing entry instead of "
+                "overwriting it from paper."
+            ),
+        )
+
+    reviewed = payload.reviewed
+
+    age_days = (
+        (capture.entry_date - plan.placement_date).days
+        if plan.placement_date
+        else None
+    )
+
+    entry = BroilerDailyPerformance(
+        company_id=capture.company_id,
+        placement_plan_id=capture.placement_plan_id,
+        entry_date=capture.entry_date,
+        age_days=age_days,
+        opening_birds=reviewed.opening_birds,
+
+        mortality_front=reviewed.mortality_front,
+        mortality_middle=reviewed.mortality_middle,
+        mortality_back=reviewed.mortality_back,
+        mortality_other=reviewed.mortality_other,
+
+        cull_legs=reviewed.cull_legs,
+        cull_runts=reviewed.cull_runts,
+        cull_beak=reviewed.cull_beak,
+        cull_other=reviewed.cull_other,
+
+        feed_kg=reviewed.feed_kg,
+        water_litres=reviewed.water_litres,
+        avg_weight_kg=reviewed.body_weight_kg,
+        notes=reviewed.notes,
+
+        last_saved_by=current_user.full_name,
+        last_saved_at=datetime.utcnow(),
+    )
+
+    recalculate_daily_performance_entry(entry)
+
+    db.add(entry)
+    db.flush()
+
+    capture.performance_entry_id = entry.id
+    capture.reviewed_json = json.dumps(
+        reviewed.model_dump(),
+        ensure_ascii=False,
+    )
+    capture.status = "Approved"
+    capture.reviewed_by = current_user.full_name
+    capture.reviewed_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(entry)
+
+    entry = (
+        db.query(BroilerDailyPerformance)
+        .options(
+            joinedload(
+                BroilerDailyPerformance.placement_plan
+            ).joinedload(BroilerPlacementPlan.farm),
+            joinedload(
+                BroilerDailyPerformance.placement_plan
+            ).joinedload(BroilerPlacementPlan.shed),
+        )
+        .filter(
+            BroilerDailyPerformance.id == entry.id
+        )
+        .first()
+    )
+
+    return BroilerPaperCaptureApproveOut(
+        capture_id=capture.id,
+        performance_entry=build_daily_performance_response(
+            entry,
+            cumulative_mortality_birds=(
+                entry.mortality_birds or 0
+            ),
+        ),
+        status=capture.status,
+    )
+
+
 
 
 def _import_text(value) -> str:

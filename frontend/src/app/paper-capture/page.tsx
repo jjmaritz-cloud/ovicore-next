@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   Suspense,
   useCallback,
@@ -305,15 +306,24 @@ function PaperCapturePageContent() {
             </p>
           </div>
 
-          <button
-            type="button"
-            className="paper-refresh"
-            onClick={() => void loadPlans()}
-            disabled={loading}
-          >
-            <RefreshCw size={16} aria-hidden="true" />
-            {loading ? "Refreshing" : "Refresh"}
-          </button>
+          <div className="paper-header-actions">
+            <Link
+              href="/paper-capture/capture"
+              className="paper-capture-link"
+            >
+              Capture Completed Sheet
+            </Link>
+
+            <button
+              type="button"
+              className="paper-refresh"
+              onClick={() => void loadPlans()}
+              disabled={loading}
+            >
+              <RefreshCw size={16} aria-hidden="true" />
+              {loading ? "Refreshing" : "Refresh"}
+            </button>
+          </div>
         </section>
 
         <section className="paper-workspace no-print">
@@ -631,6 +641,25 @@ function PaperCapturePageContent() {
             font-weight: 900;
             letter-spacing: 0.12em;
             text-transform: uppercase;
+          }
+
+          .paper-header-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+          }
+
+          .paper-capture-link {
+            display: inline-flex;
+            align-items: center;
+            min-height: 38px;
+            padding: 0 12px;
+            border-radius: 11px;
+            color: #064e3b;
+            background: white;
+            text-decoration: none;
+            font-size: 11px;
+            font-weight: 900;
           }
 
           .paper-refresh {

@@ -421,6 +421,53 @@ class BroilerDailyPerformance(Base):
 
     placement_plan = relationship("BroilerPlacementPlan")
 
+
+class BroilerPaperCapture(Base):
+    __tablename__ = "broiler_paper_captures"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(
+        Integer,
+        ForeignKey("companies.id"),
+        nullable=False,
+        index=True,
+    )
+    placement_plan_id = Column(
+        Integer,
+        ForeignKey("broiler_placement_plans.id"),
+        nullable=False,
+        index=True,
+    )
+    performance_entry_id = Column(
+        Integer,
+        ForeignKey("broiler_daily_performance.id"),
+        nullable=True,
+        index=True,
+    )
+
+    template_id = Column(String(120), nullable=False, index=True)
+    template_version = Column(String(40), nullable=False, default="broiler-v1")
+    entry_date = Column(Date, nullable=False, index=True)
+
+    source_filename = Column(String(255), nullable=True)
+    source_mime_type = Column(String(120), nullable=True)
+    source_image_base64 = Column(Text, nullable=True)
+
+    raw_extraction_json = Column(Text, nullable=True)
+    reviewed_json = Column(Text, nullable=True)
+    overall_confidence = Column(Float, nullable=True)
+
+    status = Column(String(40), nullable=False, default="Review Required")
+    extracted_by_model = Column(String(120), nullable=True)
+
+    reviewed_by = Column(String(255), nullable=True)
+    reviewed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, server_default=func.now(), index=True)
+
+    placement_plan = relationship("BroilerPlacementPlan")
+    performance_entry = relationship("BroilerDailyPerformance")
+
+
 class AppNote(Base):
     __tablename__ = "app_notes"
 
