@@ -39,6 +39,10 @@ export const broilersMenu: SidebarMenuConfig = {
           href: "/broilers/performance",
         },
         {
+          label: "Paper Capture",
+          href: "/paper-capture",
+        },
+        {
           label: "Performance",
           href: "/broilers/insights",
         },
