@@ -2593,7 +2593,6 @@ export default function MobileBroilerApp() {
             records={records}
             managerInsights={managerInsights}
             openEntryForPlan={openEntryForPlan}
-            openPaperCapture={() => setTab("capture")}
             resetKey={homeResetKey}
           />
         )}
@@ -2759,7 +2758,6 @@ function HomeScreen({
   records,
   managerInsights,
   openEntryForPlan,
-  openPaperCapture,
   resetKey,
 }: {
   displayName: string;
@@ -2782,7 +2780,6 @@ function HomeScreen({
     mortalityRate: number;
   };
   openEntryForPlan: (planId?: number) => void;
-  openPaperCapture: () => void;
   resetKey: number;
 }) {
   const farms = useMemo(
@@ -2853,21 +2850,6 @@ function HomeScreen({
             .map((part) => part[0])
             .join("")
             .toUpperCase()}
-        </button>
-      </section>
-
-      <section className={styles.paperCaptureQuickAction}>
-        <div className={styles.paperCaptureQuickIcon}>▣</div>
-        <div>
-          <small>PAPER CAPTURE</small>
-          <strong>Capture completed sheet</strong>
-          <span>Take a photo, let OviCore read it, then review and save.</span>
-        </div>
-        <button
-          type="button"
-          onClick={openPaperCapture}
-        >
-          Open camera
         </button>
       </section>
 
@@ -4485,6 +4467,103 @@ function PaperCaptureScreen({
   const [saving, setSaving] = useState(false);
   const [captureMessage, setCaptureMessage] = useState("");
   const [saved, setSaved] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraStarting, setCameraStarting] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+
+  function stopCamera() {
+    cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+    cameraStreamRef.current = null;
+    setCameraOpen(false);
+    setCameraStarting(false);
+  }
+
+  async function openCamera() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCaptureMessage(
+        "This browser does not allow direct camera access. Use Choose existing photo instead.",
+      );
+      return;
+    }
+
+    setCameraStarting(true);
+    setCaptureMessage("");
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
+        audio: false,
+      });
+
+      cameraStreamRef.current = stream;
+      setCameraOpen(true);
+
+      window.setTimeout(async () => {
+        if (!videoRef.current) return;
+        videoRef.current.srcObject = stream;
+        try {
+          await videoRef.current.play();
+        } catch {
+          // The video element will still become playable after user interaction.
+        }
+      }, 0);
+    } catch (error) {
+      console.error(error);
+      setCaptureMessage(
+        "OviCore could not open the camera. Check that camera permission is allowed for this site.",
+      );
+      stopCamera();
+    } finally {
+      setCameraStarting(false);
+    }
+  }
+
+  async function captureCameraPhoto() {
+    const video = videoRef.current;
+
+    if (!video || video.videoWidth <= 0 || video.videoHeight <= 0) {
+      setCaptureMessage("The camera is not ready yet. Try again in a moment.");
+      return;
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    const context = canvas.getContext("2d");
+
+    if (!context) {
+      setCaptureMessage("Could not capture the camera image.");
+      return;
+    }
+
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          setCaptureMessage("Could not create the captured image.");
+          return;
+        }
+
+        const capturedFile = new File(
+          [blob],
+          `ovicore-paper-capture-${Date.now()}.jpg`,
+          { type: "image/jpeg" },
+        );
+
+        selectCaptureFile(capturedFile);
+        stopCamera();
+      },
+      "image/jpeg",
+      0.92,
+    );
+  }
 
   function selectCaptureFile(nextFile: File | null) {
     if (previewUrl) {
@@ -4655,7 +4734,7 @@ function PaperCaptureScreen({
         <div className={styles.captureOfflineNotice}>
           <strong>Offline</strong>
           <span>
-            You can take/select the photo, but AI analysis and saving require a connection.
+            You can take the photo, but AI analysis and saving require a connection.
           </span>
         </div>
       )}
@@ -4688,7 +4767,7 @@ function PaperCaptureScreen({
           </div>
         </div>
 
-        <label className={styles.captureCameraArea}>
+        <div className={styles.captureCameraArea}>
           {previewUrl ? (
             <img
               src={previewUrl}
@@ -4697,22 +4776,37 @@ function PaperCaptureScreen({
           ) : (
             <div>
               <span className={styles.captureCameraIcon}>◎</span>
-              <strong>Take photo</strong>
-              <small>or choose an existing image</small>
+              <strong>No photo captured yet</strong>
+              <small>
+                Open the camera and photograph the entire A4 sheet.
+              </small>
             </div>
           )}
+        </div>
 
-          <input
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            capture="environment"
-            onChange={(event) =>
-              selectCaptureFile(
-                event.target.files?.[0] ?? null,
-              )
-            }
-          />
-        </label>
+        <div className={styles.captureCameraButtons}>
+          <button
+            type="button"
+            className={styles.captureCameraButton}
+            onClick={() => void openCamera()}
+            disabled={cameraStarting || analysing}
+          >
+            {cameraStarting ? "Opening camera…" : "Take photo"}
+          </button>
+
+          <label className={styles.captureGalleryButton}>
+            Choose existing photo
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={(event) =>
+                selectCaptureFile(
+                  event.target.files?.[0] ?? null,
+                )
+              }
+            />
+          </label>
+        </div>
 
         <div className={styles.captureActionRow}>
           {file && (
@@ -4984,6 +5078,43 @@ function PaperCaptureScreen({
             </button>
           </section>
         </>
+      )}
+
+      {cameraOpen && (
+        <div className={styles.captureCameraOverlay}>
+          <div className={styles.captureCameraTopbar}>
+            <button
+              type="button"
+              onClick={stopCamera}
+            >
+              Cancel
+            </button>
+            <strong>Photograph daily sheet</strong>
+            <span />
+          </div>
+
+          <div className={styles.captureCameraViewport}>
+            <video
+              ref={videoRef}
+              playsInline
+              muted
+            />
+            <div className={styles.capturePageGuide}>
+              <span>Keep the entire A4 page inside the frame</span>
+            </div>
+          </div>
+
+          <div className={styles.captureShutterBar}>
+            <button
+              type="button"
+              className={styles.captureShutter}
+              aria-label="Take photo"
+              onClick={() => void captureCameraPhoto()}
+            >
+              <span />
+            </button>
+          </div>
+        </div>
       )}
     </>
   );
