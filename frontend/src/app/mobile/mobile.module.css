@@ -2932,3 +2932,21 @@
   display: none !important;
   -webkit-appearance: none;
 }
+
+
+.captureStepHeader {
+  align-items: start;
+}
+
+.captureStepHeader > div {
+  min-width: 0;
+}
+
+.captureStepHeader strong {
+  line-height: 1.25;
+}
+
+.captureStepHeader small {
+  margin-top: 4px;
+  line-height: 1.45;
+}
