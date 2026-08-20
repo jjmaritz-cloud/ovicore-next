@@ -11,6 +11,7 @@ import {
   Drumstick,
   Egg,
   Factory,
+  FileText,
   Network,
   PackageCheck,
   Search,
@@ -217,6 +218,20 @@ const modules: ModuleCard[] = [
     featured: true,
   },
   {
+    name: "Paper Capture & Templates",
+    eyebrow: "Smart paper-to-digital workflows",
+    description:
+      "Print pre-filled shed sheets and capture completed paper records into OviCore using AI.",
+    tags: ["Templates", "Pre-filled sheets", "AI capture"],
+    href: "/paper-capture",
+    status: "New",
+    statusClass: "home-status-live",
+    icon: FileText,
+    iconClass: "home-icon-admin",
+    group: "Management & Setup",
+    featured: true,
+  },
+  {
     name: "Admin",
     eyebrow: "OviCore setup",
     description:
@@ -253,6 +268,7 @@ function ModuleCardView({
   const Icon = module.icon;
   const isGuidedTour = module.name === "Guided Tour";
   const isBiosecurity = module.name === "Biosecurity & People Tracker";
+  const isPaperCapture = module.name === "Paper Capture & Templates";
 
   const content = (
     <>
@@ -313,7 +329,7 @@ function ModuleCardView({
       <article
         className={`home-module-card home-module-card-disabled${
           compact ? " home-module-card-compact" : ""
-        }${isGuidedTour ? " home-module-card-tour" : ""}${isBiosecurity ? " home-module-card-biosecurity" : ""}`}
+        }${isGuidedTour ? " home-module-card-tour" : ""}${isBiosecurity ? " home-module-card-biosecurity" : ""}${isPaperCapture ? " home-module-card-paper-capture" : ""}`}
         aria-disabled="true"
       >
         {content}
@@ -325,7 +341,7 @@ function ModuleCardView({
     <Link
       className={`home-module-card${
         compact ? " home-module-card-compact" : ""
-      }${isGuidedTour ? " home-module-card-tour" : ""}${isBiosecurity ? " home-module-card-biosecurity" : ""}`}
+      }${isGuidedTour ? " home-module-card-tour" : ""}${isBiosecurity ? " home-module-card-biosecurity" : ""}${isPaperCapture ? " home-module-card-paper-capture" : ""}`}
       href={module.href}
     >
       {content}
@@ -516,6 +532,52 @@ export default function HomePage() {
       <OviCoreTour />
 
       <style jsx global>{`
+
+
+        .home-module-card-paper-capture {
+          position: relative;
+          overflow: hidden;
+          border: 1px solid rgba(8, 115, 90, 0.42) !important;
+          background:
+            radial-gradient(circle at 88% 12%, rgba(16, 185, 129, 0.15), transparent 34%),
+            linear-gradient(135deg, #f7fffc 0%, #effaf6 58%, #f5fbff 100%) !important;
+          box-shadow: 0 10px 26px rgba(8, 115, 90, 0.09) !important;
+        }
+
+        .home-module-card-paper-capture::before {
+          content: "";
+          position: absolute;
+          inset: 0 auto 0 0;
+          width: 5px;
+          background: linear-gradient(180deg, #08735a, #10b981);
+        }
+
+        .home-module-card-paper-capture .home-module-icon {
+          background: linear-gradient(135deg, #08735a, #10b981) !important;
+          color: #fff !important;
+          box-shadow: 0 8px 20px rgba(8, 115, 90, 0.18);
+        }
+
+        .home-module-card-paper-capture .home-module-heading h2 {
+          color: #064e3b !important;
+        }
+
+        .home-module-card-paper-capture .home-module-eyebrow {
+          color: #08735a !important;
+          font-weight: 950 !important;
+        }
+
+        .home-module-card-paper-capture .home-module-status {
+          background: #dcfce7 !important;
+          color: #166534 !important;
+          border-color: rgba(22, 101, 52, 0.16) !important;
+        }
+
+        .home-module-card-paper-capture:hover {
+          border-color: rgba(8, 115, 90, 0.72) !important;
+          transform: translateY(-2px);
+          box-shadow: 0 16px 36px rgba(8, 115, 90, 0.16) !important;
+        }
 
         .home-module-card-biosecurity {
           position: relative;
