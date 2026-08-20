@@ -2901,3 +2901,34 @@
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Force the Paper Capture camera to render as a live preview rather than
+   Android WebView's default video placeholder / playback controls. */
+.captureCameraViewport video {
+  display: block;
+  background: #000;
+  pointer-events: none;
+}
+
+.captureCameraViewport video::-webkit-media-controls {
+  display: none !important;
+  -webkit-appearance: none;
+}
+
+.captureCameraViewport video::-webkit-media-controls-enclosure {
+  display: none !important;
+}
+
+.captureCameraViewport video::-webkit-media-controls-panel {
+  display: none !important;
+}
+
+.captureCameraViewport video::-webkit-media-controls-play-button {
+  display: none !important;
+}
+
+.captureCameraViewport video::-webkit-media-controls-start-playback-button {
+  display: none !important;
+  -webkit-appearance: none;
+}

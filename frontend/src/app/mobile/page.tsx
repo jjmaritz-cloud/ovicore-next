@@ -4503,15 +4503,35 @@ function PaperCaptureScreen({
       cameraStreamRef.current = stream;
       setCameraOpen(true);
 
-      window.setTimeout(async () => {
-        if (!videoRef.current) return;
-        videoRef.current.srcObject = stream;
-        try {
-          await videoRef.current.play();
-        } catch {
-          // The video element will still become playable after user interaction.
+      let attempts = 0;
+
+      const attachStream = () => {
+        attempts += 1;
+
+        const video = videoRef.current;
+
+        if (!video) {
+          if (attempts < 20) {
+            window.requestAnimationFrame(attachStream);
+          }
+          return;
         }
-      }, 0);
+
+        if (video.srcObject !== stream) {
+          video.srcObject = stream;
+        }
+
+        video.muted = true;
+        video.playsInline = true;
+
+        void video.play().catch(() => {
+          if (attempts < 20) {
+            window.requestAnimationFrame(attachStream);
+          }
+        });
+      };
+
+      window.requestAnimationFrame(attachStream);
     } catch (error) {
       console.error(error);
       setCaptureMessage(
@@ -5096,8 +5116,18 @@ function PaperCaptureScreen({
           <div className={styles.captureCameraViewport}>
             <video
               ref={videoRef}
+              autoPlay
               playsInline
               muted
+              controls={false}
+              disablePictureInPicture
+              controlsList="nodownload nofullscreen noremoteplayback"
+              onLoadedMetadata={(event) => {
+                void event.currentTarget.play().catch(() => undefined);
+              }}
+              onCanPlay={(event) => {
+                void event.currentTarget.play().catch(() => undefined);
+              }}
             />
             <div className={styles.capturePageGuide}>
               <span>Keep the entire A4 page inside the frame</span>
