@@ -4787,13 +4787,21 @@ function PaperCaptureScreen({
           </div>
         </div>
 
-        <div className={styles.captureCameraArea}>
-          {previewUrl ? (
+        {previewUrl ? (
+          <div className={styles.capturePhotoSummary}>
             <img
               src={previewUrl}
-              alt="Completed Broiler Daily Sheet preview"
+              alt="Completed Broiler Daily Sheet thumbnail"
             />
-          ) : (
+            <div>
+              <strong>Photo captured</strong>
+              <small>
+                Ready to analyse. Retake it if the full page is not visible.
+              </small>
+            </div>
+          </div>
+        ) : (
+          <div className={styles.captureCameraArea}>
             <div>
               <span className={styles.captureCameraIcon}>◎</span>
               <strong>No photo captured yet</strong>
@@ -4801,8 +4809,8 @@ function PaperCaptureScreen({
                 Open the camera and photograph the entire A4 sheet.
               </small>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         <div className={styles.captureCameraButtons}>
           <button

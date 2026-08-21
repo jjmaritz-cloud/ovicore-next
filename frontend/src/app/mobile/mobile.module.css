@@ -2950,3 +2950,59 @@
   margin-top: 4px;
   line-height: 1.45;
 }
+
+
+/* After a photo is taken, collapse the preview to a small thumbnail so
+   Retake / Analyse remain visible without scrolling. */
+.capturePhotoSummary {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  align-items: center;
+  gap: 11px;
+  margin: 12px;
+  padding: 9px;
+  border: 1px solid #cfe0d9;
+  border-radius: 13px;
+  background: #f7fbf9;
+}
+
+.capturePhotoSummary img {
+  display: block;
+  width: 72px !important;
+  height: 92px !important;
+  max-width: 72px !important;
+  max-height: 92px !important;
+  object-fit: cover;
+  border-radius: 8px;
+  background: #eaf1ed;
+}
+
+.capturePhotoSummary strong,
+.capturePhotoSummary small {
+  display: block;
+}
+
+.capturePhotoSummary strong {
+  color: var(--green-900);
+  font-size: 11px;
+}
+
+.capturePhotoSummary small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.4;
+}
+
+@media (max-width: 390px) {
+  .capturePhotoSummary {
+    grid-template-columns: 58px 1fr;
+  }
+
+  .capturePhotoSummary img {
+    width: 58px !important;
+    height: 76px !important;
+    max-width: 58px !important;
+    max-height: 76px !important;
+  }
+}
