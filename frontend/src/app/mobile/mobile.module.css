@@ -3006,3 +3006,52 @@
     max-height: 76px !important;
   }
 }
+
+
+/* Make the key post-photo actions obvious and thumb-friendly. */
+.capturePrimaryActions {
+  display: grid;
+  grid-template-columns: 1fr 1.35fr;
+  gap: 10px;
+  padding: 0 12px 14px;
+}
+
+.captureRetakeButton,
+.captureAnalysePrimaryButton {
+  min-height: 58px;
+  border-radius: 15px;
+  padding: 0 15px;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.captureRetakeButton {
+  border: 1px solid #c7d7d0;
+  color: var(--green-800);
+  background: #fff;
+}
+
+.captureAnalysePrimaryButton {
+  border: 0;
+  color: #fff;
+  background: linear-gradient(135deg, var(--green-700), var(--green-900));
+  box-shadow: 0 9px 20px rgba(8, 58, 47, 0.2);
+}
+
+.captureRetakeButton:disabled,
+.captureAnalysePrimaryButton:disabled {
+  opacity: 0.5;
+  box-shadow: none;
+}
+
+@media (max-width: 390px) {
+  .capturePrimaryActions {
+    grid-template-columns: 1fr;
+  }
+
+  .captureRetakeButton,
+  .captureAnalysePrimaryButton {
+    min-height: 60px;
+    font-size: 16px;
+  }
+}

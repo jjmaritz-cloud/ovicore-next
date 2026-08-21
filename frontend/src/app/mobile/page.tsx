@@ -4836,32 +4836,31 @@ function PaperCaptureScreen({
           </label>
         </div>
 
-        <div className={styles.captureActionRow}>
-          {file && (
+        {file && (
+          <div className={styles.capturePrimaryActions}>
             <button
               type="button"
-              className={styles.captureSecondaryButton}
+              className={styles.captureRetakeButton}
               onClick={() => selectCaptureFile(null)}
               disabled={analysing}
             >
-              Retake
+              Retake photo
             </button>
-          )}
 
-          <button
-            type="button"
-            className={styles.captureAnalyseButton}
-            disabled={
-              !file ||
-              !companyId ||
-              analysing ||
-              !online
-            }
-            onClick={() => void analysePaperSheet()}
-          >
-            {analysing ? "Reading handwriting…" : "Analyse sheet"}
-          </button>
-        </div>
+            <button
+              type="button"
+              className={styles.captureAnalysePrimaryButton}
+              disabled={
+                !companyId ||
+                analysing ||
+                !online
+              }
+              onClick={() => void analysePaperSheet()}
+            >
+              {analysing ? "Reading handwriting…" : "Analyse sheet"}
+            </button>
+          </div>
+        )}
       </section>
 
       {capture && review && (
