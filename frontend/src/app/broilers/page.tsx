@@ -255,7 +255,7 @@ function severityForShed(
     else if (feedVarianceG <= -4) score += 20;
   }
 
-  const severity =
+  const severity: FarmShedSummary["severity"] =
     score >= 55 ? "high" : score >= 25 ? "watch" : "good";
 
   return { severity, score };
