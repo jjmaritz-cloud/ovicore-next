@@ -424,6 +424,9 @@ function BroilerDemandPlannerPageContent() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  const [registerHeight, setRegisterHeight] = useState<number>(360);
+  const [resizingRegister, setResizingRegister] = useState(false);
+
   const [searchText, setSearchText] = useState("");
   const [dirtyCount, setDirtyCount] = useState(0);
   const [lastError, setLastError] = useState<string | null>(null);
@@ -596,6 +599,28 @@ function BroilerDemandPlannerPageContent() {
       fetchSupplyAndLivePosition(),
     ]).catch(console.error);
   }, [fetchRows, fetchSheds, fetchSupplyAndLivePosition]);
+
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const saved = Number(
+      window.localStorage.getItem("ovicore_broiler_supply_demand_register_height")
+    );
+
+    if (Number.isFinite(saved) && saved >= 240 && saved <= 900) {
+      setRegisterHeight(saved);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    window.localStorage.setItem(
+      "ovicore_broiler_supply_demand_register_height",
+      String(registerHeight),
+    );
+  }, [registerHeight]);
 
   const editableCellClass = "editable-cell";
   const calculatedCellClass = "calculated-cell";
@@ -1327,6 +1352,38 @@ function BroilerDemandPlannerPageContent() {
     };
   }, [rows, chickSupplyRows, performanceRows]);
 
+
+  const beginRegisterResize = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+
+      const startY = event.clientY;
+      const startHeight = registerHeight;
+
+      setResizingRegister(true);
+      event.currentTarget.setPointerCapture(event.pointerId);
+
+      const handleMove = (moveEvent: PointerEvent) => {
+        const nextHeight = Math.min(
+          900,
+          Math.max(240, startHeight + (moveEvent.clientY - startY)),
+        );
+
+        setRegisterHeight(nextHeight);
+      };
+
+      const handleUp = () => {
+        setResizingRegister(false);
+        window.removeEventListener("pointermove", handleMove);
+        window.removeEventListener("pointerup", handleUp);
+      };
+
+      window.addEventListener("pointermove", handleMove);
+      window.addEventListener("pointerup", handleUp);
+    },
+    [registerHeight],
+  );
+
 return (
   <OviCoreShell module="broilers">
     <OviCoreModuleHeader
@@ -1600,34 +1657,51 @@ return (
         </span>
       </div>
 
-      <div className="ag-theme-quartz planner-grid">
-        <AgGridReact<BroilerPlanRow>
-          ref={gridRef}
-          rowData={rows}
-          columnDefs={columnDefs}
-          defaultColDef={defaultColDef}
-          getRowId={(params) => String(params.data.id)}
-          quickFilterText={searchText}
-          animateRows
-          suppressDragLeaveHidesColumns
-          stopEditingWhenCellsLoseFocus
-          rowSelection="single"
-          suppressRowClickSelection={false}
-          rowHeight={38}
-          headerHeight={38}
-          groupHeaderHeight={34}
-          loading={loading || loadingUser}
-          domLayout="autoHeight"
-          onGridReady={onGridReady}
-          onFirstDataRendered={autosizeColumns}
-          onCellValueChanged={(event) => {
-            if (!event.data?.id) return;
+      <div
+        className={`planner-grid-resize-shell ${
+          resizingRegister ? "planner-grid-resizing" : ""
+        }`}
+        style={{ height: `${registerHeight}px` }}
+      >
+        <div className="ag-theme-quartz planner-grid">
+          <AgGridReact<BroilerPlanRow>
+            ref={gridRef}
+            rowData={rows}
+            columnDefs={columnDefs}
+            defaultColDef={defaultColDef}
+            getRowId={(params) => String(params.data.id)}
+            quickFilterText={searchText}
+            animateRows
+            suppressDragLeaveHidesColumns
+            stopEditingWhenCellsLoseFocus
+            rowSelection="single"
+            suppressRowClickSelection={false}
+            rowHeight={38}
+            headerHeight={38}
+            groupHeaderHeight={34}
+            loading={loading || loadingUser}
+            onGridReady={onGridReady}
+            onFirstDataRendered={autosizeColumns}
+            onCellValueChanged={(event) => {
+              if (!event.data?.id) return;
 
-            const recalculated = recalculateRow(event.data);
-            markRowDirty(recalculated);
-            refreshGridRow(recalculated);
-          }}
-        />
+              const recalculated = recalculateRow(event.data);
+              markRowDirty(recalculated);
+              refreshGridRow(recalculated);
+            }}
+          />
+        </div>
+
+        <div
+          className="planner-grid-resize-handle"
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="Resize Placement and Cycle Register"
+          title="Drag to resize table"
+          onPointerDown={beginRegisterResize}
+        >
+          <span />
+        </div>
       </div>
     </section>
 
@@ -1851,17 +1925,53 @@ return (
         font-size: 9px;
       }
 
+      .planner-grid-resize-shell {
+        position: relative;
+        width: 100%;
+        min-height: 240px;
+        max-height: 900px;
+        padding-bottom: 14px;
+        overflow: hidden;
+        background: #ffffff;
+      }
+
       .planner-grid {
         width: 100%;
+        height: calc(100% - 14px);
         border-top: 1px solid #e6eee9;
       }
 
-      .planner-grid :global(.ag-root-wrapper),
-      .planner-grid :global(.ag-root-wrapper-body),
-      .planner-grid :global(.ag-root),
-      .planner-grid :global(.ag-body-viewport),
-      .planner-grid :global(.ag-center-cols-viewport) {
-        min-height: 0 !important;
+      .planner-grid-resize-handle {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: ns-resize;
+        touch-action: none;
+        background: linear-gradient(to bottom, #f8fbf9, #eef5f1);
+        border-top: 1px solid #dbe7e0;
+        user-select: none;
+      }
+
+      .planner-grid-resize-handle span {
+        width: 58px;
+        height: 4px;
+        border-radius: 999px;
+        background: #9db8ab;
+        box-shadow: 0 1px 0 rgba(255, 255, 255, 0.8);
+      }
+
+      .planner-grid-resize-handle:hover span,
+      .planner-grid-resizing .planner-grid-resize-handle span {
+        background: #4d7e68;
+      }
+
+      .planner-grid-resizing {
+        user-select: none;
       }
 
 
