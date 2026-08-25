@@ -572,7 +572,7 @@ export default function BroilerHomePage() {
           {
             label: "Supply & Demand",
             href: "/broilers/demand-planner",
-            type: "primary",
+            type: "default",
           },
           {
             label: "Refresh",
