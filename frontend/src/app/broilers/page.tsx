@@ -839,7 +839,7 @@ export default function BroilerHomePage() {
         .bf-kpis span,
         .bf-eyebrow {
           color: #60756c;
-          font-size: 8px;
+          font-size: 10px;
           font-weight: 900;
           letter-spacing: 0.08em;
           text-transform: uppercase;
@@ -849,13 +849,13 @@ export default function BroilerHomePage() {
           display: block;
           margin-top: 4px;
           color: #0c573d;
-          font-size: 23px;
+          font-size: 26px;
         }
 
         .bf-kpis p {
           margin: 3px 0 0;
           color: #71847c;
-          font-size: 9px;
+          font-size: 11px;
           line-height: 1.35;
         }
 
@@ -875,14 +875,14 @@ export default function BroilerHomePage() {
         .bf-section-head h2 {
           margin: 2px 0 0;
           color: #123e2f;
-          font-size: 17px;
+          font-size: 19px;
         }
 
         .bf-section-head p:not(.bf-eyebrow) {
           max-width: 900px;
           margin: 3px 0 0;
           color: #6d8078;
-          font-size: 9px;
+          font-size: 11px;
           line-height: 1.4;
         }
 
@@ -927,7 +927,7 @@ export default function BroilerHomePage() {
         .bf-farm-top h3 {
           margin: 2px 0 0;
           color: #123e2f;
-          font-size: 16px;
+          font-size: 18px;
         }
 
         .bf-severity,
@@ -943,7 +943,7 @@ export default function BroilerHomePage() {
         .bf-severity {
           min-width: 58px;
           padding: 5px 8px;
-          font-size: 8px;
+          font-size: 10px;
         }
 
         .bf-good {
@@ -985,7 +985,7 @@ export default function BroilerHomePage() {
 
         .bf-farm-kpis > div {
           min-width: 0;
-          padding: 8px 9px;
+          padding: 12px 13px;
           background: #fbfdfc;
         }
 
@@ -994,7 +994,7 @@ export default function BroilerHomePage() {
         .bf-shed-metric span {
           display: block;
           color: #74887f;
-          font-size: 7px;
+          font-size: 9px;
           font-weight: 850;
           text-transform: uppercase;
         }
@@ -1003,7 +1003,7 @@ export default function BroilerHomePage() {
           display: block;
           margin-top: 2px;
           color: #244c3c;
-          font-size: 13px;
+          font-size: 15px;
         }
 
         .bf-farm-position {
@@ -1014,7 +1014,7 @@ export default function BroilerHomePage() {
         }
 
         .bf-farm-position > div {
-          padding: 8px 9px;
+          padding: 12px 13px;
           border: 1px solid #e3ece7;
           border-radius: 9px;
           background: #fff;
@@ -1024,7 +1024,7 @@ export default function BroilerHomePage() {
           display: block;
           margin-top: 2px;
           color: #244c3c;
-          font-size: 13px;
+          font-size: 15px;
         }
 
         .bf-shed-list {
@@ -1039,21 +1039,21 @@ export default function BroilerHomePage() {
           align-items: center;
           justify-content: space-between;
           gap: 8px;
-          padding: 7px 9px;
+          padding: 9px 11px;
           background: #f8fbf9;
           border-bottom: 1px solid #e9efec;
         }
 
         .bf-shed-list-head span {
           color: #436054;
-          font-size: 8px;
+          font-size: 10px;
           font-weight: 900;
           text-transform: uppercase;
         }
 
         .bf-shed-list-head small {
           color: #84948d;
-          font-size: 7px;
+          font-size: 9px;
         }
 
         .bf-shed-row {
@@ -1066,7 +1066,7 @@ export default function BroilerHomePage() {
             auto;
           align-items: center;
           gap: 8px;
-          padding: 8px 9px;
+          padding: 12px 13px;
           border-bottom: 1px solid #edf2ef;
           color: inherit;
           text-decoration: none;
@@ -1091,14 +1091,14 @@ export default function BroilerHomePage() {
 
         .bf-shed-name strong {
           color: #274d3e;
-          font-size: 9px;
+          font-size: 11px;
         }
 
         .bf-shed-name span {
           margin-top: 1px;
           overflow: hidden;
           color: #7a8e84;
-          font-size: 7px;
+          font-size: 9px;
           text-overflow: ellipsis;
           white-space: nowrap;
         }
@@ -1111,13 +1111,13 @@ export default function BroilerHomePage() {
           display: block;
           margin-top: 1px;
           color: #35584a;
-          font-size: 9px;
+          font-size: 11px;
         }
 
         .bf-row-status {
           min-width: 45px;
           padding: 4px 6px;
-          font-size: 7px;
+          font-size: 9px;
         }
 
         .bf-farm-footer {
@@ -1125,21 +1125,21 @@ export default function BroilerHomePage() {
           align-items: center;
           justify-content: space-between;
           gap: 10px;
-          padding: 8px 12px;
+          padding: 10px 12px;
           border-top: 1px solid #edf2ef;
           background: #fbfdfc;
         }
 
         .bf-farm-footer a {
           color: #0b6747;
-          font-size: 8px;
+          font-size: 10px;
           font-weight: 900;
           text-decoration: none;
         }
 
         .bf-farm-footer span {
           color: #7a8c84;
-          font-size: 7px;
+          font-size: 9px;
         }
 
         .bf-quick-actions {
@@ -1150,7 +1150,7 @@ export default function BroilerHomePage() {
         }
 
         .bf-quick-actions a {
-          padding: 10px 11px;
+          padding: 12px 13px;
           border: 1px solid #dbe8e1;
           border-radius: 10px;
           background: #fff;
@@ -1165,14 +1165,14 @@ export default function BroilerHomePage() {
 
         .bf-quick-actions span {
           color: #174f3b;
-          font-size: 9px;
+          font-size: 11px;
           font-weight: 900;
         }
 
         .bf-quick-actions small {
           margin-top: 2px;
           color: #7a8b84;
-          font-size: 7px;
+          font-size: 9px;
         }
 
         @media (max-width: 1100px) {
