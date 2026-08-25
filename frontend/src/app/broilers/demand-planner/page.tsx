@@ -1617,6 +1617,7 @@ return (
           headerHeight={38}
           groupHeaderHeight={34}
           loading={loading || loadingUser}
+          domLayout="autoHeight"
           onGridReady={onGridReady}
           onFirstDataRendered={autosizeColumns}
           onCellValueChanged={(event) => {
@@ -1852,9 +1853,15 @@ return (
 
       .planner-grid {
         width: 100%;
-        min-height: 500px;
-        height: calc(100vh - 390px);
         border-top: 1px solid #e6eee9;
+      }
+
+      .planner-grid :global(.ag-root-wrapper),
+      .planner-grid :global(.ag-root-wrapper-body),
+      .planner-grid :global(.ag-root),
+      .planner-grid :global(.ag-body-viewport),
+      .planner-grid :global(.ag-center-cols-viewport) {
+        min-height: 0 !important;
       }
 
 
