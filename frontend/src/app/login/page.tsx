@@ -403,10 +403,10 @@ export default function LoginPage() {
           background:
             linear-gradient(
               90deg,
-              rgba(6, 42, 33, 0.9) 0%,
-              rgba(6, 42, 33, 0.64) 34%,
-              rgba(8, 71, 53, 0.32) 63%,
-              rgba(10, 94, 66, 0.24) 100%
+              rgba(6, 42, 33, 0.82) 0%,
+              rgba(6, 42, 33, 0.50) 34%,
+              rgba(8, 71, 53, 0.18) 63%,
+              rgba(10, 94, 66, 0.12) 100%
             ),
             linear-gradient(
               180deg,
@@ -416,10 +416,10 @@ export default function LoginPage() {
             ),
             url("/assets/login-chickens.jpg");
           background-size: cover;
-          background-position: 62% center;
+          background-position: 68% center;
           background-repeat: no-repeat;
-          opacity: 0.34;
-          filter: saturate(0.7) contrast(0.94) blur(0.4px);
+          opacity: 0.52;
+          filter: saturate(0.78) contrast(1.02) blur(0.15px);
           transform: scale(1.025);
         }
 
