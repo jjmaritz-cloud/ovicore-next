@@ -1,60 +1,24 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import BroilerSidebar from "@/components/BroilerSidebar";
-import OviCoreTour from "@/components/OviCoreTour";
-import {
-  CloudRain,
-  CloudSun,
-  House,
-  RefreshCw,
-  Sun,
-  TriangleAlert,
-} from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import OviCoreModuleHeader from "@/components/OviCoreModuleHeader";
+import OviCoreShell from "@/components/ovicore/OviCoreShell";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 const API_BASE = "";
 
-async function authenticatedFetch(
-  input: RequestInfo | URL,
-  init: RequestInit = {}
-) {
-  const response = await fetch(input, {
-    ...init,
-    credentials: "include",
-  });
-
-  if (response.status === 401) {
-    const nextPath =
-      `${window.location.pathname}${window.location.search}`;
-
-    window.location.href =
-      `/login?next=${encodeURIComponent(nextPath)}`;
-
-    throw new Error("Your login session has expired.");
-  }
-
-  return response;
-}
-
 type DemandPlan = {
   id: number;
-  farm_name?: string;
-  shed_name?: string;
-  cycle_code?: string;
-  placement_date?: string;
-  processing_date?: string;
-  planned_birds?: number;
-  target_lw_kg?: number;
-  planned_kg_m2?: number;
-  target_density_kg_m2?: number;
-  required_chicks?: number;
-  review_flag?: string;
-  status?: string;
-};
-
-type ChickSupplySummary = {
-  available_chicks: number;
-  source?: "hatchery" | "manual";
+  farm_name?: string | null;
+  shed_name?: string | null;
+  cycle_code?: string | null;
+  placement_date?: string | null;
+  processing_date?: string | null;
+  planned_birds?: number | null;
+  required_chicks?: number | null;
+  target_lw_kg?: number | null;
+  planned_kg_m2?: number | null;
+  status?: string | null;
 };
 
 type PerformanceRecord = {
@@ -63,1847 +27,750 @@ type PerformanceRecord = {
   entry_date: string;
   age_days?: number | null;
   opening_birds?: number | null;
-
-  mortality_front?: number | null;
-  mortality_middle?: number | null;
-  mortality_back?: number | null;
-  mortality_other?: number | null;
-  mortality_birds?: number | null;
-
-  cull_legs?: number | null;
-  cull_runts?: number | null;
-  cull_beak?: number | null;
-  cull_other?: number | null;
-  cull_birds?: number | null;
-
   closing_birds?: number | null;
+  mortality_birds?: number | null;
+  cull_birds?: number | null;
   body_weight_kg?: number | null;
   avg_weight_kg?: number | null;
 };
 
-type ForecastWeek = {
-  weekEnding: string;
-  weekLabel: string;
-  plannedBirds: number;
-  forecastLiveKg: number;
-  cycleCount: number;
-  avgTargetLw: number;
-  risk: "Normal" | "Watch" | "High";
+type ChickSupplySummary = {
+  available_chicks: number;
+  source?: "hatchery" | "manual";
 };
 
-function formatNumber(value: number | null | undefined, decimals = 0) {
-  if (value === null || value === undefined || Number.isNaN(value)) return "0";
+type WeeklyPosition = {
+  weekEnding: string;
+  plannedBirds: number;
+  forecastBirds: number;
+  cycles: number;
+  gap: number;
+};
 
-  return Number(value).toLocaleString(undefined, {
+async function authenticatedFetch(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+) {
+  const response = await fetch(input, {
+    ...init,
+    credentials: "include",
+  });
+
+  if (response.status === 401 && typeof window !== "undefined") {
+    const nextPath = `${window.location.pathname}${window.location.search}`;
+    window.location.href = `/login?next=${encodeURIComponent(nextPath)}`;
+  }
+
+  return response;
+}
+
+function num(value: unknown) {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function fmt(value: number, decimals = 0) {
+  return value.toLocaleString(undefined, {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   });
 }
 
-function isoToDisplayDate(value?: string | null) {
-  if (!value) return "";
-  const [year, month, day] = value.split("-");
-  if (!year || !month || !day) return value;
-  return `${day}-${month}-${year}`;
-}
-
-function parseIsoDate(value?: string | null) {
+function parseDate(value?: string | null) {
   if (!value) return null;
   const date = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return null;
-  return date;
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function daysUntil(value?: string | null) {
-  const target = parseIsoDate(value);
-  if (!target) return null;
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const diffMs = target.getTime() - today.getTime();
-  return Math.round(diffMs / 86400000);
-}
-
-function getWeekEndingSunday(value?: string | null) {
-  const date = parseIsoDate(value);
+function weekEndingSunday(value?: string | null) {
+  const date = parseDate(value);
   if (!date) return null;
 
-  const day = date.getDay();
-  const daysToSunday = day === 0 ? 0 : 7 - day;
+  const copy = new Date(date);
+  const add = copy.getDay() === 0 ? 0 : 7 - copy.getDay();
+  copy.setDate(copy.getDate() + add);
 
-  const sunday = new Date(date);
-  sunday.setDate(date.getDate() + daysToSunday);
-
-  const year = sunday.getFullYear();
-  const month = String(sunday.getMonth() + 1).padStart(2, "0");
-  const dom = String(sunday.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${dom}`;
+  return [
+    copy.getFullYear(),
+    String(copy.getMonth() + 1).padStart(2, "0"),
+    String(copy.getDate()).padStart(2, "0"),
+  ].join("-");
 }
 
-function formatWeekLabel(value: string) {
-  const date = parseIsoDate(value);
-  if (!date) return value;
+function displayDate(value?: string | null) {
+  const date = parseDate(value);
+  if (!date) return "—";
 
   return date.toLocaleDateString(undefined, {
     day: "2-digit",
     month: "short",
+    year: "numeric",
   });
 }
 
-type WeatherDay = {
-  day: string;
-  condition: string;
-  rainMm: number;
-  rainChancePct: number;
-  humidityPct: number;
-  minTempC: number;
-  maxTempC: number;
-  windKmh: number;
-};
+function latestByPlan(records: PerformanceRecord[]) {
+  const map = new Map<number, PerformanceRecord>();
 
-const demoWeather: WeatherDay[] = [
-  {
-    day: "Tomorrow",
-    condition: "Showers likely",
-    rainMm: 12,
-    rainChancePct: 75,
-    humidityPct: 86,
-    minTempC: 14,
-    maxTempC: 22,
-    windKmh: 18,
-  },
-  {
-    day: "Day 2",
-    condition: "Cloudy",
-    rainMm: 4,
-    rainChancePct: 45,
-    humidityPct: 78,
-    minTempC: 13,
-    maxTempC: 23,
-    windKmh: 14,
-  },
-  {
-    day: "Day 3",
-    condition: "Fine",
-    rainMm: 0,
-    rainChancePct: 15,
-    humidityPct: 61,
-    minTempC: 12,
-    maxTempC: 25,
-    windKmh: 11,
-  },
-  {
-    day: "Day 4",
-    condition: "Warm",
-    rainMm: 0,
-    rainChancePct: 10,
-    humidityPct: 58,
-    minTempC: 15,
-    maxTempC: 29,
-    windKmh: 13,
-  },
-  {
-    day: "Day 5",
-    condition: "Hot afternoon",
-    rainMm: 0,
-    rainChancePct: 10,
-    humidityPct: 55,
-    minTempC: 18,
-    maxTempC: 33,
-    windKmh: 16,
-  },
-  {
-    day: "Day 6",
-    condition: "Storm risk",
-    rainMm: 18,
-    rainChancePct: 70,
-    humidityPct: 82,
-    minTempC: 19,
-    maxTempC: 31,
-    windKmh: 24,
-  },
-  {
-    day: "Day 7",
-    condition: "Humid",
-    rainMm: 6,
-    rainChancePct: 50,
-    humidityPct: 88,
-    minTempC: 17,
-    maxTempC: 27,
-    windKmh: 10,
-  },
-];
+  for (const row of records) {
+    const existing = map.get(row.placement_plan_id);
 
-function getWeatherRisk(day: WeatherDay) {
-  if (day.maxTempC >= 32 || day.rainMm >= 15 || day.humidityPct >= 85) {
-    return "High";
+    if (
+      !existing ||
+      num(row.age_days) > num(existing.age_days) ||
+      (num(row.age_days) === num(existing.age_days) &&
+        row.entry_date > existing.entry_date)
+    ) {
+      map.set(row.placement_plan_id, row);
+    }
   }
 
-  if (day.maxTempC >= 28 || day.rainMm >= 5 || day.humidityPct >= 75) {
-    return "Watch";
-  }
-
-  return "Normal";
-}
-
-function numberOrZero(value: number | null | undefined) {
-  return Number(value || 0);
-}
-
-function getMortalityTotal(record: PerformanceRecord) {
-  const splitTotal =
-    numberOrZero(record.mortality_front) +
-    numberOrZero(record.mortality_middle) +
-    numberOrZero(record.mortality_back) +
-    numberOrZero(record.mortality_other);
-
-  return splitTotal > 0 ? splitTotal : numberOrZero(record.mortality_birds);
-}
-
-function getCullTotal(record: PerformanceRecord) {
-  const splitTotal =
-    numberOrZero(record.cull_legs) +
-    numberOrZero(record.cull_runts) +
-    numberOrZero(record.cull_beak) +
-    numberOrZero(record.cull_other);
-
-  return splitTotal > 0 ? splitTotal : numberOrZero(record.cull_birds);
-}
-
-
-function getInitialCompanyId() {
-  if (typeof window === "undefined") return null;
-
-  const searchParams = new URLSearchParams(window.location.search);
-  const companyFromUrl = Number(searchParams.get("company_id"));
-
-  if (Number.isInteger(companyFromUrl) && companyFromUrl > 0) {
-    return companyFromUrl;
-  }
-
-  const rememberedCompany = Number(
-    window.localStorage.getItem("ovicore_selected_company_id"),
-  );
-
-  return Number.isInteger(rememberedCompany) && rememberedCompany > 0
-    ? rememberedCompany
-    : null;
-}
-
-function getLatestRecordForPlan(
-  records: PerformanceRecord[],
-  placementPlanId: number,
-) {
-  return records
-    .filter((record) => record.placement_plan_id === placementPlanId)
-    .sort((a, b) => Number(b.age_days || 0) - Number(a.age_days || 0))[0];
+  return map;
 }
 
 export default function BroilerHomePage() {
-	const [activeCompanyId, setActiveCompanyId] =
-		useState<number | null>(null);
-	const [authResolved, setAuthResolved] = useState(false);
-	const [plans, setPlans] = useState<DemandPlan[]>([]);
-	const [performanceRecords, setPerformanceRecords] = useState<PerformanceRecord[]>([]);
-	const [chickSupply, setChickSupply] = useState<ChickSupplySummary | null>(null);
-	const [loading, setLoading] = useState(true);
-	const [message, setMessage] = useState("");
-	const [weatherOpen, setWeatherOpen] = useState(false);
+  const { currentUser, loadingUser, userError } = useCurrentUser();
 
-  useEffect(() => {
-    async function resolveActiveCompany() {
-      try {
-        const meResponse = await authenticatedFetch(
-          `${API_BASE}/api/auth/me`,
-          {
-            cache: "no-store",
-          },
-        );
+  const [plans, setPlans] = useState<DemandPlan[]>([]);
+  const [performance, setPerformance] = useState<PerformanceRecord[]>([]);
+  const [chickSupply, setChickSupply] = useState<ChickSupplySummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
 
-        if (!meResponse.ok) {
-          throw new Error(
-            `Could not load current user: ${meResponse.status}`,
-          );
-        }
-
-        const currentUser: {
-          company_id: number | null;
-          is_global_admin: boolean;
-        } = await meResponse.json();
-
-        const searchParams = new URLSearchParams(
-          window.location.search,
-        );
-
-        const companyFromUrl = Number(
-          searchParams.get("company_id"),
-        );
-
-        const rememberedCompany = Number(
-          window.localStorage.getItem(
-            "ovicore_selected_company_id",
-          ),
-        );
-
-        const resolvedCompanyId =
-          Number.isInteger(companyFromUrl) && companyFromUrl > 0
-            ? companyFromUrl
-            : currentUser.company_id && currentUser.company_id > 0
-              ? currentUser.company_id
-              : Number.isInteger(rememberedCompany) && rememberedCompany > 0
-                ? rememberedCompany
-                : null;
-
-        setActiveCompanyId(resolvedCompanyId);
-        setAuthResolved(true);
-      } catch (error) {
-        console.error(error);
-        setLoading(false);
-        setAuthResolved(true);
-        setMessage(
-          error instanceof Error
-            ? error.message
-            : "Could not resolve the active company.",
-        );
-      }
+  const activeCompanyId = useMemo(() => {
+    if (typeof window === "undefined") {
+      return currentUser?.company_id ?? null;
     }
 
-    void resolveActiveCompany();
-  }, []);
+    const params = new URLSearchParams(window.location.search);
+    const companyParam = Number(params.get("company_id"));
 
-  useEffect(() => {
-    if (!activeCompanyId) return;
+    if (
+      currentUser?.is_global_admin &&
+      Number.isInteger(companyParam) &&
+      companyParam > 0
+    ) {
+      return companyParam;
+    }
 
-    window.localStorage.setItem(
-      "ovicore_selected_company_id",
-      String(activeCompanyId),
-    );
-  }, [activeCompanyId]);
+    return currentUser?.company_id ?? null;
+  }, [currentUser]);
 
-	async function loadData() {
-		if (!activeCompanyId) {
+  const loadData = useCallback(async () => {
+    if (loadingUser) return;
+
+    if (!activeCompanyId) {
       setPlans([]);
-      setPerformanceRecords([]);
+      setPerformance([]);
       setChickSupply(null);
       setLoading(false);
-      setMessage("Select a working company.");
+      setMessage(
+        currentUser?.is_global_admin
+          ? "Select a company before opening Broilers."
+          : "Your account is not assigned to a company.",
+      );
       return;
     }
-		setLoading(true);
-		setMessage("");
 
-		try {
-			const [plansResponse, performanceResponse] = await Promise.all([
-				authenticatedFetch(
-					`${API_BASE}/api/broilers/demand-plans?company_id=${activeCompanyId}`,
-					{
-						cache: "no-store",
-					}
-				),
-				authenticatedFetch(
-					`${API_BASE}/api/broilers/performance?company_id=${activeCompanyId}`,
-					{
-						cache: "no-store",
-					}
-				),
-			]);
+    setLoading(true);
+    setMessage("");
 
-			if (!plansResponse.ok) {
-				throw new Error(`Could not load demand plans: ${plansResponse.status}`);
-			}
+    try {
+      const query = `?company_id=${activeCompanyId}`;
 
-			const plansData: DemandPlan[] = await plansResponse.json();
-			setPlans(plansData);
+      const [plansResponse, performanceResponse, chickResponse] =
+        await Promise.all([
+          authenticatedFetch(
+            `${API_BASE}/api/broilers/demand-plans${query}`,
+            { cache: "no-store" },
+          ),
+          authenticatedFetch(
+            `${API_BASE}/api/broilers/performance${query}`,
+            { cache: "no-store" },
+          ),
+          authenticatedFetch(
+            `${API_BASE}/api/broilers/chick-supply-summary${query}`,
+            { cache: "no-store" },
+          ),
+        ]);
 
-			if (performanceResponse.ok) {
-				const performanceData: PerformanceRecord[] =
-					await performanceResponse.json();
+      if (!plansResponse.ok) {
+        throw new Error(
+          `Could not load Broiler plans (${plansResponse.status}).`,
+        );
+      }
 
-				setPerformanceRecords(performanceData);
-			} else {
-				setPerformanceRecords([]);
-			}
+      setPlans(await plansResponse.json());
 
-			try {
-				const chickSupplyResponse = await authenticatedFetch(
-					`${API_BASE}/api/broilers/chick-supply-summary?company_id=${activeCompanyId}`,
-					{
-						cache: "no-store",
-					},
-				);
+      setPerformance(
+        performanceResponse.ok ? await performanceResponse.json() : [],
+      );
 
-				if (chickSupplyResponse.ok) {
-					const chickSupplyData: ChickSupplySummary =
-						await chickSupplyResponse.json();
+      setChickSupply(
+        chickResponse.ok ? await chickResponse.json() : null,
+      );
+    } catch (error) {
+      console.error(error);
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not load the Broiler overview.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [activeCompanyId, currentUser?.is_global_admin, loadingUser]);
 
-					setChickSupply(chickSupplyData);
-				} else {
-					setChickSupply(null);
-				}
-			} catch {
-				setChickSupply(null);
-			}
-		} catch (error) {
-			console.error(error);
-			setMessage(
-				error instanceof Error
-					? error.message
-					: "Could not load Broiler AI Home.",
-			);
-		} finally {
-			setLoading(false);
-		}
-	}
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
 
-	useEffect(() => {
-		if (!authResolved) return;
+  const position = useMemo(() => {
+    const latest = latestByPlan(performance);
 
-		if (activeCompanyId) {
-			void loadData();
-		} else {
-			setLoading(false);
-		}
-	}, [activeCompanyId, authResolved]);
-
-  const insights = useMemo(() => {
-
-    const totalPlannedBirds = plans.reduce(
-      (sum, plan) => sum + Number(plan.planned_birds || 0),
+    const plannedBirds = plans.reduce(
+      (sum, plan) => sum + num(plan.planned_birds),
       0,
     );
-		
-		const latestPerformanceByPlan = plans
-		.map((plan) => {
-			const latestRecord = getLatestRecordForPlan(performanceRecords, plan.id);
 
-			if (!latestRecord) {
-				return null;
-			}
-
-			return {
-				plan,
-				latestRecord,
-				closingBirds: numberOrZero(latestRecord.closing_birds),
-				mortality: getMortalityTotal(latestRecord),
-				culls: getCullTotal(latestRecord),
-			};
-		})
-		.filter(Boolean) as Array<{
-			plan: DemandPlan;
-			latestRecord: PerformanceRecord;
-			closingBirds: number;
-			mortality: number;
-			culls: number;
-		}>;
-
-	const currentClosingBirds = latestPerformanceByPlan.reduce(
-		(sum, item) => sum + item.closingBirds,
-		0,
-	);
-
-	const activePlannedBirds = latestPerformanceByPlan.reduce(
-		(sum, item) => sum + Number(item.plan.planned_birds || 0),
-		0,
-	);
-
-	const activePlanIds = new Set(
-		latestPerformanceByPlan.map((item) => item.plan.id),
-	);
-
-	const activePerformanceRecords = performanceRecords.filter((record) =>
-		activePlanIds.has(record.placement_plan_id),
-	);
-
-	const totalActualMortality = activePerformanceRecords.reduce(
-		(sum, record) => sum + getMortalityTotal(record),
-		0,
-	);
-
-	const totalActualCulls = activePerformanceRecords.reduce(
-		(sum, record) => sum + getCullTotal(record),
-		0,
-	);
-
-	const actualLivability =
-		activePlannedBirds > 0 && currentClosingBirds > 0
-			? Number(((currentClosingBirds / activePlannedBirds) * 100).toFixed(2))
-			: 0;
-
-	const activeCycles = latestPerformanceByPlan.length;
-
-	const performanceWatchCycles = latestPerformanceByPlan.filter((item) => {
-		const opening = numberOrZero(item.latestRecord.opening_birds);
-		const mortality = item.mortality;
-		const culls = item.culls;
-
-		return (
-			(opening > 0 && mortality > Math.max(50, opening * 0.005)) ||
-			(opening > 0 && culls > Math.max(25, opening * 0.003))
-		);
-	});
-
-    const totalRequiredChicks = plans.reduce(
-      (sum, plan) => sum + Number(plan.required_chicks || 0),
+    const requiredChicks = plans.reduce(
+      (sum, plan) => sum + num(plan.required_chicks),
       0,
     );
-		
-		const availableChicks = Number(chickSupply?.available_chicks || 0);
-		const chickSurplusShortfall = availableChicks - totalRequiredChicks;
 
-		let chickSupplyRisk = "Not connected";
+    const availableChicks = num(chickSupply?.available_chicks);
+    const chickBalance = availableChicks - requiredChicks;
 
-		if (totalRequiredChicks <= 0) {
-			chickSupplyRisk = "No Demand";
-		} else if (availableChicks <= 0) {
-			chickSupplyRisk = "No Supply";
-		} else if (chickSurplusShortfall < 0) {
-			const shortfallPct = Math.abs(chickSurplusShortfall) / totalRequiredChicks;
+    let liveForecastBirds = 0;
+    let activeFlocks = 0;
 
-			if (shortfallPct >= 0.1) {
-				chickSupplyRisk = "High";
-			} else if (shortfallPct >= 0.03) {
-				chickSupplyRisk = "Watch";
-			} else {
-				chickSupplyRisk = "Minor";
-			}
-		} else {
-			chickSupplyRisk = "Covered";
-		}
-
-    const forecastLiveKg = plans.reduce((sum, plan) => {
-      const birds = Number(plan.planned_birds || 0);
-      const targetLw = Number(plan.target_lw_kg || 0);
-      return sum + birds * targetLw;
-    }, 0);
-
-    const densityValues = plans
-      .map((plan) => Number(plan.planned_kg_m2 || 0))
-      .filter((value) => value > 0);
-
-    const averageDensity =
-      densityValues.length > 0
-        ? densityValues.reduce((sum, value) => sum + value, 0) /
-          densityValues.length
-        : 0;
-
-    const highDensityPlans = plans.filter(
-      (plan) => Number(plan.planned_kg_m2 || 0) >= 39,
-    );
-
-		const upcomingPlacements = [...plans]
-			.filter((plan) => {
-				const days = daysUntil(plan.placement_date);
-				return days !== null && days >= 0 && days <= 60;
-			})
-			.sort((a, b) =>
-				String(a.placement_date || "").localeCompare(
-					String(b.placement_date || ""),
-				),
-			);
-
-    const grouped = new Map<string, ForecastWeek>();
+    const weekly = new Map<string, WeeklyPosition>();
 
     for (const plan of plans) {
-      const weekEnding = getWeekEndingSunday(plan.processing_date);
-      if (!weekEnding) continue;
+      const planBirds = num(plan.planned_birds);
+      const latestRow = latest.get(plan.id);
+      const forecastBirds =
+        latestRow && num(latestRow.closing_birds) > 0
+          ? num(latestRow.closing_birds)
+          : planBirds;
 
-      const birds = Number(plan.planned_birds || 0);
-      const targetLw = Number(plan.target_lw_kg || 0);
-      const liveKg = birds * targetLw;
-
-      const existing = grouped.get(weekEnding);
-
-      if (!existing) {
-        grouped.set(weekEnding, {
-          weekEnding,
-          weekLabel: formatWeekLabel(weekEnding),
-          plannedBirds: birds,
-          forecastLiveKg: liveKg,
-          cycleCount: 1,
-          avgTargetLw: targetLw,
-          risk: "Normal",
-        });
-      } else {
-        existing.plannedBirds += birds;
-        existing.forecastLiveKg += liveKg;
-        existing.cycleCount += 1;
-        existing.avgTargetLw =
-          existing.plannedBirds > 0
-            ? existing.forecastLiveKg / existing.plannedBirds
-            : 0;
+      if (latestRow) {
+        activeFlocks += 1;
+        liveForecastBirds += forecastBirds;
       }
+
+      const week = weekEndingSunday(plan.processing_date);
+      if (!week) continue;
+
+      const existing =
+        weekly.get(week) ??
+        ({
+          weekEnding: week,
+          plannedBirds: 0,
+          forecastBirds: 0,
+          cycles: 0,
+          gap: 0,
+        } satisfies WeeklyPosition);
+
+      existing.plannedBirds += planBirds;
+      existing.forecastBirds += forecastBirds;
+      existing.cycles += 1;
+      existing.gap = existing.forecastBirds - existing.plannedBirds;
+
+      weekly.set(week, existing);
     }
 
-    const forecastWeeks = [...grouped.values()]
+    const weeks = [...weekly.values()]
       .sort((a, b) => a.weekEnding.localeCompare(b.weekEnding))
-      .slice(0, 8)
-      .map((week) => {
-        let risk: ForecastWeek["risk"] = "Normal";
+      .slice(0, 8);
 
-        if (week.forecastLiveKg >= 600000) {
-          risk = "High";
-        } else if (week.forecastLiveKg >= 500000) {
-          risk = "Watch";
-        }
+    const exceptions = weeks
+      .filter((week) => week.gap < 0)
+      .sort((a, b) => a.gap - b.gap)
+      .slice(0, 4);
+
+    const activeExceptions = plans
+      .map((plan) => {
+        const latestRow = latest.get(plan.id);
+        if (!latestRow) return null;
+
+        const planned = num(plan.planned_birds);
+        const current = num(latestRow.closing_birds);
+        const loss = planned - current;
+        const lossPct = planned > 0 ? (loss / planned) * 100 : 0;
+
+        if (loss <= 0 || lossPct < 2) return null;
 
         return {
-          ...week,
-          risk,
+          id: plan.id,
+          label: `${plan.farm_name || "Farm"} · ${plan.shed_name || "Shed"}`,
+          cycle: plan.cycle_code || `Cycle ${plan.id}`,
+          loss,
+          lossPct,
+          processingDate: plan.processing_date,
         };
-      });
+      })
+      .filter(Boolean)
+      .sort((a, b) => (b?.loss ?? 0) - (a?.loss ?? 0))
+      .slice(0, 4) as Array<{
+        id: number;
+        label: string;
+        cycle: string;
+        loss: number;
+        lossPct: number;
+        processingDate?: string | null;
+      }>;
 
-    const maxForecastKg = Math.max(
-      1,
-      ...forecastWeeks.map((week) => week.forecastLiveKg),
-    );
-
-    const briefing: string[] = [];
-
-    if (plans.length === 0) {
-      briefing.push(
-        "No broiler demand plans are loaded yet. Add rows in the Demand Planner to activate the Broiler AI Home.",
-      );
-    } else {
-      briefing.push(
-        `${plans.length} broiler cycles are planned, covering ${formatNumber(
-          totalPlannedBirds,
-        )} birds and approximately ${formatNumber(
-          forecastLiveKg,
-        )} kg of forecast liveweight.`,
-      );
-
-			if (upcomingPlacements.length > 0) {
-				briefing.push(
-					`${upcomingPlacements.length} placements are planned in the next 60 days. Check chick supply, shed density, placement timing, and farm readiness.`,
-				);
-			} else {
-				briefing.push(
-					"No placements are planned in the next 60 days based on current placement dates.",
-				);
-			}
-
-			if (performanceRecords.length > 0) {
-				briefing.push(
-					`Daily House Sheet is connected: ${activeCycles} active cycles are reporting ${formatNumber(
-						currentClosingBirds,
-					)} current closing birds, ${formatNumber(
-						totalActualMortality,
-					)} actual mortalities, and ${formatNumber(totalActualCulls)} actual culls.`,
-				);
-
-				if (performanceWatchCycles.length > 0) {
-					briefing.push(
-						`${performanceWatchCycles.length} active cycles need production review based on mortality or cull pressure from the Daily House Sheet.`,
-					);
-				} else {
-					briefing.push(
-						`Current Daily House Sheet livability is ${formatNumber(
-							actualLivability,
-							2,
-						)}%, with no active mortality or cull pressure flags.`,
-					);
-				}
-			} else {
-				briefing.push(
-					"Daily House Sheet data is not loaded yet. Enter daily shed actuals to activate live production pressure on this page.",
-				);
-			}
-
-      if (highDensityPlans.length > 0) {
-        briefing.push(
-          `${highDensityPlans.length} cycles are at or above the 39 kg/m² density watch line. Review placement density, target liveweight, and processing timing.`,
-        );
-      } else {
-        briefing.push(
-          `Average planned density is ${formatNumber(
-            averageDensity,
-            2,
-          )} kg/m², with no cycles currently above the density watch line.`,
-        );
-      }
-
-    }
-
-		const tomorrowWeather = demoWeather[0];
-
-		const wetDays = demoWeather.filter((day) => day.rainMm >= 5);
-		const humidDays = demoWeather.filter((day) => day.humidityPct >= 80);
-		const hotDays = demoWeather.filter((day) => day.maxTempC >= 30);
-
-		const weatherBriefing: string[] = [];
-
-		if (tomorrowWeather.rainMm >= 5) {
-			weatherBriefing.push(
-				`Tomorrow has ${tomorrowWeather.rainMm} mm forecast rain and ${tomorrowWeather.humidityPct}% humidity. Expect higher moisture load in sheds and reduced natural drying.`,
-			);
-		} else {
-			weatherBriefing.push(
-				`Tomorrow looks relatively dry with ${tomorrowWeather.rainMm} mm forecast rain. Normal ventilation settings may be suitable, subject to shed conditions.`,
-			);
-		}
-
-		if (humidDays.length > 0) {
-			weatherBriefing.push(
-				`${humidDays.length} of the next 7 days are forecast above 80% humidity. Watch litter condition, drinker leaks, ammonia, and minimum ventilation rates.`,
-			);
-		}
-
-		if (hotDays.length > 0) {
-			weatherBriefing.push(
-				`${hotDays.length} hot days are forecast at or above 30°C. Check cooling systems, tunnel ventilation readiness, water availability, and bird density pressure.`,
-			);
-		}
-
-		if (wetDays.length > 0) {
-			weatherBriefing.push(
-				`${wetDays.length} wet days are forecast. Plan for reduced shed drying, higher humidity, possible litter caking, and more careful ventilation balance.`,
-			);
-		}
-
-		weatherBriefing.push(
-			"AI guidance: during wet or humid weather, avoid simply closing sheds down. Maintain minimum ventilation to remove moisture and ammonia while avoiding direct chilling on young birds.",
-		);
-
-		return {
-			totalPlannedBirds,
-			totalRequiredChicks,
-			activeCycles,
-			activePlannedBirds,
-			currentClosingBirds,
-			totalActualMortality,
-			totalActualCulls,
-			actualLivability,
-			performanceWatchCycles,
-			availableChicks,
-			chickSurplusShortfall,
-			chickSupplyRisk,
-			forecastLiveKg,
-			averageDensity,
-			highDensityPlans,
-			upcomingPlacements,
-			forecastWeeks,
-			maxForecastKg,
-			briefing,
-			tomorrowWeather,
-			wetDays,
-			humidDays,
-			hotDays,
-			weatherBriefing,
-		};
-	}, [plans, performanceRecords, chickSupply]);
+    return {
+      plannedBirds,
+      requiredChicks,
+      availableChicks,
+      chickBalance,
+      activeFlocks,
+      liveForecastBirds,
+      weeks,
+      exceptions,
+      activeExceptions,
+    };
+  }, [plans, performance, chickSupply]);
 
   return (
-    <div className="page-shell">
-      <BroilerSidebar />
+    <OviCoreShell module="broilers">
+      <OviCoreModuleHeader
+        eyebrow="OviCore Broiler Production"
+        title="Broiler Overview"
+        description="A simple control view: are placements, chick supply and growing flocks still on track to deliver the production plan?"
+        actions={[
+          {
+            label: "Refresh",
+            type: "refresh",
+            onClick: loadData,
+          },
+        ]}
+      />
 
-      <main className="main-panel broiler-home-density">
-        <section className="broiler-module-header">
-          <div className="broiler-module-header-copy">
-            <p className="broiler-module-eyebrow">OviCore Broiler Module</p>
-            <h1>Broiler Home</h1>
-            <p className="broiler-module-description">
-              Command view for placement pressure, chick supply, Daily House Sheet actuals,
-              weather risk and processing readiness.
+      {userError || message ? (
+        <div className="bo-message">{userError || message}</div>
+      ) : null}
+
+      <section className="bo-kpis">
+        <article>
+          <span>Planned Processing Birds</span>
+          <strong>{fmt(position.plannedBirds)}</strong>
+          <p>Current placement plan total.</p>
+        </article>
+
+        <article>
+          <span>Forecast Supply</span>
+          <strong>{fmt(position.liveForecastBirds || position.plannedBirds)}</strong>
+          <p>Latest closing birds where Daily Data exists.</p>
+        </article>
+
+        <article>
+          <span>Chick Balance</span>
+          <strong className={position.chickBalance < 0 ? "bad" : "good"}>
+            {position.chickBalance > 0 ? "+" : ""}
+            {fmt(position.chickBalance)}
+          </strong>
+          <p>Available chicks less required chicks.</p>
+        </article>
+
+        <article>
+          <span>Active Flocks</span>
+          <strong>{fmt(position.activeFlocks)}</strong>
+          <p>Cycles currently reporting Daily Data.</p>
+        </article>
+      </section>
+
+      <section className="bo-card">
+        <div className="bo-head">
+          <div>
+            <p className="bo-eyebrow">Forward Position</p>
+            <h2>Supply against the current plan</h2>
+            <p>
+              Planned birds are the current planning requirement. Forecast birds
+              switch to the latest live closing-bird position once a flock is
+              reporting Daily Data.
             </p>
           </div>
 
-          <div className="broiler-header-actions" aria-label="Broiler page actions">
-            <a
-              className="broiler-header-btn broiler-header-btn-secondary"
-              href="/home"
-              title="Return to OviCore Home"
-            >
-              <House size={16} strokeWidth={2.2} aria-hidden="true" />
-              <span>Home</span>
-            </a>
-
-            <button
-              type="button"
-              className="broiler-header-btn broiler-header-btn-secondary"
-              onClick={() => void loadData()}
-              disabled={loading}
-              title="Refresh broiler data"
-            >
-              <RefreshCw
-                size={16}
-                strokeWidth={2.2}
-                aria-hidden="true"
-                className={loading ? "broiler-refresh-spinning" : ""}
-              />
-              <span>{loading ? "Refreshing" : "Refresh"}</span>
-            </button>
-
-            <button
-              type="button"
-              className={`broiler-weather-pill broiler-weather-${getWeatherRisk(
-                insights.tomorrowWeather,
-              ).toLowerCase()}`}
-              onClick={() => setWeatherOpen((current) => !current)}
-              aria-expanded={weatherOpen}
-              title="Open weather intelligence"
-            >
-              <span className="broiler-weather-icon" aria-hidden="true">
-                {insights.tomorrowWeather.rainMm >= 5 ? (
-                  <CloudRain size={18} strokeWidth={2.2} />
-                ) : insights.tomorrowWeather.maxTempC >= 30 ? (
-                  <Sun size={18} strokeWidth={2.2} />
-                ) : getWeatherRisk(insights.tomorrowWeather) === "High" ? (
-                  <TriangleAlert size={18} strokeWidth={2.2} />
-                ) : (
-                  <CloudSun size={18} strokeWidth={2.2} />
-                )}
-              </span>
-
-              <span className="broiler-weather-copy">
-                <span className="broiler-weather-label">Tomorrow</span>
-                <strong>
-                  {insights.tomorrowWeather.maxTempC}°C ·{" "}
-                  {getWeatherRisk(insights.tomorrowWeather)} risk
-                </strong>
-              </span>
-
-              <span className="broiler-weather-meta">
-                {insights.tomorrowWeather.rainMm > 0
-                  ? `${insights.tomorrowWeather.rainMm} mm rain`
-                  : `${insights.tomorrowWeather.rainChancePct}% rain`}
-              </span>
-            </button>
-          </div>
-        </section>
-
-        <section className="chick-supply-card" data-tour="broiler-command">
-          <div className="chick-supply-head">
-            <div>
-              <p className="eyebrow">Broiler Command Snapshot</p>
-              <h3>Current Planning Position</h3>
-              <span>
-                Compact overview of broiler demand, live production actuals,
-                chick supply pressure and near-term placement risk.
-              </span>
-            </div>
-
-            <strong
-              className={
-                insights.chickSupplyRisk === "High" ||
-                insights.chickSupplyRisk === "No Supply" ||
-                insights.performanceWatchCycles.length > 0
-                  ? "supply-risk-watch"
-                  : "supply-risk-covered"
-              }
-            >
-              {loading ? "Loading" : "Live"}
-            </strong>
-          </div>
-
-          <div className="chick-supply-grid">
-            <div>
-              <span>Planned Birds</span>
-              <strong>{formatNumber(insights.totalPlannedBirds)}</strong>
-              <p>Total birds from Broiler Demand Planner.</p>
-            </div>
-
-            <div>
-              <span>Forecast Live Kg</span>
-              <strong>{formatNumber(insights.forecastLiveKg)}</strong>
-              <p>Planned birds multiplied by target liveweight.</p>
-            </div>
-
-            <div>
-              <span>Active Cycles</span>
-              <strong>{formatNumber(insights.activeCycles)}</strong>
-              <p>Cycles reporting Daily House Sheet actuals.</p>
-            </div>
-
-            <div>
-              <span>Chick Balance</span>
-              <strong
-                className={
-                  insights.chickSurplusShortfall < 0
-                    ? "negative-supply"
-                    : "positive-supply"
-                }
-              >
-                {formatNumber(insights.chickSurplusShortfall)}
-              </strong>
-              <p>Available chicks less required chicks.</p>
-            </div>
-          </div>
-        </section>
-
-        <section className="weather-drawer-card">
-          <button
-            type="button"
-            className="weather-drawer-toggle"
-            onClick={() => setWeatherOpen((current) => !current)}
-          >
-            <div>
-              <p className="eyebrow">Weather Intelligence</p>
-              <h3>Weather & Ventilation Risk</h3>
-              <span>
-                Demo forecast for tomorrow and the next 7 days. Live farm
-                weather can be connected later.
-              </span>
-            </div>
-
-            <div className="weather-toggle-right">
-              <span
-                className={
-                  getWeatherRisk(insights.tomorrowWeather) === "High"
-                    ? "weather-risk-high"
-                    : getWeatherRisk(insights.tomorrowWeather) === "Watch"
-                      ? "weather-risk-watch"
-                      : "weather-risk-normal"
-                }
-              >
-                Tomorrow: {getWeatherRisk(insights.tomorrowWeather)}
-              </span>
-              <strong>{weatherOpen ? "Hide" : "Show"}</strong>
-            </div>
-          </button>
-
-          {weatherOpen && (
-            <div className="weather-drawer-body">
-              <div className="weather-summary-grid">
-                <div className="weather-summary-card">
-                  <span>Tomorrow Rain</span>
-                  <strong>{insights.tomorrowWeather.rainMm} mm</strong>
-                  <p>{insights.tomorrowWeather.rainChancePct}% chance</p>
-                </div>
-
-                <div className="weather-summary-card">
-                  <span>Humidity</span>
-                  <strong>{insights.tomorrowWeather.humidityPct}%</strong>
-                  <p>Moisture load risk</p>
-                </div>
-
-                <div className="weather-summary-card">
-                  <span>Temperature</span>
-                  <strong>
-                    {insights.tomorrowWeather.minTempC}–
-                    {insights.tomorrowWeather.maxTempC}°C
-                  </strong>
-                  <p>Ventilation balance</p>
-                </div>
-
-                <div className="weather-summary-card">
-                  <span>7 Day Wet Risk</span>
-                  <strong>{insights.wetDays.length} days</strong>
-                  <p>Rain above 5 mm</p>
-                </div>
-              </div>
-
-              <div className="weather-content-grid">
-                <div className="weather-ai-panel">
-                  <div className="broiler-ai-card-head">
-                    <div>
-                      <p className="eyebrow">AI Ventilation Guidance</p>
-                      <h3>Farmer Notes</h3>
-                    </div>
-                  </div>
-
-                  <div className="ai-briefing-stack">
-                    {insights.weatherBriefing.map((item) => (
-                      <div className="ai-brief-row" key={item}>
-                        <span>AI</span>
-                        <p>{item}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="weather-week-panel">
-                  <div className="weather-week-header">
-                    <p className="eyebrow">Next 7 Days</p>
-                    <h3>Forecast Watch</h3>
-                  </div>
-
-                  <div className="weather-week-list">
-                    {demoWeather.map((day) => {
-                      const risk = getWeatherRisk(day);
-
-                      return (
-                        <div className="weather-day-row" key={day.day}>
-                          <div>
-                            <strong>{day.day}</strong>
-                            <span>{day.condition}</span>
-                          </div>
-
-                          <div>
-                            <b>{day.rainMm} mm</b>
-                            <span>Rain</span>
-                          </div>
-
-                          <div>
-                            <b>{day.humidityPct}%</b>
-                            <span>Humidity</span>
-                          </div>
-
-                          <div>
-                            <b>{day.maxTempC}°C</b>
-                            <span>Max</span>
-                          </div>
-
-                          <em
-                            className={
-                              risk === "High"
-                                ? "weather-risk-high"
-                                : risk === "Watch"
-                                  ? "weather-risk-watch"
-                                  : "weather-risk-normal"
-                            }
-                          >
-                            {risk}
-                          </em>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </section>
-
-        <section className="broiler-ai-layout">
-          <div className="broiler-ai-card broiler-ai-brief-card">
-            <div className="broiler-ai-card-head">
-              <div>
-                <p className="eyebrow">AI Briefing</p>
-                <h3>Today’s Broiler Readout</h3>
-              </div>
-
-              <span className="ai-version-chip">Rule AI v1</span>
-            </div>
-
-            {loading ? (
-              <p className="ai-muted-text">Loading broiler intelligence...</p>
-            ) : message ? (
-              <p className="error-text">{message}</p>
-            ) : (
-              <div className="ai-briefing-stack">
-                {insights.briefing.map((item) => (
-                  <div className="ai-brief-row" key={item}>
-                    <span>AI</span>
-                    <p>{item}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="broiler-ai-card">
-            <div className="broiler-ai-card-head">
-              <div>
-                <p className="eyebrow">Action Watch</p>
-                <h3>What Needs Attention</h3>
-              </div>
-            </div>
-
-            <div className="ai-action-stack">
-              <ActionCard
-                title="Production pressure"
-                value={insights.performanceWatchCycles.length}
-                detail="Cycles with mortality or cull pressure from Daily House Sheet."
-                tone={
-                  insights.performanceWatchCycles.length > 0
-                    ? "warning"
-                    : "good"
-                }
-              />
-
-              <ActionCard
-                title="Chick supply pressure"
-                value={
-                  insights.chickSurplusShortfall < 0
-                    ? Math.abs(insights.chickSurplusShortfall)
-                    : 0
-                }
-                detail="Chick shortfall against broiler demand."
-                tone={insights.chickSurplusShortfall < 0 ? "bad" : "good"}
-              />
-
-              <ActionCard
-                title="Density watch"
-                value={insights.highDensityPlans.length}
-                detail="Cycles at or above 39 kg/m²."
-                tone={
-                  insights.highDensityPlans.length > 0 ? "warning" : "good"
-                }
-              />
-
-              <ActionCard
-                title="Upcoming placements"
-                value={insights.upcomingPlacements.length}
-                detail="Placements planned in the next 60 days."
-                tone={
-                  insights.upcomingPlacements.length > 0 ? "good" : "warning"
-                }
-              />
-            </div>
-          </div>
-        </section>
-
-        <div className="broiler-home-dual-grid">
-          <section className="chick-supply-card">
-          <div className="chick-supply-head">
-            <div>
-              <p className="eyebrow">Live Production Position</p>
-              <h3>Daily House Sheet Actuals</h3>
-              <span>
-                Current stock and loss pressure calculated from saved Daily
-                House Sheet rows.
-              </span>
-            </div>
-
-            <strong
-              className={
-                insights.performanceWatchCycles.length > 0
-                  ? "supply-risk-watch"
-                  : "supply-risk-covered"
-              }
-            >
-              {insights.performanceWatchCycles.length > 0 ? "Review" : "Stable"}
-            </strong>
-          </div>
-
-          <div className="chick-supply-grid">
-            <div>
-              <span>Active Cycles</span>
-              <strong>{formatNumber(insights.activeCycles)}</strong>
-              <p>Cycles with saved Daily House Sheet rows.</p>
-            </div>
-
-            <div>
-              <span>Current Birds</span>
-              <strong>{formatNumber(insights.currentClosingBirds)}</strong>
-              <p>Latest closing birds by active cycle.</p>
-            </div>
-
-            <div>
-              <span>Actual Losses</span>
-              <strong>
-                {formatNumber(
-                  insights.totalActualMortality + insights.totalActualCulls,
-                )}
-              </strong>
-              <p>Mortality plus culls from Daily House Sheet.</p>
-            </div>
-
-            <div>
-              <span>Livability</span>
-              <strong>{formatNumber(insights.actualLivability, 2)}%</strong>
-              <p>Current closing birds vs planned birds.</p>
-            </div>
-          </div>
-          </section>
-
-          <section className="chick-supply-card">
-          <div className="chick-supply-head">
-            <div>
-              <p className="eyebrow">Chick Supply Pressure</p>
-              <h3>Hatchery Supply vs Broiler Demand</h3>
-              <span>
-                First integration bridge: required chicks from Broiler planning
-                compared with available chick supply.
-              </span>
-            </div>
-
-            <strong
-              className={
-                insights.chickSupplyRisk === "High" ||
-                insights.chickSupplyRisk === "No Supply"
-                  ? "supply-risk-high"
-                  : insights.chickSupplyRisk === "Watch" ||
-                      insights.chickSupplyRisk === "Minor"
-                    ? "supply-risk-watch"
-                    : "supply-risk-covered"
-              }
-            >
-              {insights.chickSupplyRisk}
-            </strong>
-          </div>
-
-          <div className="chick-supply-grid">
-            <div>
-              <span>Required Chicks</span>
-              <strong>{formatNumber(insights.totalRequiredChicks)}</strong>
-              <p>Calculated from the Broiler Demand Planner.</p>
-            </div>
-
-            <div>
-              <span>Available Chicks</span>
-              <strong>{formatNumber(insights.availableChicks)}</strong>
-              <p>
-                {chickSupply?.source === "hatchery"
-                  ? "Live from Hatchery Chick Availability."
-                  : "Temporary manual chick supply bridge."}
-              </p>
-            </div>
-
-            <div>
-              <span>Surplus / Shortfall</span>
-              <strong
-                className={
-                  insights.chickSurplusShortfall < 0
-                    ? "negative-supply"
-                    : "positive-supply"
-                }
-              >
-                {formatNumber(insights.chickSurplusShortfall)}
-              </strong>
-              <p>Negative means placement risk.</p>
-            </div>
-
-            <div>
-              <span>Planning Signal</span>
-              <strong>
-                {insights.chickSurplusShortfall < 0
-                  ? "Review placements"
-                  : insights.availableChicks > 0
-                    ? "Covered"
-                    : "Awaiting supply"}
-              </strong>
-              <p>
-                {chickSupply?.source === "hatchery"
-                  ? "Live Hatchery supply is connected."
-                  : "Awaiting live Hatchery supply."}
-              </p>
-            </div>
-          </div>
-          </section>
-
+          <a href="/broilers/demand-planner">Open Supply & Demand</a>
         </div>
 
-        <section className="grid-card broiler-ai-table-card">
-          <div className="grid-card-head">
-            <div>
-              <h3>Processing Forecast Timeline</h3>
-              <p>
-                Next forecast processing weeks grouped by planned processing
-                date. This gives the broiler team an early pressure view before
-                actual processing is entered.
-              </p>
-            </div>
-          </div>
+        <div className="bo-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Processing Week</th>
+                <th>Cycles</th>
+                <th>Plan</th>
+                <th>Forecast</th>
+                <th>Gap</th>
+                <th>Status</th>
+              </tr>
+            </thead>
 
-          <div className="ai-table-scroll">
-            <table className="ai-home-table">
-              <thead>
+            <tbody>
+              {loading ? (
                 <tr>
-                  <th>Week Ending</th>
-                  <th>Cycles</th>
-                  <th>Planned Birds</th>
-                  <th>Forecast Live Kg</th>
-                  <th>Avg Target LW</th>
-                  <th>Pressure</th>
+                  <td colSpan={6}>Loading production position...</td>
                 </tr>
-              </thead>
+              ) : position.weeks.length === 0 ? (
+                <tr>
+                  <td colSpan={6}>No processing weeks are currently planned.</td>
+                </tr>
+              ) : (
+                position.weeks.map((week) => {
+                  const gapPct =
+                    week.plannedBirds > 0
+                      ? (week.gap / week.plannedBirds) * 100
+                      : 0;
 
-              <tbody>
-                {insights.forecastWeeks.length === 0 ? (
-                  <tr>
-                    <td colSpan={6}>No processing forecast weeks available.</td>
-                  </tr>
-                ) : (
-                  insights.forecastWeeks.map((week) => (
+                  const status =
+                    gapPct <= -3
+                      ? "Short"
+                      : gapPct < 0
+                        ? "Watch"
+                        : "Covered";
+
+                  return (
                     <tr key={week.weekEnding}>
-                      <td>{isoToDisplayDate(week.weekEnding)}</td>
-                      <td>{formatNumber(week.cycleCount)}</td>
-                      <td>{formatNumber(week.plannedBirds)}</td>
-                      <td>{formatNumber(week.forecastLiveKg)}</td>
-                      <td>{formatNumber(week.avgTargetLw, 2)} kg</td>
+                      <td>{displayDate(week.weekEnding)}</td>
+                      <td>{fmt(week.cycles)}</td>
+                      <td>{fmt(week.plannedBirds)}</td>
+                      <td>{fmt(week.forecastBirds)}</td>
+                      <td className={week.gap < 0 ? "bad" : "good"}>
+                        {week.gap > 0 ? "+" : ""}
+                        {fmt(week.gap)}
+                      </td>
                       <td>
-                        <span
-                          className={
-                            week.risk === "High"
-                              ? "review-pill"
-                              : week.risk === "Watch"
-                                ? "review-pill"
-                                : "ready-pill"
-                          }
-                        >
-                          {week.risk}
+                        <span className={`bo-status bo-${status.toLowerCase()}`}>
+                          {status}
                         </span>
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
-        <section className="grid-card broiler-ai-table-card">
-          <div className="grid-card-head">
+      <section className="bo-two">
+        <article className="bo-card">
+          <div className="bo-head">
             <div>
-              <h3>Upcoming Placement Timeline</h3>
-              <p>
-                Next 60 days from the Demand Planner. Use this to check
-                placement timing, required chicks, shed density, and farm
-                readiness.
-              </p>
+              <p className="bo-eyebrow">Plan Risk</p>
+              <h2>Weeks needing attention</h2>
             </div>
           </div>
 
-          <div className="ai-table-scroll">
-            <table className="ai-home-table">
-              <thead>
-                <tr>
-                  <th>Placement Date</th>
-                  <th>Farm</th>
-                  <th>Shed</th>
-                  <th>Cycle</th>
-                  <th>Planned Birds</th>
-                  <th>Required Chicks</th>
-                  <th>kg/m²</th>
-                  <th>Planning Status</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {insights.upcomingPlacements.length === 0 ? (
-                  <tr>
-                    <td colSpan={8}>
-                      No placements planned in the next 60 days.
-                    </td>
-                  </tr>
-                ) : (
-                  insights.upcomingPlacements.map((plan) => {
-                    const density = Number(plan.planned_kg_m2 || 0);
-
-                    const status =
-                      density >= 39 ? "Density review" : "Ready watch";
-
-                    return (
-                      <tr key={plan.id}>
-                        <td>{isoToDisplayDate(plan.placement_date)}</td>
-                        <td>{plan.farm_name}</td>
-                        <td>{plan.shed_name}</td>
-                        <td>{plan.cycle_code}</td>
-                        <td>{formatNumber(plan.planned_birds)}</td>
-                        <td>{formatNumber(plan.required_chicks)}</td>
-                        <td>{formatNumber(plan.planned_kg_m2, 2)}</td>
-                        <td>
-                          <span
-                            className={
-                              density >= 39 ? "review-pill" : "ready-pill"
-                            }
-                          >
-                            {status}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+          <div className="bo-exceptions">
+            {position.exceptions.length === 0 ? (
+              <div className="bo-ok">
+                No current processing week is forecast below its planned bird
+                position.
+              </div>
+            ) : (
+              position.exceptions.map((week) => (
+                <div className="bo-exception" key={week.weekEnding}>
+                  <div>
+                    <strong>{displayDate(week.weekEnding)}</strong>
+                    <span>Forecast processing shortfall</span>
+                  </div>
+                  <b>{fmt(Math.abs(week.gap))} birds</b>
+                </div>
+              ))
+            )}
           </div>
-        </section>
-        <style jsx>{`
-          :global(.main-panel) {
-            padding-top: 10px;
+        </article>
+
+        <article className="bo-card">
+          <div className="bo-head">
+            <div>
+              <p className="bo-eyebrow">Live Flock Risk</p>
+              <h2>Flocks reducing supply</h2>
+            </div>
+
+            <a href="/broilers/intelligence">Open Intelligence</a>
+          </div>
+
+          <div className="bo-exceptions">
+            {position.activeExceptions.length === 0 ? (
+              <div className="bo-ok">
+                No active flock is more than 2% below its original planned bird
+                position.
+              </div>
+            ) : (
+              position.activeExceptions.map((item) => (
+                <a
+                  className="bo-exception bo-exception-link"
+                  href={`/broilers/intelligence?plan_id=${item.id}`}
+                  key={item.id}
+                >
+                  <div>
+                    <strong>{item.label}</strong>
+                    <span>
+                      {item.cycle}
+                      {item.processingDate
+                        ? ` · process ${displayDate(item.processingDate)}`
+                        : ""}
+                    </span>
+                  </div>
+                  <b>
+                    -{fmt(item.loss)} · {item.lossPct.toFixed(1)}%
+                  </b>
+                </a>
+              ))
+            )}
+          </div>
+        </article>
+      </section>
+
+      <style jsx>{`
+        .bo-message {
+          margin: 12px 0;
+          padding: 10px 12px;
+          border: 1px solid #e2d6c3;
+          border-radius: 10px;
+          background: #fff9ee;
+          color: #7a5317;
+          font-size: 11px;
+          font-weight: 750;
+        }
+
+        .bo-kpis {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 9px;
+          margin: 14px 0;
+        }
+
+        .bo-kpis article {
+          padding: 14px;
+          border: 1px solid #dce9e2;
+          border-radius: 12px;
+          background: #fff;
+          box-shadow: 0 7px 18px rgba(22, 71, 54, 0.05);
+        }
+
+        .bo-kpis span,
+        .bo-eyebrow {
+          color: #60756c;
+          font-size: 8px;
+          font-weight: 900;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+
+        .bo-kpis strong {
+          display: block;
+          margin-top: 4px;
+          color: #0c573d;
+          font-size: 24px;
+        }
+
+        .bo-kpis p {
+          margin: 3px 0 0;
+          color: #71847c;
+          font-size: 9px;
+          line-height: 1.35;
+        }
+
+        .bo-card {
+          margin-bottom: 10px;
+          overflow: hidden;
+          border: 1px solid #dce9e2;
+          border-radius: 14px;
+          background: #fff;
+          box-shadow: 0 8px 22px rgba(20, 70, 52, 0.055);
+        }
+
+        .bo-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          padding: 13px 15px;
+          border-bottom: 1px solid #e6eee9;
+        }
+
+        .bo-head h2 {
+          margin: 2px 0 0;
+          color: #123e2f;
+          font-size: 17px;
+        }
+
+        .bo-head p:not(.bo-eyebrow) {
+          max-width: 820px;
+          margin: 3px 0 0;
+          color: #6d8078;
+          font-size: 9px;
+          line-height: 1.4;
+        }
+
+        .bo-head a {
+          flex: 0 0 auto;
+          padding: 8px 11px;
+          border: 1px solid #cfe0d7;
+          border-radius: 8px;
+          color: #0b6747;
+          text-decoration: none;
+          font-size: 9px;
+          font-weight: 900;
+        }
+
+        .bo-table-wrap {
+          overflow-x: auto;
+        }
+
+        table {
+          width: 100%;
+          border-collapse: collapse;
+        }
+
+        th,
+        td {
+          padding: 9px 12px;
+          border-bottom: 1px solid #edf2ef;
+          text-align: right;
+          color: #345449;
+          font-size: 10px;
+        }
+
+        th {
+          background: #f8fbf9;
+          color: #657c72;
+          font-size: 8px;
+          font-weight: 900;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+        }
+
+        th:first-child,
+        td:first-child {
+          text-align: left;
+        }
+
+        .good {
+          color: #117044 !important;
+        }
+
+        .bad {
+          color: #b03a34 !important;
+        }
+
+        .bo-status {
+          display: inline-flex;
+          min-width: 58px;
+          justify-content: center;
+          padding: 4px 7px;
+          border-radius: 999px;
+          font-size: 8px;
+          font-weight: 900;
+        }
+
+        .bo-covered {
+          background: #e8f6ed;
+          color: #147044;
+        }
+
+        .bo-watch {
+          background: #fff3d9;
+          color: #9a6508;
+        }
+
+        .bo-short {
+          background: #fde8e6;
+          color: #a63832;
+        }
+
+        .bo-two {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+        }
+
+        .bo-exceptions {
+          display: grid;
+          gap: 7px;
+          padding: 10px 12px 12px;
+        }
+
+        .bo-exception,
+        .bo-ok {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          padding: 10px 11px;
+          border-radius: 10px;
+          background: #fafcfb;
+        }
+
+        .bo-exception {
+          border: 1px solid #eed5d2;
+          background: #fffafa;
+        }
+
+        .bo-exception-link {
+          color: inherit;
+          text-decoration: none;
+        }
+
+        .bo-exception div {
+          min-width: 0;
+        }
+
+        .bo-exception strong,
+        .bo-exception span {
+          display: block;
+        }
+
+        .bo-exception strong {
+          color: #2a4b3e;
+          font-size: 10px;
+        }
+
+        .bo-exception span {
+          margin-top: 2px;
+          color: #7a8c84;
+          font-size: 8px;
+        }
+
+        .bo-exception b {
+          flex: 0 0 auto;
+          color: #ac3c36;
+          font-size: 10px;
+        }
+
+        .bo-ok {
+          justify-content: flex-start;
+          border: 1px solid #d8e9df;
+          color: #226246;
+          font-size: 9px;
+          font-weight: 700;
+        }
+
+        @media (max-width: 1050px) {
+          .bo-kpis,
+          .bo-two {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+        }
+
+        @media (max-width: 680px) {
+          .bo-kpis,
+          .bo-two {
+            grid-template-columns: 1fr;
           }
 
-          .broiler-module-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 18px;
-            padding: 16px 18px;
-            margin-bottom: 10px;
-            border: 1px solid rgba(255, 255, 255, 0.14);
-            border-radius: 16px;
-            background:
-              radial-gradient(circle at 92% 12%, rgba(45, 212, 191, 0.24), transparent 28%),
-              linear-gradient(115deg, #064e3b 0%, #047857 48%, #0f766e 100%);
-            box-shadow: 0 10px 28px rgba(6, 78, 59, 0.16);
-            color: white;
-          }
-
-          .broiler-module-header-copy { min-width: 0; }
-          .broiler-module-eyebrow {
-            margin: 0 0 4px;
-            font-size: 11px;
-            font-weight: 800;
-            letter-spacing: 0.12em;
-            text-transform: uppercase;
-            color: rgba(236, 253, 245, 0.84);
-          }
-          .broiler-module-header h1 {
-            margin: 0;
-            font-size: clamp(24px, 2vw, 34px);
-            line-height: 1;
-            letter-spacing: -0.035em;
-            color: white;
-          }
-          .broiler-module-description {
-            margin: 6px 0 0;
-            max-width: 820px;
-            font-size: 13px;
-            line-height: 1.35;
-            color: rgba(240, 253, 250, 0.88);
-          }
-          .broiler-header-actions {
-            display: flex;
-            align-items: center;
-            justify-content: flex-end;
-            gap: 8px;
-            flex: 0 0 auto;
-          }
-          .broiler-header-btn,
-          .broiler-weather-pill { font: inherit; border: 0; cursor: pointer; }
-          .broiler-header-btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 7px;
-            min-height: 38px;
-            padding: 0 12px;
-            border-radius: 11px;
-            text-decoration: none;
-            font-size: 12px;
-            font-weight: 750;
-            transition: transform 140ms ease, background 140ms ease, border-color 140ms ease;
-          }
-          .broiler-header-btn:hover,
-          .broiler-weather-pill:hover { transform: translateY(-1px); }
-          .broiler-header-btn:disabled { cursor: wait; opacity: 0.72; transform: none; }
-          .broiler-header-btn-secondary {
-            border: 1px solid rgba(255, 255, 255, 0.22);
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-            backdrop-filter: blur(8px);
-          }
-          .broiler-header-btn-secondary:hover {
-            background: rgba(255, 255, 255, 0.17);
-            border-color: rgba(255, 255, 255, 0.34);
-          }
-          .broiler-refresh-spinning { animation: broiler-spin 0.9s linear infinite; }
-          @keyframes broiler-spin { to { transform: rotate(360deg); } }
-          .broiler-weather-pill {
-            display: grid;
-            grid-template-columns: auto auto auto;
-            align-items: center;
-            gap: 9px;
-            min-height: 44px;
-            padding: 6px 10px 6px 8px;
-            border-radius: 13px;
-            box-shadow: 0 6px 18px rgba(2, 44, 34, 0.18);
-            transition: transform 140ms ease, box-shadow 140ms ease, background 140ms ease;
-          }
-          .broiler-weather-icon {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 31px;
-            height: 31px;
-            border-radius: 9px;
-            background: rgba(255, 255, 255, 0.7);
-          }
-          .broiler-weather-copy {
-            display: flex;
-            flex-direction: column;
+          .bo-head {
             align-items: flex-start;
-            min-width: 0;
+            flex-direction: column;
           }
-          .broiler-weather-label {
-            font-size: 9px;
-            font-weight: 800;
-            line-height: 1.05;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-            opacity: 0.72;
-          }
-          .broiler-weather-copy strong {
-            margin-top: 2px;
-            white-space: nowrap;
-            font-size: 12px;
-            line-height: 1.1;
-          }
-          .broiler-weather-meta {
-            padding-left: 9px;
-            border-left: 1px solid currentColor;
-            white-space: nowrap;
-            font-size: 10px;
-            font-weight: 700;
-            opacity: 0.72;
-          }
-          .broiler-weather-normal { background: #ecfdf5; color: #065f46; }
-          .broiler-weather-watch { background: #fffbeb; color: #92400e; }
-          .broiler-weather-high { background: #fff1f2; color: #9f1239; }
-
-          :global(.chick-supply-card) {
-            padding: 12px 14px;
-            margin-bottom: 10px;
-            border-radius: 14px;
-          }
-
-          :global(.chick-supply-head) {
-            margin-bottom: 8px;
-            gap: 10px;
-          }
-
-          :global(.chick-supply-head h3) {
-            margin-top: 2px;
-            margin-bottom: 2px;
-          }
-
-          :global(.chick-supply-head span) {
-            line-height: 1.3;
-          }
-
-          :global(.chick-supply-grid) {
-            gap: 8px;
-          }
-
-          :global(.chick-supply-grid > div) {
-            padding: 10px 12px;
-            min-height: 0;
-          }
-
-          :global(.chick-supply-grid > div strong) {
-            margin-top: 2px;
-            margin-bottom: 1px;
-          }
-
-          :global(.chick-supply-grid > div p) {
-            margin-top: 2px;
-            line-height: 1.25;
-          }
-
-          :global(.weather-drawer-card) {
-            margin-bottom: 10px;
-            border-radius: 14px;
-          }
-
-          :global(.weather-drawer-toggle) {
-            padding: 10px 14px;
-            min-height: 0;
-          }
-
-          :global(.weather-drawer-toggle h3) {
-            margin-top: 2px;
-            margin-bottom: 2px;
-          }
-
-          :global(.weather-drawer-body) {
-            padding: 10px 12px 12px;
-          }
-
-          :global(.weather-summary-grid) {
-            gap: 8px;
-            margin-bottom: 8px;
-          }
-
-          :global(.weather-summary-card) {
-            padding: 9px 10px;
-          }
-
-          :global(.weather-content-grid) {
-            gap: 8px;
-          }
-
-          :global(.broiler-ai-layout) {
-            gap: 10px;
-            margin-bottom: 10px;
-          }
-
-          :global(.broiler-ai-card) {
-            padding: 12px 14px;
-            border-radius: 14px;
-          }
-
-          :global(.broiler-ai-card-head) {
-            margin-bottom: 7px;
-          }
-
-          :global(.broiler-ai-card-head h3) {
-            margin-top: 2px;
-            margin-bottom: 0;
-          }
-
-          :global(.ai-briefing-stack) {
-            gap: 6px;
-          }
-
-          :global(.ai-brief-row) {
-            padding: 7px 9px;
-            min-height: 0;
-          }
-
-          :global(.ai-brief-row p) {
-            line-height: 1.25;
-          }
-
-          :global(.ai-action-stack) {
-            gap: 6px;
-          }
-
-          :global(.ai-action-card) {
-            padding: 8px 10px;
-            min-height: 0;
-          }
-
-          :global(.ai-action-card p) {
-            margin-top: 2px;
-            line-height: 1.2;
-          }
-
-          .broiler-home-dual-grid {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 10px;
-            align-items: stretch;
-            margin-bottom: 10px;
-          }
-
-          .broiler-home-dual-grid :global(.chick-supply-card) {
-            height: 100%;
-            margin-bottom: 0;
-          }
-
-          .broiler-home-dual-grid :global(.chick-supply-grid) {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-          }
-
-          :global(.broiler-ai-table-card) {
-            margin-bottom: 10px;
-            border-radius: 14px;
-          }
-
-          :global(.grid-card-head) {
-            padding: 10px 14px;
-          }
-
-          :global(.grid-card-head h3) {
-            margin-bottom: 2px;
-          }
-
-          :global(.ai-home-table th),
-          :global(.ai-home-table td) {
-            padding-top: 7px;
-            padding-bottom: 7px;
-          }
-
-          @media (max-width: 1250px) {
-            .broiler-home-dual-grid {
-              grid-template-columns: 1fr;
-            }
-
-            .broiler-home-dual-grid :global(.chick-supply-grid) {
-              grid-template-columns: repeat(4, minmax(0, 1fr));
-            }
-          }
-
-
-          /* Dense desktop canvas:
-             roughly the footprint of a 75% browser view while preserving
-             near-90% text sizing. We compress whitespace, not typography. */
-          @media (min-width: 1260px) {
-            :global(.broiler-home-density) {
-              --home-gap: 6px;
-            }
-
-            :global(.broiler-home-density > *) {
-              margin-top: 0;
-            }
-
-            :global(.broiler-home-density .chick-supply-card) {
-              padding: 8px 10px;
-              margin-bottom: var(--home-gap);
-              border-radius: 11px;
-            }
-
-            :global(.broiler-home-density .chick-supply-head) {
-              margin-bottom: 5px;
-              gap: 7px;
-            }
-
-            :global(.broiler-home-density .chick-supply-head h3) {
-              margin: 1px 0;
-              line-height: 1.05;
-            }
-
-            :global(.broiler-home-density .chick-supply-head span) {
-              line-height: 1.15;
-            }
-
-            :global(.broiler-home-density .chick-supply-grid) {
-              gap: 5px;
-            }
-
-            :global(.broiler-home-density .chick-supply-grid > div) {
-              padding: 7px 9px;
-              border-radius: 9px;
-            }
-
-            :global(.broiler-home-density .chick-supply-grid > div p) {
-              margin-top: 1px;
-              line-height: 1.12;
-            }
-
-            :global(.broiler-home-density .weather-drawer-card) {
-              margin-bottom: var(--home-gap);
-              border-radius: 11px;
-            }
-
-            :global(.broiler-home-density .weather-drawer-toggle) {
-              padding: 7px 10px;
-            }
-
-            :global(.broiler-home-density .weather-drawer-toggle h3) {
-              margin: 1px 0;
-              line-height: 1.05;
-            }
-
-            :global(.broiler-home-density .weather-drawer-toggle span) {
-              line-height: 1.15;
-            }
-
-            :global(.broiler-home-density .broiler-ai-layout) {
-              gap: 6px;
-              margin-bottom: var(--home-gap);
-            }
-
-            :global(.broiler-home-density .broiler-ai-card) {
-              padding: 8px 10px;
-              border-radius: 11px;
-            }
-
-            :global(.broiler-home-density .broiler-ai-card-head) {
-              margin-bottom: 4px;
-            }
-
-            :global(.broiler-home-density .broiler-ai-card-head h3) {
-              margin: 1px 0 0;
-              line-height: 1.05;
-            }
-
-            :global(.broiler-home-density .ai-briefing-stack),
-            :global(.broiler-home-density .ai-action-stack) {
-              gap: 4px;
-            }
-
-            :global(.broiler-home-density .ai-brief-row) {
-              padding: 5px 7px;
-              border-radius: 8px;
-            }
-
-            :global(.broiler-home-density .ai-brief-row p) {
-              line-height: 1.12;
-            }
-
-            :global(.broiler-home-density .ai-action-card) {
-              padding: 6px 8px;
-              border-radius: 8px;
-            }
-
-            :global(.broiler-home-density .ai-action-card p) {
-              margin-top: 1px;
-              line-height: 1.08;
-            }
-
-            .broiler-home-dual-grid {
-              gap: 6px;
-              margin-bottom: var(--home-gap);
-            }
-
-            :global(.broiler-home-density .broiler-ai-table-card) {
-              margin-bottom: var(--home-gap);
-              border-radius: 11px;
-            }
-
-            :global(.broiler-home-density .grid-card-head) {
-              padding: 7px 10px;
-            }
-
-            :global(.broiler-home-density .grid-card-head h3) {
-              margin: 0 0 1px;
-              line-height: 1.05;
-            }
-
-            :global(.broiler-home-density .grid-card-head p) {
-              margin: 0;
-              line-height: 1.15;
-            }
-
-            :global(.broiler-home-density .ai-home-table th),
-            :global(.broiler-home-density .ai-home-table td) {
-              padding-top: 5px;
-              padding-bottom: 5px;
-            }
-
-            /* Keep the typography essentially where it is now. */
-            :global(.broiler-home-density h3),
-            :global(.broiler-home-density strong),
-            :global(.broiler-home-density p),
-            :global(.broiler-home-density span),
-            :global(.broiler-home-density th),
-            :global(.broiler-home-density td) {
-              font-size-adjust: none;
-            }
-          }
-
-          @media (max-width: 1050px) {
-            .broiler-module-header {
-              align-items: flex-start;
-              flex-direction: column;
-            }
-            .broiler-header-actions {
-              width: 100%;
-              justify-content: flex-start;
-              flex-wrap: wrap;
-            }
-          }
-
-          @media (max-width: 800px) {
-            .broiler-module-header {
-              padding: 13px;
-              border-radius: 13px;
-            }
-            .broiler-header-btn span { display: none; }
-            .broiler-header-btn { width: 38px; padding: 0; }
-            .broiler-weather-pill { flex: 1 1 210px; }
-            .broiler-weather-meta { display: none; }
-            :global(.chick-supply-card),
-            :global(.broiler-ai-card) {
-              padding: 11px;
-            }
-
-            .broiler-home-dual-grid :global(.chick-supply-grid) {
-              grid-template-columns: repeat(2, minmax(0, 1fr));
-            }
-          }
-        `}</style>
-
-        <OviCoreTour />
-      </main>
-    </div>
-  );
-}
-
-function ActionCard({
-  title,
-  value,
-  detail,
-  tone,
-}: {
-  title: string;
-  value: number;
-  detail: string;
-  tone: "good" | "warning" | "bad";
-}) {
-  return (
-    <div className={`ai-action-card ai-action-${tone}`}>
-      <div>
-        <strong>{title}</strong>
-        <p>{detail}</p>
-      </div>
-
-      <span>{value}</span>
-    </div>
+        }
+      `}</style>
+    </OviCoreShell>
   );
 }

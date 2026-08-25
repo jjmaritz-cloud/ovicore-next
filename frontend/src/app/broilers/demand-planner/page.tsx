@@ -77,6 +77,34 @@ type BroilerShedOption = {
   active: boolean;
 };
 
+
+type ChickSupplyRow = {
+  id?: number;
+  week_ending: string;
+  available_chicks: number;
+  source?: "hatchery" | "manual";
+};
+
+type BroilerPerformanceRow = {
+  id: number;
+  placement_plan_id: number;
+  entry_date: string;
+  age_days?: number | null;
+  closing_birds?: number | null;
+};
+
+type SupplyDemandWeek = {
+  weekEnding: string;
+  requiredChicks: number;
+  availableChicks: number;
+  placementBirds: number;
+  forecastProcessingBirds: number;
+  processingPlanBirds: number;
+  chickBalance: number;
+  processingGap: number;
+  placementCount: number;
+};
+
 const API_BASE = '';
 
 async function authenticatedFetch(
@@ -310,6 +338,49 @@ function recalculateRow(row: BroilerPlanRow): BroilerPlanRow {
   };
 }
 
+
+function parseIsoDate(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(`${value}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function weekEndingSunday(value?: string | null) {
+  const date = parseIsoDate(value);
+  if (!date) return null;
+
+  const copy = new Date(date);
+  const add = copy.getDay() === 0 ? 0 : 7 - copy.getDay();
+  copy.setDate(copy.getDate() + add);
+
+  const yyyy = copy.getFullYear();
+  const mm = String(copy.getMonth() + 1).padStart(2, "0");
+  const dd = String(copy.getDate()).padStart(2, "0");
+
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function latestPerformanceByPlan(rows: BroilerPerformanceRow[]) {
+  const map = new Map<number, BroilerPerformanceRow>();
+
+  for (const row of rows) {
+    const existing = map.get(row.placement_plan_id);
+
+    if (
+      !existing ||
+      Number(row.age_days || 0) > Number(existing.age_days || 0) ||
+      (
+        Number(row.age_days || 0) === Number(existing.age_days || 0) &&
+        row.entry_date > existing.entry_date
+      )
+    ) {
+      map.set(row.placement_plan_id, row);
+    }
+  }
+
+  return map;
+}
+
 function BroilerDemandPlannerPageContent() {
   const gridRef = useRef<AgGridReact<BroilerPlanRow>>(null);
 
@@ -346,6 +417,10 @@ function BroilerDemandPlannerPageContent() {
   const [rows, setRows] = useState<BroilerPlanRow[]>([]);
   const [shedOptions, setShedOptions] =
     useState<BroilerShedOption[]>([]);
+  const [chickSupplyRows, setChickSupplyRows] =
+    useState<ChickSupplyRow[]>([]);
+  const [performanceRows, setPerformanceRows] =
+    useState<BroilerPerformanceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -383,6 +458,36 @@ function BroilerDemandPlannerPageContent() {
             `${b.farm_name} ${b.shed_name}`,
           ),
         ),
+    );
+  }, [activeCompanyId, loadingUser]);
+
+
+  const fetchSupplyAndLivePosition = useCallback(async () => {
+    if (loadingUser || !activeCompanyId) {
+      setChickSupplyRows([]);
+      setPerformanceRows([]);
+      return;
+    }
+
+    const query = `?company_id=${activeCompanyId}`;
+
+    const [supplyResponse, performanceResponse] = await Promise.all([
+      authenticatedFetch(
+        `${API_BASE}/api/broilers/chick-supply${query}`,
+        { cache: "no-store" },
+      ),
+      authenticatedFetch(
+        `${API_BASE}/api/broilers/performance${query}`,
+        { cache: "no-store" },
+      ),
+    ]);
+
+    setChickSupplyRows(
+      supplyResponse.ok ? await supplyResponse.json() : [],
+    );
+
+    setPerformanceRows(
+      performanceResponse.ok ? await performanceResponse.json() : [],
     );
   }, [activeCompanyId, loadingUser]);
 
@@ -488,8 +593,9 @@ function BroilerDemandPlannerPageContent() {
     Promise.all([
       fetchSheds(),
       fetchRows(),
+      fetchSupplyAndLivePosition(),
     ]).catch(console.error);
-  }, [fetchRows, fetchSheds]);
+  }, [fetchRows, fetchSheds, fetchSupplyAndLivePosition]);
 
   const editableCellClass = "editable-cell";
   const calculatedCellClass = "calculated-cell";
@@ -781,11 +887,22 @@ function BroilerDemandPlannerPageContent() {
         children: [
           {
             field: "status",
-            headerName: "Status",
-            minWidth: 135,
-            editable: false,
+            headerName: "Cycle Status",
+            minWidth: 150,
+            editable: true,
+            cellEditor: "agSelectCellEditor",
+            cellEditorParams: {
+              values: [
+                "Draft",
+                "Planned",
+                "Placed",
+                "Growing",
+                "Processed",
+                "Closed",
+              ],
+            },
             cellRenderer: StatusPill,
-            cellClass: "center-cell",
+            cellClass: "editable-cell center-cell",
           },
           {
             field: "lastSavedAt",
@@ -1059,7 +1176,10 @@ function BroilerDemandPlannerPageContent() {
 			}
 
 			dirtyRowIds.current.clear();
-			await fetchRows();
+			await Promise.all([
+        fetchRows(),
+        fetchSupplyAndLivePosition(),
+      ]);
 
 			alert("Changes saved.");
 		} catch (error) {
@@ -1068,7 +1188,7 @@ function BroilerDemandPlannerPageContent() {
 		} finally {
 			setSaving(false);
 		}
-	}, [fetchRows]);
+	}, [fetchRows, fetchSupplyAndLivePosition]);
 
   const kpis = useMemo(() => {
     const totalPlannedBirds = rows.reduce((sum, row) => sum + Number(row.plannedBirds ?? 0), 0);
@@ -1094,12 +1214,125 @@ function BroilerDemandPlannerPageContent() {
     };
   }, [rows]);
 
+  const supplyDemand = useMemo(() => {
+    const latestPerformance = latestPerformanceByPlan(performanceRows);
+
+    const chickByWeek = new Map<string, number>();
+
+    for (const row of chickSupplyRows) {
+      chickByWeek.set(
+        row.week_ending,
+        (chickByWeek.get(row.week_ending) ?? 0) +
+          Number(row.available_chicks || 0),
+      );
+    }
+
+    const weeks = new Map<string, SupplyDemandWeek>();
+
+    function ensureWeek(weekEnding: string) {
+      const existing = weeks.get(weekEnding);
+
+      if (existing) {
+        return existing;
+      }
+
+      const next: SupplyDemandWeek = {
+        weekEnding,
+        requiredChicks: 0,
+        availableChicks: chickByWeek.get(weekEnding) ?? 0,
+        placementBirds: 0,
+        forecastProcessingBirds: 0,
+        processingPlanBirds: 0,
+        chickBalance: 0,
+        processingGap: 0,
+        placementCount: 0,
+      };
+
+      weeks.set(weekEnding, next);
+      return next;
+    }
+
+    for (const row of rows) {
+      const placementWeek = weekEndingSunday(row.placementDate);
+      const processingWeek = weekEndingSunday(row.processingDate);
+
+      if (placementWeek) {
+        const week = ensureWeek(placementWeek);
+        week.requiredChicks += Number(row.requiredChicks || 0);
+        week.placementBirds += Number(row.plannedBirds || 0);
+        week.placementCount += 1;
+      }
+
+      if (processingWeek) {
+        const week = ensureWeek(processingWeek);
+        const plannedBirds = Number(row.plannedBirds || 0);
+        const latest = latestPerformance.get(row.id);
+        const forecastBirds =
+          latest && Number(latest.closing_birds || 0) > 0
+            ? Number(latest.closing_birds || 0)
+            : plannedBirds;
+
+        week.processingPlanBirds += plannedBirds;
+        week.forecastProcessingBirds += forecastBirds;
+      }
+    }
+
+    for (const [weekEnding, availableChicks] of chickByWeek) {
+      const week = ensureWeek(weekEnding);
+      week.availableChicks = availableChicks;
+    }
+
+    const result = [...weeks.values()]
+      .map((week) => ({
+        ...week,
+        chickBalance: week.availableChicks - week.requiredChicks,
+        processingGap:
+          week.forecastProcessingBirds - week.processingPlanBirds,
+      }))
+      .filter(
+        (week) =>
+          week.requiredChicks > 0 ||
+          week.availableChicks > 0 ||
+          week.processingPlanBirds > 0,
+      )
+      .sort((a, b) => a.weekEnding.localeCompare(b.weekEnding))
+      .slice(0, 12);
+
+    const chickShortWeeks = result.filter(
+      (week) => week.requiredChicks > 0 && week.chickBalance < 0,
+    ).length;
+
+    const processingShortWeeks = result.filter(
+      (week) =>
+        week.processingPlanBirds > 0 &&
+        week.processingGap < 0,
+    ).length;
+
+    const totalAvailableChicks = result.reduce(
+      (sum, week) => sum + week.availableChicks,
+      0,
+    );
+
+    const totalForecastProcessing = result.reduce(
+      (sum, week) => sum + week.forecastProcessingBirds,
+      0,
+    );
+
+    return {
+      weeks: result,
+      chickShortWeeks,
+      processingShortWeeks,
+      totalAvailableChicks,
+      totalForecastProcessing,
+    };
+  }, [rows, chickSupplyRows, performanceRows]);
+
 return (
   <OviCoreShell module="broilers">
     <OviCoreModuleHeader
       eyebrow="OviCore Broiler Planning"
-      title="Placement Demand Planner"
-      description="Plan broiler placements by farm, shed, cycle, floor capacity and required chicks."
+      title="Supply & Demand"
+      description="One connected view of chick supply, shed placements, active grow-out and forecast processing supply."
       actions={[
         {
           label: "Broiler Home",
@@ -1111,11 +1344,11 @@ return (
 
     <section className="planner-toolbar-card">
       <div>
-        <p className="planner-eyebrow">Broiler Placement Planning</p>
-        <h2>Placement demand register</h2>
+        <p className="planner-eyebrow">Broiler Supply & Demand</p>
+        <h2>Plan once, then track the flow</h2>
         <p>
-          Create, review and maintain broiler placement demand while retaining
-          the existing shed capacity, density and chick requirement calculations.
+          Hatchery chick supply feeds placement planning. Daily Data updates the
+          live flock position, which then updates forecast processing supply.
         </p>
       </div>
 
@@ -1139,37 +1372,154 @@ return (
 
     <section className="planner-kpi-grid">
       <div>
-        <span>Total Planned Birds</span>
-        <strong>{kpis.totalPlannedBirds.toLocaleString()}</strong>
-        <p>Birds planned across all placement rows.</p>
-      </div>
-
-      <div>
         <span>Required Chicks</span>
         <strong>{Math.round(kpis.requiredChicks).toLocaleString()}</strong>
-        <p>Includes the configured chick allowance.</p>
+        <p>Calculated from the current placement plan.</p>
       </div>
 
       <div>
-        <span>Rows Needing Review</span>
-        <strong>{kpis.rowsNeedingReview}</strong>
-        <p>Rows with missing information or density pressure.</p>
+        <span>Available Chicks</span>
+        <strong>{Math.round(supplyDemand.totalAvailableChicks).toLocaleString()}</strong>
+        <p>Weekly chick supply currently connected to Broilers.</p>
       </div>
 
       <div>
-        <span>Average Planned kg/m²</span>
-        <strong>{kpis.avgKgM2.toFixed(2)}</strong>
-        <p>Average planned stocking density.</p>
+        <span>Chick Short Weeks</span>
+        <strong className={supplyDemand.chickShortWeeks > 0 ? "planner-kpi-bad" : ""}>
+          {supplyDemand.chickShortWeeks}
+        </strong>
+        <p>Placement weeks where chick supply is below requirement.</p>
+      </div>
+
+      <div>
+        <span>Processing Short Weeks</span>
+        <strong className={supplyDemand.processingShortWeeks > 0 ? "planner-kpi-bad" : ""}>
+          {supplyDemand.processingShortWeeks}
+        </strong>
+        <p>Processing weeks where live forecast is below the plan.</p>
+      </div>
+    </section>
+
+    <section className="supply-demand-flow-card">
+      <div className="supply-demand-flow-head">
+        <div>
+          <p className="planner-eyebrow">Connected Production Flow</p>
+          <h3>Chicks → Placement → Grow-out → Processing</h3>
+          <p>
+            This is the operating story. The planning register below remains the
+            detailed editing tool, but this weekly view is the control position.
+          </p>
+        </div>
+      </div>
+
+      <div className="supply-demand-flow-strip" aria-label="Broiler production flow">
+        <div>
+          <span>1</span>
+          <strong>Chick Supply</strong>
+          <small>Hatchery / manual availability</small>
+        </div>
+        <b>→</b>
+        <div>
+          <span>2</span>
+          <strong>Required Chicks</strong>
+          <small>Placement plan + allowance</small>
+        </div>
+        <b>→</b>
+        <div>
+          <span>3</span>
+          <strong>Placement</strong>
+          <small>Farm, shed, capacity & density</small>
+        </div>
+        <b>→</b>
+        <div>
+          <span>4</span>
+          <strong>Live Grow-out</strong>
+          <small>Daily Data closing birds</small>
+        </div>
+        <b>→</b>
+        <div>
+          <span>5</span>
+          <strong>Processing Supply</strong>
+          <small>Latest forecast vs plan</small>
+        </div>
+      </div>
+
+      <div className="supply-demand-weekly-wrap">
+        <table className="supply-demand-weekly-table">
+          <thead>
+            <tr>
+              <th>Week Ending</th>
+              <th>Required Chicks</th>
+              <th>Available Chicks</th>
+              <th>Chick Balance</th>
+              <th>Placement Birds</th>
+              <th>Processing Plan</th>
+              <th>Forecast Supply</th>
+              <th>Processing Gap</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {supplyDemand.weeks.length === 0 ? (
+              <tr>
+                <td colSpan={9}>No weekly Supply & Demand position is available yet.</td>
+              </tr>
+            ) : (
+              supplyDemand.weeks.map((week) => {
+                const chickRisk =
+                  week.requiredChicks > 0 && week.chickBalance < 0;
+                const processRisk =
+                  week.processingPlanBirds > 0 &&
+                  week.processingGap < 0;
+
+                const status =
+                  processRisk ? "Processing short" :
+                  chickRisk ? "Chick short" :
+                  "Covered";
+
+                return (
+                  <tr key={week.weekEnding}>
+                    <td>{isoToDisplayDate(week.weekEnding)}</td>
+                    <td>{Math.round(week.requiredChicks).toLocaleString()}</td>
+                    <td>{Math.round(week.availableChicks).toLocaleString()}</td>
+                    <td className={week.chickBalance < 0 ? "flow-bad" : "flow-good"}>
+                      {week.chickBalance > 0 ? "+" : ""}
+                      {Math.round(week.chickBalance).toLocaleString()}
+                    </td>
+                    <td>{Math.round(week.placementBirds).toLocaleString()}</td>
+                    <td>{Math.round(week.processingPlanBirds).toLocaleString()}</td>
+                    <td>{Math.round(week.forecastProcessingBirds).toLocaleString()}</td>
+                    <td className={week.processingGap < 0 ? "flow-bad" : "flow-good"}>
+                      {week.processingGap > 0 ? "+" : ""}
+                      {Math.round(week.processingGap).toLocaleString()}
+                    </td>
+                    <td>
+                      <span
+                        className={
+                          status === "Covered"
+                            ? "flow-status flow-covered"
+                            : "flow-status flow-short"
+                        }
+                      >
+                        {status}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
       </div>
     </section>
 
     <section className="planner-register-card">
       <div className="planner-register-head">
         <div>
-          <h3>Broiler Placement Demand</h3>
+          <h3>Placement & Cycle Register</h3>
           <p>
-            Farm, shed, cycle, placement, capacity, required chicks and review
-            calculations.
+            One row is the plan and the cycle. Manage placement, shed capacity,
+            chick requirement and operational status here.
           </p>
         </div>
 
@@ -1216,7 +1566,11 @@ return (
             type="button"
             className="planner-btn"
             onClick={() =>
-              Promise.all([fetchSheds(), fetchRows()]).catch(console.error)
+              Promise.all([
+                fetchSheds(),
+                fetchRows(),
+                fetchSupplyAndLivePosition(),
+              ]).catch(console.error)
             }
             disabled={saving}
           >
@@ -1503,6 +1857,169 @@ return (
         border-top: 1px solid #e6eee9;
       }
 
+
+      .planner-kpi-bad {
+        color: #b13f38 !important;
+      }
+
+      .supply-demand-flow-card {
+        margin-bottom: 13px;
+        overflow: hidden;
+        border: 1px solid #d9e8e0;
+        border-radius: 15px;
+        background: #ffffff;
+        box-shadow: 0 9px 22px rgba(19, 70, 51, 0.06);
+      }
+
+      .supply-demand-flow-head {
+        padding: 13px 15px 10px;
+        border-bottom: 1px solid #e6eee9;
+      }
+
+      .supply-demand-flow-head h3 {
+        margin: 2px 0 0;
+        color: #123e2f;
+        font-size: 17px;
+      }
+
+      .supply-demand-flow-head p:last-child {
+        max-width: 900px;
+        margin: 3px 0 0;
+        color: #6b8076;
+        font-size: 9px;
+        line-height: 1.4;
+      }
+
+      .supply-demand-flow-strip {
+        display: grid;
+        grid-template-columns:
+          minmax(0, 1fr) auto
+          minmax(0, 1fr) auto
+          minmax(0, 1fr) auto
+          minmax(0, 1fr) auto
+          minmax(0, 1fr);
+        align-items: center;
+        gap: 8px;
+        padding: 11px 13px;
+        background: #f9fcfa;
+        border-bottom: 1px solid #e6eee9;
+      }
+
+      .supply-demand-flow-strip > div {
+        min-width: 0;
+        padding: 9px 10px;
+        border: 1px solid #dce9e2;
+        border-radius: 10px;
+        background: #ffffff;
+      }
+
+      .supply-demand-flow-strip > div span {
+        display: inline-grid;
+        width: 20px;
+        height: 20px;
+        margin-bottom: 4px;
+        place-items: center;
+        border-radius: 999px;
+        background: #e9f6ef;
+        color: #116b48;
+        font-size: 8px;
+        font-weight: 950;
+      }
+
+      .supply-demand-flow-strip strong,
+      .supply-demand-flow-strip small {
+        display: block;
+      }
+
+      .supply-demand-flow-strip strong {
+        color: #234c3c;
+        font-size: 10px;
+      }
+
+      .supply-demand-flow-strip small {
+        margin-top: 2px;
+        color: #789087;
+        font-size: 8px;
+        line-height: 1.3;
+      }
+
+      .supply-demand-flow-strip > b {
+        color: #78a28f;
+        font-size: 17px;
+      }
+
+      .supply-demand-weekly-wrap {
+        overflow-x: auto;
+      }
+
+      .supply-demand-weekly-table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      .supply-demand-weekly-table th,
+      .supply-demand-weekly-table td {
+        padding: 8px 10px;
+        border-bottom: 1px solid #edf2ef;
+        text-align: right;
+        color: #38574b;
+        font-size: 9px;
+        white-space: nowrap;
+      }
+
+      .supply-demand-weekly-table th {
+        background: #fbfdfc;
+        color: #667c72;
+        font-size: 8px;
+        font-weight: 900;
+        text-transform: uppercase;
+      }
+
+      .supply-demand-weekly-table th:first-child,
+      .supply-demand-weekly-table td:first-child {
+        text-align: left;
+      }
+
+      .flow-good {
+        color: #147044 !important;
+        font-weight: 850;
+      }
+
+      .flow-bad {
+        color: #b03a34 !important;
+        font-weight: 850;
+      }
+
+      .flow-status {
+        display: inline-flex;
+        min-width: 64px;
+        justify-content: center;
+        padding: 4px 7px;
+        border-radius: 999px;
+        font-size: 8px;
+        font-weight: 900;
+      }
+
+      .flow-covered {
+        background: #e8f6ed;
+        color: #147044;
+      }
+
+      .flow-short {
+        background: #fde9e7;
+        color: #a63b34;
+      }
+
+      @media (max-width: 1180px) {
+        .supply-demand-flow-strip {
+          grid-template-columns: 1fr 1fr;
+        }
+
+        .supply-demand-flow-strip > b {
+          display: none;
+        }
+      }
+
       @media (max-width: 1050px) {
         .planner-toolbar-card {
           align-items: flex-start;
@@ -1532,6 +2049,10 @@ return (
       }
 
       @media (max-width: 620px) {
+        .supply-demand-flow-strip {
+          grid-template-columns: 1fr;
+        }
+
         .planner-kpi-grid {
           grid-template-columns: 1fr;
         }

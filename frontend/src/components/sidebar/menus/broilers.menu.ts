@@ -16,23 +16,14 @@ export const broilersMenu: SidebarMenuConfig = {
           label: "Overview",
           href: "/broilers",
         },
-      ],
-    },
-    {
-      title: "Flock Management",
-      items: [
         {
-          label: "Placement Planner",
+          label: "Supply & Demand",
           href: "/broilers/demand-planner",
         },
-        {
-          label: "Production Cycles",
-          href: "/broilers/cycles",
-        },
       ],
     },
     {
-      title: "Production",
+      title: "Operations",
       items: [
         {
           label: "Daily Data Entry",
