@@ -401,19 +401,11 @@ export default function LoginPage() {
           z-index: 0;
           pointer-events: none;
           background-image: url("/assets/login-chickens.jpg");
-          background-size: cover;
-          background-position: 42% center;
           background-repeat: no-repeat;
-          opacity: 0.78;
-          filter: contrast(1.22) brightness(1.12) saturate(0.72);
-          transform: scale(1.015);
-          mask-image: linear-gradient(
-            90deg,
-            rgba(0, 0, 0, 0.38) 0%,
-            rgba(0, 0, 0, 0.58) 28%,
-            #000 54%,
-            #000 100%
-          );
+          background-size: auto 94%;
+          background-position: 90% 54%;
+          opacity: 0.88;
+          filter: contrast(1.18) brightness(1.14) saturate(0.82);
         }
 
         .brand-overlay {
@@ -424,19 +416,15 @@ export default function LoginPage() {
           background:
             linear-gradient(
               90deg,
-              rgba(5, 38, 30, 0.56) 0%,
-              rgba(5, 38, 30, 0.40) 32%,
-              rgba(8, 66, 50, 0.16) 58%,
-              rgba(8, 77, 56, 0.08) 100%
+              rgba(5, 37, 29, 0.86) 0%,
+              rgba(5, 37, 29, 0.66) 32%,
+              rgba(7, 62, 47, 0.26) 58%,
+              rgba(8, 82, 59, 0.08) 82%,
+              rgba(8, 82, 59, 0.03) 100%
             ),
-            radial-gradient(
-              circle at 18% 52%,
-              rgba(3, 29, 23, 0.25),
-              transparent 42%
-            ),
-            linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
-          background-size: 100% 100%, 100% 100%, 52px 52px, 52px 52px;
+            linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
+          background-size: 100% 100%, 52px 52px, 52px 52px;
         }
 
         .brand-orbit {
@@ -856,6 +844,117 @@ export default function LoginPage() {
         @keyframes spin {
           to {
             transform: rotate(360deg);
+          }
+        }
+
+        @media (max-width: 1280px) and (min-width: 901px) {
+          .login-page {
+            grid-template-columns: minmax(0, 1.02fr) minmax(410px, 0.98fr);
+          }
+
+          .brand-content {
+            padding: 38px 42px;
+            gap: 28px;
+          }
+
+          .brand-message {
+            max-width: 560px;
+            padding: 22px 0 20px;
+          }
+
+          .brand-message h1 {
+            font-size: clamp(42px, 5vw, 60px);
+          }
+
+          .brand-message p {
+            max-width: 500px;
+            font-size: 14px;
+          }
+
+          .brand-chicken-image {
+            background-size: auto 86%;
+            background-position: 116% 52%;
+            opacity: 0.92;
+          }
+
+          .brand-overlay {
+            background:
+              linear-gradient(
+                90deg,
+                rgba(5, 37, 29, 0.9) 0%,
+                rgba(5, 37, 29, 0.7) 38%,
+                rgba(7, 62, 47, 0.2) 68%,
+                rgba(8, 82, 59, 0.04) 100%
+              ),
+              linear-gradient(rgba(255, 255, 255, 0.016) 1px, transparent 1px),
+              linear-gradient(90deg, rgba(255, 255, 255, 0.016) 1px, transparent 1px);
+            background-size: 100% 100%, 46px 46px, 46px 46px;
+          }
+
+          .golden-logo-shell {
+            width: 76px;
+            height: 76px;
+          }
+
+          .golden-logo {
+            width: 72px;
+            height: 72px;
+          }
+
+          .brand-name {
+            font-size: 28px;
+          }
+
+          .brand-capabilities {
+            margin-top: 20px;
+          }
+
+          .brand-capabilities span {
+            min-height: 30px;
+            padding: 0 10px;
+            font-size: 10px;
+          }
+
+          .login-form-panel {
+            padding: 28px;
+          }
+
+          .login-card {
+            width: min(100%, 430px);
+          }
+        }
+
+        @media (max-width: 1050px) and (min-width: 901px) {
+          .login-page {
+            grid-template-columns: minmax(0, 0.92fr) minmax(430px, 1.08fr);
+          }
+
+          .brand-content {
+            padding: 32px 34px;
+          }
+
+          .brand-message h1 {
+            font-size: 44px;
+          }
+
+          .brand-chicken-image {
+            background-size: auto 76%;
+            background-position: 135% 54%;
+            opacity: 0.96;
+          }
+
+          .brand-overlay {
+            background:
+              linear-gradient(
+                90deg,
+                rgba(5, 37, 29, 0.92) 0%,
+                rgba(5, 37, 29, 0.73) 42%,
+                rgba(7, 62, 47, 0.16) 76%,
+                rgba(8, 82, 59, 0.02) 100%
+              ),
+              linear-gradient(rgba(255, 255, 255, 0.014) 1px, transparent 1px),
+              linear-gradient(90deg, rgba(255, 255, 255, 0.014) 1px, transparent 1px);
+            background-size: 100% 100%, 42px 42px, 42px 42px;
           }
         }
 
