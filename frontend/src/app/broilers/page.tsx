@@ -9,6 +9,8 @@ const API_BASE = "";
 
 type DemandPlan = {
   id: number;
+  farm_id: number;
+  shed_id: number;
   farm_name?: string | null;
   shed_name?: string | null;
   cycle_code?: string | null;
@@ -24,27 +26,61 @@ type DemandPlan = {
 type PerformanceRecord = {
   id: number;
   placement_plan_id: number;
+  farm_name?: string | null;
+  shed_name?: string | null;
+  cycle_code?: string | null;
   entry_date: string;
   age_days?: number | null;
   opening_birds?: number | null;
   closing_birds?: number | null;
   mortality_birds?: number | null;
-  cull_birds?: number | null;
+  daily_mortality_pct?: number | null;
+  cumulative_mortality_pct?: number | null;
+  feed_per_bird_g?: number | null;
   body_weight_kg?: number | null;
   avg_weight_kg?: number | null;
 };
 
-type ChickSupplySummary = {
-  available_chicks: number;
-  source?: "hatchery" | "manual";
+type StandardRow = {
+  standard_code: string;
+  standard_name: string;
+  standard_type: "Breed" | "Company";
+  module: string;
+  age_day?: number | null;
+  body_weight_g?: number | null;
+  feed_avg_g_bird_day?: number | null;
+  mortality_pct?: number | null;
+  active: boolean;
 };
 
-type WeeklyPosition = {
-  weekEnding: string;
+type FarmShedSummary = {
+  planId: number;
+  shedName: string;
+  cycleCode: string;
+  age: number;
+  currentBirds: number;
+  bwVariancePct: number | null;
+  mortalityPct: number | null;
+  feedVarianceG: number | null;
+  processingDate?: string | null;
+  severity: "good" | "watch" | "high";
+  score: number;
+};
+
+type FarmSummary = {
+  farmId: number;
+  farmName: string;
+  activeFlocks: number;
+  currentBirds: number;
   plannedBirds: number;
-  forecastBirds: number;
-  cycles: number;
-  gap: number;
+  forecastGap: number;
+  avgBwVariancePct: number | null;
+  avgMortalityPct: number | null;
+  avgFeedVarianceG: number | null;
+  shedsNeedingAttention: number;
+  nextProcessingDate: string | null;
+  severity: "good" | "watch" | "high";
+  worstSheds: FarmShedSummary[];
 };
 
 async function authenticatedFetch(
@@ -69,32 +105,29 @@ function num(value: unknown) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function fmt(value: number, decimals = 0) {
+function fmt(value: number | null | undefined, decimals = 0) {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "—";
+  }
+
   return value.toLocaleString(undefined, {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   });
 }
 
+function signed(value: number | null | undefined, decimals = 1, suffix = "") {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "—";
+  }
+
+  return `${value > 0 ? "+" : ""}${fmt(value, decimals)}${suffix}`;
+}
+
 function parseDate(value?: string | null) {
   if (!value) return null;
   const date = new Date(`${value}T00:00:00`);
   return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function weekEndingSunday(value?: string | null) {
-  const date = parseDate(value);
-  if (!date) return null;
-
-  const copy = new Date(date);
-  const add = copy.getDay() === 0 ? 0 : 7 - copy.getDay();
-  copy.setDate(copy.getDate() + add);
-
-  return [
-    copy.getFullYear(),
-    String(copy.getMonth() + 1).padStart(2, "0"),
-    String(copy.getDate()).padStart(2, "0"),
-  ].join("-");
 }
 
 function displayDate(value?: string | null) {
@@ -104,7 +137,6 @@ function displayDate(value?: string | null) {
   return date.toLocaleDateString(undefined, {
     day: "2-digit",
     month: "short",
-    year: "numeric",
   });
 }
 
@@ -127,12 +159,114 @@ function latestByPlan(records: PerformanceRecord[]) {
   return map;
 }
 
+function activeStandardRows(rows: StandardRow[]) {
+  return rows
+    .filter(
+      (row) =>
+        row.active &&
+        row.module.trim().toLowerCase() === "broilers" &&
+        row.age_day !== null &&
+        row.age_day !== undefined,
+    )
+    .sort((a, b) => num(a.age_day) - num(b.age_day));
+}
+
+function standardForAge(rows: StandardRow[], age: number) {
+  const active = activeStandardRows(rows);
+  if (active.length === 0) return null;
+
+  const exact = active.find((row) => num(row.age_day) === age);
+  if (exact) return exact;
+
+  const before = [...active]
+    .reverse()
+    .find((row) => num(row.age_day) < age);
+
+  const after = active.find((row) => num(row.age_day) > age);
+
+  if (!before) return after ?? active[0];
+  if (!after) return before;
+
+  const ratio =
+    (age - num(before.age_day)) /
+    Math.max(1, num(after.age_day) - num(before.age_day));
+
+  const lerp = (
+    left: number | null | undefined,
+    right: number | null | undefined,
+  ) => {
+    if (left === null || left === undefined) return right ?? undefined;
+    if (right === null || right === undefined) return left;
+    return left + (right - left) * ratio;
+  };
+
+  return {
+    ...before,
+    age_day: age,
+    body_weight_g: lerp(before.body_weight_g, after.body_weight_g),
+    feed_avg_g_bird_day: lerp(
+      before.feed_avg_g_bird_day,
+      after.feed_avg_g_bird_day,
+    ),
+    mortality_pct: lerp(before.mortality_pct, after.mortality_pct),
+  };
+}
+
+function average(values: Array<number | null>) {
+  const clean = values.filter(
+    (value): value is number =>
+      value !== null && Number.isFinite(value),
+  );
+
+  if (clean.length === 0) return null;
+
+  return clean.reduce((sum, value) => sum + value, 0) / clean.length;
+}
+
+function severityRank(value: "good" | "watch" | "high") {
+  return value === "high" ? 3 : value === "watch" ? 2 : 1;
+}
+
+function severityForShed(
+  bwVariancePct: number | null,
+  mortalityPct: number | null,
+  mortalityStandardPct: number | null,
+  feedVarianceG: number | null,
+) {
+  let score = 0;
+
+  if (bwVariancePct !== null) {
+    if (bwVariancePct <= -5) score += 55;
+    else if (bwVariancePct <= -2.5) score += 30;
+  }
+
+  if (mortalityPct !== null) {
+    const variance =
+      mortalityStandardPct !== null
+        ? mortalityPct - mortalityStandardPct
+        : mortalityPct;
+
+    if (variance >= 0.5) score += 40;
+    else if (variance >= 0.2) score += 22;
+  }
+
+  if (feedVarianceG !== null) {
+    if (feedVarianceG <= -8) score += 35;
+    else if (feedVarianceG <= -4) score += 20;
+  }
+
+  const severity =
+    score >= 55 ? "high" : score >= 25 ? "watch" : "good";
+
+  return { severity, score };
+}
+
 export default function BroilerHomePage() {
   const { currentUser, loadingUser, userError } = useCurrentUser();
 
   const [plans, setPlans] = useState<DemandPlan[]>([]);
   const [performance, setPerformance] = useState<PerformanceRecord[]>([]);
-  const [chickSupply, setChickSupply] = useState<ChickSupplySummary | null>(null);
+  const [standards, setStandards] = useState<StandardRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
 
@@ -161,7 +295,7 @@ export default function BroilerHomePage() {
     if (!activeCompanyId) {
       setPlans([]);
       setPerformance([]);
-      setChickSupply(null);
+      setStandards([]);
       setLoading(false);
       setMessage(
         currentUser?.is_global_admin
@@ -177,7 +311,7 @@ export default function BroilerHomePage() {
     try {
       const query = `?company_id=${activeCompanyId}`;
 
-      const [plansResponse, performanceResponse, chickResponse] =
+      const [plansResponse, performanceResponse, standardsResponse] =
         await Promise.all([
           authenticatedFetch(
             `${API_BASE}/api/broilers/demand-plans${query}`,
@@ -188,7 +322,7 @@ export default function BroilerHomePage() {
             { cache: "no-store" },
           ),
           authenticatedFetch(
-            `${API_BASE}/api/broilers/chick-supply-summary${query}`,
+            `${API_BASE}/api/standards?module=Broilers`,
             { cache: "no-store" },
           ),
         ]);
@@ -205,8 +339,8 @@ export default function BroilerHomePage() {
         performanceResponse.ok ? await performanceResponse.json() : [],
       );
 
-      setChickSupply(
-        chickResponse.ok ? await chickResponse.json() : null,
+      setStandards(
+        standardsResponse.ok ? await standardsResponse.json() : [],
       );
     } catch (error) {
       console.error(error);
@@ -224,122 +358,222 @@ export default function BroilerHomePage() {
     void loadData();
   }, [loadData]);
 
-  const position = useMemo(() => {
+  const farmSummaries = useMemo(() => {
     const latest = latestByPlan(performance);
-
-    const plannedBirds = plans.reduce(
-      (sum, plan) => sum + num(plan.planned_birds),
-      0,
-    );
-
-    const requiredChicks = plans.reduce(
-      (sum, plan) => sum + num(plan.required_chicks),
-      0,
-    );
-
-    const availableChicks = num(chickSupply?.available_chicks);
-    const chickBalance = availableChicks - requiredChicks;
-
-    let liveForecastBirds = 0;
-    let activeFlocks = 0;
-
-    const weekly = new Map<string, WeeklyPosition>();
+    const farmMap = new Map<number, FarmSummary>();
 
     for (const plan of plans) {
-      const planBirds = num(plan.planned_birds);
       const latestRow = latest.get(plan.id);
-      const forecastBirds =
-        latestRow && num(latestRow.closing_birds) > 0
-          ? num(latestRow.closing_birds)
-          : planBirds;
 
-      if (latestRow) {
-        activeFlocks += 1;
-        liveForecastBirds += forecastBirds;
+      if (!latestRow) {
+        continue;
       }
 
-      const week = weekEndingSunday(plan.processing_date);
-      if (!week) continue;
+      const farmId = plan.farm_id;
+      const farmName =
+        latestRow.farm_name ||
+        plan.farm_name ||
+        `Farm ${farmId}`;
+
+      const plannedBirds = num(plan.planned_birds);
+      const currentBirds =
+        num(latestRow.closing_birds) > 0
+          ? num(latestRow.closing_birds)
+          : plannedBirds;
+
+      const age = num(latestRow.age_days);
+      const bodyweightKg = num(
+        latestRow.body_weight_kg ?? latestRow.avg_weight_kg,
+      );
+
+      const standard = standardForAge(standards, age);
+
+      const standardWeightKg =
+        standard?.body_weight_g !== null &&
+        standard?.body_weight_g !== undefined
+          ? num(standard.body_weight_g) / 1000
+          : null;
+
+      const standardFeedG =
+        standard?.feed_avg_g_bird_day !== null &&
+        standard?.feed_avg_g_bird_day !== undefined
+          ? num(standard.feed_avg_g_bird_day)
+          : null;
+
+      const mortalityStandardPct =
+        standard?.mortality_pct !== null &&
+        standard?.mortality_pct !== undefined
+          ? num(standard.mortality_pct)
+          : null;
+
+      const bwVariancePct =
+        standardWeightKg &&
+        standardWeightKg > 0 &&
+        bodyweightKg > 0
+          ? ((bodyweightKg - standardWeightKg) / standardWeightKg) * 100
+          : null;
+
+      const mortalityPct =
+        latestRow.cumulative_mortality_pct !== null &&
+        latestRow.cumulative_mortality_pct !== undefined
+          ? num(latestRow.cumulative_mortality_pct)
+          : null;
+
+      const feedGBird =
+        latestRow.feed_per_bird_g !== null &&
+        latestRow.feed_per_bird_g !== undefined
+          ? num(latestRow.feed_per_bird_g)
+          : null;
+
+      const feedVarianceG =
+        feedGBird !== null && standardFeedG !== null
+          ? feedGBird - standardFeedG
+          : null;
+
+      const { severity, score } = severityForShed(
+        bwVariancePct,
+        mortalityPct,
+        mortalityStandardPct,
+        feedVarianceG,
+      );
+
+      const shed: FarmShedSummary = {
+        planId: plan.id,
+        shedName:
+          latestRow.shed_name ||
+          plan.shed_name ||
+          `Shed ${plan.shed_id}`,
+        cycleCode:
+          latestRow.cycle_code ||
+          plan.cycle_code ||
+          `Cycle ${plan.id}`,
+        age,
+        currentBirds,
+        bwVariancePct,
+        mortalityPct,
+        feedVarianceG,
+        processingDate: plan.processing_date,
+        severity,
+        score,
+      };
 
       const existing =
-        weekly.get(week) ??
+        farmMap.get(farmId) ??
         ({
-          weekEnding: week,
+          farmId,
+          farmName,
+          activeFlocks: 0,
+          currentBirds: 0,
           plannedBirds: 0,
-          forecastBirds: 0,
-          cycles: 0,
-          gap: 0,
-        } satisfies WeeklyPosition);
+          forecastGap: 0,
+          avgBwVariancePct: null,
+          avgMortalityPct: null,
+          avgFeedVarianceG: null,
+          shedsNeedingAttention: 0,
+          nextProcessingDate: null,
+          severity: "good",
+          worstSheds: [],
+        } satisfies FarmSummary);
 
-      existing.plannedBirds += planBirds;
-      existing.forecastBirds += forecastBirds;
-      existing.cycles += 1;
-      existing.gap = existing.forecastBirds - existing.plannedBirds;
+      existing.activeFlocks += 1;
+      existing.currentBirds += currentBirds;
+      existing.plannedBirds += plannedBirds;
+      existing.forecastGap =
+        existing.currentBirds - existing.plannedBirds;
 
-      weekly.set(week, existing);
+      if (severity !== "good") {
+        existing.shedsNeedingAttention += 1;
+      }
+
+      existing.worstSheds.push(shed);
+
+      if (
+        plan.processing_date &&
+        (!existing.nextProcessingDate ||
+          plan.processing_date < existing.nextProcessingDate)
+      ) {
+        existing.nextProcessingDate = plan.processing_date;
+      }
+
+      farmMap.set(farmId, existing);
     }
 
-    const weeks = [...weekly.values()]
-      .sort((a, b) => a.weekEnding.localeCompare(b.weekEnding))
-      .slice(0, 8);
+    const result = [...farmMap.values()].map((farm) => {
+      farm.avgBwVariancePct = average(
+        farm.worstSheds.map((shed) => shed.bwVariancePct),
+      );
 
-    const exceptions = weeks
-      .filter((week) => week.gap < 0)
-      .sort((a, b) => a.gap - b.gap)
-      .slice(0, 4);
+      farm.avgMortalityPct = average(
+        farm.worstSheds.map((shed) => shed.mortalityPct),
+      );
 
-    const activeExceptions = plans
-      .map((plan) => {
-        const latestRow = latest.get(plan.id);
-        if (!latestRow) return null;
+      farm.avgFeedVarianceG = average(
+        farm.worstSheds.map((shed) => shed.feedVarianceG),
+      );
 
-        const planned = num(plan.planned_birds);
-        const current = num(latestRow.closing_birds);
-        const loss = planned - current;
-        const lossPct = planned > 0 ? (loss / planned) * 100 : 0;
+      farm.worstSheds.sort((a, b) => b.score - a.score);
 
-        if (loss <= 0 || lossPct < 2) return null;
+      farm.severity =
+        farm.worstSheds.some((shed) => shed.severity === "high")
+          ? "high"
+          : farm.worstSheds.some((shed) => shed.severity === "watch")
+            ? "watch"
+            : "good";
 
-        return {
-          id: plan.id,
-          label: `${plan.farm_name || "Farm"} · ${plan.shed_name || "Shed"}`,
-          cycle: plan.cycle_code || `Cycle ${plan.id}`,
-          loss,
-          lossPct,
-          processingDate: plan.processing_date,
-        };
-      })
-      .filter(Boolean)
-      .sort((a, b) => (b?.loss ?? 0) - (a?.loss ?? 0))
-      .slice(0, 4) as Array<{
-        id: number;
-        label: string;
-        cycle: string;
-        loss: number;
-        lossPct: number;
-        processingDate?: string | null;
-      }>;
+      farm.worstSheds = farm.worstSheds.slice(0, 3);
+
+      return farm;
+    });
+
+    return result.sort((a, b) => {
+      const severityDifference =
+        severityRank(b.severity) - severityRank(a.severity);
+
+      if (severityDifference !== 0) {
+        return severityDifference;
+      }
+
+      return a.farmName.localeCompare(b.farmName);
+    });
+  }, [plans, performance, standards]);
+
+  const totals = useMemo(() => {
+    const activeFarms = farmSummaries.length;
+
+    const activeFlocks = farmSummaries.reduce(
+      (sum, farm) => sum + farm.activeFlocks,
+      0,
+    );
+
+    const currentBirds = farmSummaries.reduce(
+      (sum, farm) => sum + farm.currentBirds,
+      0,
+    );
+
+    const farmsNeedingAttention = farmSummaries.filter(
+      (farm) => farm.severity !== "good",
+    ).length;
 
     return {
-      plannedBirds,
-      requiredChicks,
-      availableChicks,
-      chickBalance,
+      activeFarms,
       activeFlocks,
-      liveForecastBirds,
-      weeks,
-      exceptions,
-      activeExceptions,
+      currentBirds,
+      farmsNeedingAttention,
     };
-  }, [plans, performance, chickSupply]);
+  }, [farmSummaries]);
 
   return (
     <OviCoreShell module="broilers">
       <OviCoreModuleHeader
         eyebrow="OviCore Broiler Production"
         title="Broiler Overview"
-        description="A simple control view: are placements, chick supply and growing flocks still on track to deliver the production plan?"
+        description="Farm-level command view: see which farms are stable, which need attention, and where to drill into shed-level Intelligence."
         actions={[
+          {
+            label: "Supply & Demand",
+            href: "/broilers/demand-planner",
+            type: "primary",
+          },
           {
             label: "Refresh",
             type: "refresh",
@@ -349,186 +583,234 @@ export default function BroilerHomePage() {
       />
 
       {userError || message ? (
-        <div className="bo-message">{userError || message}</div>
+        <div className="bf-message">{userError || message}</div>
       ) : null}
 
-      <section className="bo-kpis">
+      <section className="bf-kpis">
         <article>
-          <span>Planned Processing Birds</span>
-          <strong>{fmt(position.plannedBirds)}</strong>
-          <p>Current placement plan total.</p>
-        </article>
-
-        <article>
-          <span>Forecast Supply</span>
-          <strong>{fmt(position.liveForecastBirds || position.plannedBirds)}</strong>
-          <p>Latest closing birds where Daily Data exists.</p>
-        </article>
-
-        <article>
-          <span>Chick Balance</span>
-          <strong className={position.chickBalance < 0 ? "bad" : "good"}>
-            {position.chickBalance > 0 ? "+" : ""}
-            {fmt(position.chickBalance)}
-          </strong>
-          <p>Available chicks less required chicks.</p>
+          <span>Active Farms</span>
+          <strong>{fmt(totals.activeFarms)}</strong>
+          <p>Farms currently reporting Broiler Daily Data.</p>
         </article>
 
         <article>
           <span>Active Flocks</span>
-          <strong>{fmt(position.activeFlocks)}</strong>
-          <p>Cycles currently reporting Daily Data.</p>
+          <strong>{fmt(totals.activeFlocks)}</strong>
+          <p>Active sheds/cycles across the farms you can access.</p>
+        </article>
+
+        <article>
+          <span>Current Birds</span>
+          <strong>{fmt(totals.currentBirds)}</strong>
+          <p>Latest closing-bird position across active flocks.</p>
+        </article>
+
+        <article>
+          <span>Farms Needing Attention</span>
+          <strong className={totals.farmsNeedingAttention > 0 ? "bf-bad" : "bf-good"}>
+            {fmt(totals.farmsNeedingAttention)}
+          </strong>
+          <p>At least one shed is currently on Watch or High.</p>
         </article>
       </section>
 
-      <section className="bo-card">
-        <div className="bo-head">
+      <section className="bf-summary-card">
+        <div className="bf-section-head">
           <div>
-            <p className="bo-eyebrow">Forward Position</p>
-            <h2>Supply against the current plan</h2>
+            <p className="bf-eyebrow">Farm Command View</p>
+            <h2>Your Broiler farms</h2>
             <p>
-              Planned birds are the current planning requirement. Forecast birds
-              switch to the latest live closing-bird position once a flock is
-              reporting Daily Data.
+              OviCore rolls shed-level Daily Data into a farm-level position.
+              Open the shed in Intelligence when you need the detailed diagnosis.
             </p>
           </div>
-
-          <a href="/broilers/demand-planner">Open Supply & Demand</a>
         </div>
 
-        <div className="bo-table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Processing Week</th>
-                <th>Cycles</th>
-                <th>Plan</th>
-                <th>Forecast</th>
-                <th>Gap</th>
-                <th>Status</th>
-              </tr>
-            </thead>
+        {loading ? (
+          <div className="bf-empty">Loading farm position...</div>
+        ) : farmSummaries.length === 0 ? (
+          <div className="bf-empty">
+            No active Broiler flock data is currently available.
+          </div>
+        ) : (
+          <div className="bf-farm-grid">
+            {farmSummaries.map((farm) => (
+              <article
+                key={farm.farmId}
+                className={`bf-farm-card bf-farm-${farm.severity}`}
+              >
+                <div className="bf-farm-top">
+                  <div>
+                    <p className="bf-eyebrow">Farm</p>
+                    <h3>{farm.farmName}</h3>
+                  </div>
 
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={6}>Loading production position...</td>
-                </tr>
-              ) : position.weeks.length === 0 ? (
-                <tr>
-                  <td colSpan={6}>No processing weeks are currently planned.</td>
-                </tr>
-              ) : (
-                position.weeks.map((week) => {
-                  const gapPct =
-                    week.plannedBirds > 0
-                      ? (week.gap / week.plannedBirds) * 100
-                      : 0;
+                  <span className={`bf-severity bf-${farm.severity}`}>
+                    {farm.severity === "high"
+                      ? "HIGH"
+                      : farm.severity === "watch"
+                        ? "WATCH"
+                        : "STABLE"}
+                  </span>
+                </div>
 
-                  const status =
-                    gapPct <= -3
-                      ? "Short"
-                      : gapPct < 0
-                        ? "Watch"
-                        : "Covered";
+                <div className="bf-farm-kpis">
+                  <div>
+                    <span>Active sheds</span>
+                    <strong>{farm.activeFlocks}</strong>
+                  </div>
 
-                  return (
-                    <tr key={week.weekEnding}>
-                      <td>{displayDate(week.weekEnding)}</td>
-                      <td>{fmt(week.cycles)}</td>
-                      <td>{fmt(week.plannedBirds)}</td>
-                      <td>{fmt(week.forecastBirds)}</td>
-                      <td className={week.gap < 0 ? "bad" : "good"}>
-                        {week.gap > 0 ? "+" : ""}
-                        {fmt(week.gap)}
-                      </td>
-                      <td>
-                        <span className={`bo-status bo-${status.toLowerCase()}`}>
-                          {status}
+                  <div>
+                    <span>Current birds</span>
+                    <strong>{fmt(farm.currentBirds)}</strong>
+                  </div>
+
+                  <div>
+                    <span>BW variance</span>
+                    <strong
+                      className={
+                        farm.avgBwVariancePct !== null &&
+                        farm.avgBwVariancePct <= -2.5
+                          ? "bf-bad"
+                          : ""
+                      }
+                    >
+                      {signed(farm.avgBwVariancePct, 1, "%")}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span>Cum mortality</span>
+                    <strong>{fmt(farm.avgMortalityPct, 2)}%</strong>
+                  </div>
+
+                  <div>
+                    <span>Feed variance</span>
+                    <strong
+                      className={
+                        farm.avgFeedVarianceG !== null &&
+                        farm.avgFeedVarianceG <= -4
+                          ? "bf-bad"
+                          : ""
+                      }
+                    >
+                      {signed(farm.avgFeedVarianceG, 1, "g")}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span>Next process</span>
+                    <strong>{displayDate(farm.nextProcessingDate)}</strong>
+                  </div>
+                </div>
+
+                <div className="bf-farm-position">
+                  <div>
+                    <span>Forecast bird position</span>
+                    <strong className={farm.forecastGap < 0 ? "bf-bad" : "bf-good"}>
+                      {farm.forecastGap > 0 ? "+" : ""}
+                      {fmt(farm.forecastGap)}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span>Sheds needing attention</span>
+                    <strong
+                      className={farm.shedsNeedingAttention > 0 ? "bf-bad" : "bf-good"}
+                    >
+                      {farm.shedsNeedingAttention}
+                    </strong>
+                  </div>
+                </div>
+
+                <div className="bf-shed-list">
+                  <div className="bf-shed-list-head">
+                    <span>Priority sheds</span>
+                    <small>Click for shed Intelligence</small>
+                  </div>
+
+                  {farm.worstSheds.map((shed) => (
+                    <a
+                      key={shed.planId}
+                      href={`/broilers/intelligence?plan_id=${shed.planId}`}
+                      className="bf-shed-row"
+                    >
+                      <div className="bf-shed-name">
+                        <strong>{shed.shedName}</strong>
+                        <span>
+                          {shed.cycleCode} · Day {shed.age}
                         </span>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                      </div>
+
+                      <div className="bf-shed-metric">
+                        <span>BW</span>
+                        <b>{signed(shed.bwVariancePct, 1, "%")}</b>
+                      </div>
+
+                      <div className="bf-shed-metric">
+                        <span>Mort</span>
+                        <b>{fmt(shed.mortalityPct, 2)}%</b>
+                      </div>
+
+                      <div className="bf-shed-metric">
+                        <span>Feed</span>
+                        <b>{signed(shed.feedVarianceG, 1, "g")}</b>
+                      </div>
+
+                      <span className={`bf-row-status bf-${shed.severity}`}>
+                        {shed.severity === "high"
+                          ? "HIGH"
+                          : shed.severity === "watch"
+                            ? "WATCH"
+                            : "OK"}
+                      </span>
+                    </a>
+                  ))}
+                </div>
+
+                <div className="bf-farm-footer">
+                  <a href={`/broilers/intelligence?farm_id=${farm.farmId}`}>
+                    View farm sheds
+                  </a>
+
+                  <span>
+                    {farm.shedsNeedingAttention === 0
+                      ? "No current shed exception"
+                      : `${farm.shedsNeedingAttention} shed${
+                          farm.shedsNeedingAttention === 1 ? "" : "s"
+                        } need review`}
+                  </span>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
       </section>
 
-      <section className="bo-two">
-        <article className="bo-card">
-          <div className="bo-head">
-            <div>
-              <p className="bo-eyebrow">Plan Risk</p>
-              <h2>Weeks needing attention</h2>
-            </div>
-          </div>
+      <section className="bf-quick-actions">
+        <a href="/broilers/performance">
+          <span>Daily Data Entry</span>
+          <small>Update today's shed data</small>
+        </a>
 
-          <div className="bo-exceptions">
-            {position.exceptions.length === 0 ? (
-              <div className="bo-ok">
-                No current processing week is forecast below its planned bird
-                position.
-              </div>
-            ) : (
-              position.exceptions.map((week) => (
-                <div className="bo-exception" key={week.weekEnding}>
-                  <div>
-                    <strong>{displayDate(week.weekEnding)}</strong>
-                    <span>Forecast processing shortfall</span>
-                  </div>
-                  <b>{fmt(Math.abs(week.gap))} birds</b>
-                </div>
-              ))
-            )}
-          </div>
-        </article>
+        <a href="/paper-capture">
+          <span>Paper Capture</span>
+          <small>Capture completed shed sheets</small>
+        </a>
 
-        <article className="bo-card">
-          <div className="bo-head">
-            <div>
-              <p className="bo-eyebrow">Live Flock Risk</p>
-              <h2>Flocks reducing supply</h2>
-            </div>
+        <a href="/broilers/demand-planner">
+          <span>Supply & Demand</span>
+          <small>Review forward production coverage</small>
+        </a>
 
-            <a href="/broilers/intelligence">Open Intelligence</a>
-          </div>
-
-          <div className="bo-exceptions">
-            {position.activeExceptions.length === 0 ? (
-              <div className="bo-ok">
-                No active flock is more than 2% below its original planned bird
-                position.
-              </div>
-            ) : (
-              position.activeExceptions.map((item) => (
-                <a
-                  className="bo-exception bo-exception-link"
-                  href={`/broilers/intelligence?plan_id=${item.id}`}
-                  key={item.id}
-                >
-                  <div>
-                    <strong>{item.label}</strong>
-                    <span>
-                      {item.cycle}
-                      {item.processingDate
-                        ? ` · process ${displayDate(item.processingDate)}`
-                        : ""}
-                    </span>
-                  </div>
-                  <b>
-                    -{fmt(item.loss)} · {item.lossPct.toFixed(1)}%
-                  </b>
-                </a>
-              ))
-            )}
-          </div>
-        </article>
+        <a href="/broilers/intelligence">
+          <span>Intelligence</span>
+          <small>Diagnose shed-level performance</small>
+        </a>
       </section>
 
       <style jsx>{`
-        .bo-message {
+        .bf-message {
           margin: 12px 0;
           padding: 10px 12px;
           border: 1px solid #e2d6c3;
@@ -539,23 +821,23 @@ export default function BroilerHomePage() {
           font-weight: 750;
         }
 
-        .bo-kpis {
+        .bf-kpis {
           display: grid;
           grid-template-columns: repeat(4, minmax(0, 1fr));
           gap: 9px;
-          margin: 14px 0;
+          margin: 14px 0 10px;
         }
 
-        .bo-kpis article {
-          padding: 14px;
+        .bf-kpis article {
+          padding: 13px 14px;
           border: 1px solid #dce9e2;
           border-radius: 12px;
           background: #fff;
           box-shadow: 0 7px 18px rgba(22, 71, 54, 0.05);
         }
 
-        .bo-kpis span,
-        .bo-eyebrow {
+        .bf-kpis span,
+        .bf-eyebrow {
           color: #60756c;
           font-size: 8px;
           font-weight: 900;
@@ -563,22 +845,21 @@ export default function BroilerHomePage() {
           text-transform: uppercase;
         }
 
-        .bo-kpis strong {
+        .bf-kpis strong {
           display: block;
           margin-top: 4px;
           color: #0c573d;
-          font-size: 24px;
+          font-size: 23px;
         }
 
-        .bo-kpis p {
+        .bf-kpis p {
           margin: 3px 0 0;
           color: #71847c;
           font-size: 9px;
           line-height: 1.35;
         }
 
-        .bo-card {
-          margin-bottom: 10px;
+        .bf-summary-card {
           overflow: hidden;
           border: 1px solid #dce9e2;
           border-radius: 14px;
@@ -586,188 +867,342 @@ export default function BroilerHomePage() {
           box-shadow: 0 8px 22px rgba(20, 70, 52, 0.055);
         }
 
-        .bo-head {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 16px;
+        .bf-section-head {
           padding: 13px 15px;
           border-bottom: 1px solid #e6eee9;
         }
 
-        .bo-head h2 {
+        .bf-section-head h2 {
           margin: 2px 0 0;
           color: #123e2f;
           font-size: 17px;
         }
 
-        .bo-head p:not(.bo-eyebrow) {
-          max-width: 820px;
+        .bf-section-head p:not(.bf-eyebrow) {
+          max-width: 900px;
           margin: 3px 0 0;
           color: #6d8078;
           font-size: 9px;
           line-height: 1.4;
         }
 
-        .bo-head a {
-          flex: 0 0 auto;
-          padding: 8px 11px;
-          border: 1px solid #cfe0d7;
-          border-radius: 8px;
-          color: #0b6747;
-          text-decoration: none;
-          font-size: 9px;
-          font-weight: 900;
-        }
-
-        .bo-table-wrap {
-          overflow-x: auto;
-        }
-
-        table {
-          width: 100%;
-          border-collapse: collapse;
-        }
-
-        th,
-        td {
-          padding: 9px 12px;
-          border-bottom: 1px solid #edf2ef;
-          text-align: right;
-          color: #345449;
+        .bf-empty {
+          padding: 24px;
+          color: #71847c;
           font-size: 10px;
+          text-align: center;
         }
 
-        th {
-          background: #f8fbf9;
-          color: #657c72;
-          font-size: 8px;
-          font-weight: 900;
-          letter-spacing: 0.04em;
-          text-transform: uppercase;
-        }
-
-        th:first-child,
-        td:first-child {
-          text-align: left;
-        }
-
-        .good {
-          color: #117044 !important;
-        }
-
-        .bad {
-          color: #b03a34 !important;
-        }
-
-        .bo-status {
-          display: inline-flex;
-          min-width: 58px;
-          justify-content: center;
-          padding: 4px 7px;
-          border-radius: 999px;
-          font-size: 8px;
-          font-weight: 900;
-        }
-
-        .bo-covered {
-          background: #e8f6ed;
-          color: #147044;
-        }
-
-        .bo-watch {
-          background: #fff3d9;
-          color: #9a6508;
-        }
-
-        .bo-short {
-          background: #fde8e6;
-          color: #a63832;
-        }
-
-        .bo-two {
+        .bf-farm-grid {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 10px;
+          padding: 10px;
+          background: #f8fbf9;
         }
 
-        .bo-exceptions {
+        .bf-farm-card {
+          overflow: hidden;
+          border: 1px solid #dce8e1;
+          border-radius: 12px;
+          background: #fff;
+        }
+
+        .bf-farm-high {
+          border-color: #eccdca;
+        }
+
+        .bf-farm-watch {
+          border-color: #ecdcb3;
+        }
+
+        .bf-farm-top {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 10px;
+          padding: 12px 13px 9px;
+        }
+
+        .bf-farm-top h3 {
+          margin: 2px 0 0;
+          color: #123e2f;
+          font-size: 16px;
+        }
+
+        .bf-severity,
+        .bf-row-status {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 999px;
+          font-weight: 950;
+          letter-spacing: 0.04em;
+        }
+
+        .bf-severity {
+          min-width: 58px;
+          padding: 5px 8px;
+          font-size: 8px;
+        }
+
+        .bf-good {
+          color: #147044 !important;
+        }
+
+        .bf-bad {
+          color: #b03a34 !important;
+        }
+
+        .bf-severity.bf-good,
+        .bf-row-status.bf-good {
+          background: #e8f6ed;
+          color: #147044 !important;
+        }
+
+        .bf-severity.bf-watch,
+        .bf-row-status.bf-watch {
+          background: #fff3d9;
+          color: #996406 !important;
+        }
+
+        .bf-severity.bf-high,
+        .bf-row-status.bf-high {
+          background: #fde8e6;
+          color: #a83a34 !important;
+        }
+
+        .bf-farm-kpis {
           display: grid;
-          gap: 7px;
-          padding: 10px 12px 12px;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 1px;
+          margin: 0 12px 10px;
+          overflow: hidden;
+          border: 1px solid #e5ece8;
+          border-radius: 9px;
+          background: #e5ece8;
         }
 
-        .bo-exception,
-        .bo-ok {
+        .bf-farm-kpis > div {
+          min-width: 0;
+          padding: 8px 9px;
+          background: #fbfdfc;
+        }
+
+        .bf-farm-kpis span,
+        .bf-farm-position span,
+        .bf-shed-metric span {
+          display: block;
+          color: #74887f;
+          font-size: 7px;
+          font-weight: 850;
+          text-transform: uppercase;
+        }
+
+        .bf-farm-kpis strong {
+          display: block;
+          margin-top: 2px;
+          color: #244c3c;
+          font-size: 13px;
+        }
+
+        .bf-farm-position {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 8px;
+          padding: 0 12px 10px;
+        }
+
+        .bf-farm-position > div {
+          padding: 8px 9px;
+          border: 1px solid #e3ece7;
+          border-radius: 9px;
+          background: #fff;
+        }
+
+        .bf-farm-position strong {
+          display: block;
+          margin-top: 2px;
+          color: #244c3c;
+          font-size: 13px;
+        }
+
+        .bf-shed-list {
+          margin: 0 12px 10px;
+          overflow: hidden;
+          border: 1px solid #e4ece8;
+          border-radius: 9px;
+        }
+
+        .bf-shed-list-head {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          gap: 12px;
-          padding: 10px 11px;
-          border-radius: 10px;
-          background: #fafcfb;
+          gap: 8px;
+          padding: 7px 9px;
+          background: #f8fbf9;
+          border-bottom: 1px solid #e9efec;
         }
 
-        .bo-exception {
-          border: 1px solid #eed5d2;
-          background: #fffafa;
+        .bf-shed-list-head span {
+          color: #436054;
+          font-size: 8px;
+          font-weight: 900;
+          text-transform: uppercase;
         }
 
-        .bo-exception-link {
+        .bf-shed-list-head small {
+          color: #84948d;
+          font-size: 7px;
+        }
+
+        .bf-shed-row {
+          display: grid;
+          grid-template-columns:
+            minmax(150px, 1.4fr)
+            minmax(52px, 0.55fr)
+            minmax(52px, 0.55fr)
+            minmax(52px, 0.55fr)
+            auto;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 9px;
+          border-bottom: 1px solid #edf2ef;
           color: inherit;
           text-decoration: none;
         }
 
-        .bo-exception div {
+        .bf-shed-row:last-child {
+          border-bottom: 0;
+        }
+
+        .bf-shed-row:hover {
+          background: #f7fbf8;
+        }
+
+        .bf-shed-name {
           min-width: 0;
         }
 
-        .bo-exception strong,
-        .bo-exception span {
+        .bf-shed-name strong,
+        .bf-shed-name span {
           display: block;
         }
 
-        .bo-exception strong {
-          color: #2a4b3e;
-          font-size: 10px;
-        }
-
-        .bo-exception span {
-          margin-top: 2px;
-          color: #7a8c84;
-          font-size: 8px;
-        }
-
-        .bo-exception b {
-          flex: 0 0 auto;
-          color: #ac3c36;
-          font-size: 10px;
-        }
-
-        .bo-ok {
-          justify-content: flex-start;
-          border: 1px solid #d8e9df;
-          color: #226246;
+        .bf-shed-name strong {
+          color: #274d3e;
           font-size: 9px;
-          font-weight: 700;
         }
 
-        @media (max-width: 1050px) {
-          .bo-kpis,
-          .bo-two {
+        .bf-shed-name span {
+          margin-top: 1px;
+          overflow: hidden;
+          color: #7a8e84;
+          font-size: 7px;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .bf-shed-metric {
+          text-align: right;
+        }
+
+        .bf-shed-metric b {
+          display: block;
+          margin-top: 1px;
+          color: #35584a;
+          font-size: 9px;
+        }
+
+        .bf-row-status {
+          min-width: 45px;
+          padding: 4px 6px;
+          font-size: 7px;
+        }
+
+        .bf-farm-footer {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          padding: 8px 12px;
+          border-top: 1px solid #edf2ef;
+          background: #fbfdfc;
+        }
+
+        .bf-farm-footer a {
+          color: #0b6747;
+          font-size: 8px;
+          font-weight: 900;
+          text-decoration: none;
+        }
+
+        .bf-farm-footer span {
+          color: #7a8c84;
+          font-size: 7px;
+        }
+
+        .bf-quick-actions {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 9px;
+          margin-top: 10px;
+        }
+
+        .bf-quick-actions a {
+          padding: 10px 11px;
+          border: 1px solid #dbe8e1;
+          border-radius: 10px;
+          background: #fff;
+          color: inherit;
+          text-decoration: none;
+        }
+
+        .bf-quick-actions span,
+        .bf-quick-actions small {
+          display: block;
+        }
+
+        .bf-quick-actions span {
+          color: #174f3b;
+          font-size: 9px;
+          font-weight: 900;
+        }
+
+        .bf-quick-actions small {
+          margin-top: 2px;
+          color: #7a8b84;
+          font-size: 7px;
+        }
+
+        @media (max-width: 1100px) {
+          .bf-kpis,
+          .bf-quick-actions {
             grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+
+          .bf-farm-grid {
+            grid-template-columns: 1fr;
           }
         }
 
         @media (max-width: 680px) {
-          .bo-kpis,
-          .bo-two {
+          .bf-kpis,
+          .bf-quick-actions,
+          .bf-farm-position {
             grid-template-columns: 1fr;
           }
 
-          .bo-head {
-            align-items: flex-start;
-            flex-direction: column;
+          .bf-farm-kpis {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+
+          .bf-shed-row {
+            grid-template-columns: minmax(120px, 1fr) auto;
+          }
+
+          .bf-shed-metric {
+            display: none;
           }
         }
       `}</style>
