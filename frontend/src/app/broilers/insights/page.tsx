@@ -2064,11 +2064,11 @@ function ComparisonSvg({
     } | null>(null);
 
   const width = 1200;
-  const height = 430;
+  const height = 285;
   const left = 75;
   const right = 25;
-  const top = 25;
-  const bottom = 50;
+  const top = 18;
+  const bottom = 42;
 
   const plotWidth =
     width - left - right;
@@ -2240,7 +2240,7 @@ function ComparisonSvg({
                       COLOURS.length
                   ]
                 }
-                strokeWidth="4"
+                strokeWidth="3"
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
@@ -2260,7 +2260,7 @@ function ComparisonSvg({
                       cy={y(
                         point.value,
                       )}
-                      r="4"
+                      r="3.5"
                       fill={
                         COLOURS[
                           seriesIndex %
@@ -2276,7 +2276,7 @@ function ComparisonSvg({
                       cy={y(
                         point.value,
                       )}
-                      r="14"
+                      r="11"
                       fill="transparent"
                       onMouseEnter={() =>
                         setHovered({
