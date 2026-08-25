@@ -167,6 +167,7 @@ export default function LoginPage() {
   return (
     <main className="login-page">
       <section className="login-brand-panel">
+        <div className="brand-chicken-image" aria-hidden="true" />
         <div className="brand-overlay" />
 
         <div className="brand-orbit brand-orbit-one" />
@@ -386,6 +387,7 @@ export default function LoginPage() {
         .login-brand-panel {
           position: relative;
           overflow: hidden;
+          isolation: isolate;
           min-height: 100vh;
           background:
             radial-gradient(circle at 17% 14%, rgba(255, 170, 30, 0.16), transparent 25%),
@@ -393,14 +395,51 @@ export default function LoginPage() {
             linear-gradient(145deg, #062a21 0%, #0a4535 48%, #0b6548 100%);
         }
 
+        .brand-chicken-image {
+          position: absolute;
+          inset: -2%;
+          z-index: 0;
+          pointer-events: none;
+          background:
+            linear-gradient(
+              90deg,
+              rgba(6, 42, 33, 0.9) 0%,
+              rgba(6, 42, 33, 0.64) 34%,
+              rgba(8, 71, 53, 0.32) 63%,
+              rgba(10, 94, 66, 0.24) 100%
+            ),
+            linear-gradient(
+              180deg,
+              rgba(5, 36, 28, 0.2) 0%,
+              rgba(8, 72, 53, 0.08) 52%,
+              rgba(7, 58, 43, 0.28) 100%
+            ),
+            url("/assets/login-chickens.jpg");
+          background-size: cover;
+          background-position: 62% center;
+          background-repeat: no-repeat;
+          opacity: 0.34;
+          filter: saturate(0.7) contrast(0.94) blur(0.4px);
+          transform: scale(1.025);
+        }
+
         .brand-overlay {
           position: absolute;
           inset: 0;
+          z-index: 0;
+          pointer-events: none;
           background-image:
-            linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
-          background-size: 52px 52px;
-          mask-image: linear-gradient(to bottom right, #000, transparent 86%);
+            linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px),
+            radial-gradient(circle at 18% 48%, rgba(4, 32, 25, 0.28), transparent 40%),
+            linear-gradient(
+              135deg,
+              rgba(5, 37, 29, 0.18) 0%,
+              rgba(8, 68, 51, 0.04) 48%,
+              rgba(11, 101, 72, 0.08) 100%
+            );
+          background-size: 52px 52px, 52px 52px, 100% 100%, 100% 100%;
+          mask-image: linear-gradient(to bottom right, #000, transparent 92%);
         }
 
         .brand-orbit {
