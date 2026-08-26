@@ -402,8 +402,8 @@ export default function LoginPage() {
           pointer-events: none;
           background-image: url("/assets/login-chickens.jpg");
           background-repeat: no-repeat;
-          background-size: auto 94%;
-          background-position: 90% 54%;
+          background-size: auto 72%;
+          background-position: 94% 56%;
           opacity: 0.88;
           filter: contrast(1.18) brightness(1.14) saturate(0.82);
         }
@@ -872,8 +872,8 @@ export default function LoginPage() {
           }
 
           .brand-chicken-image {
-            background-size: auto 86%;
-            background-position: 116% 52%;
+            background-size: auto 66%;
+            background-position: 102% 56%;
             opacity: 0.92;
           }
 
@@ -938,8 +938,8 @@ export default function LoginPage() {
           }
 
           .brand-chicken-image {
-            background-size: auto 76%;
-            background-position: 135% 54%;
+            background-size: auto 58%;
+            background-position: 108% 57%;
             opacity: 0.96;
           }
 
