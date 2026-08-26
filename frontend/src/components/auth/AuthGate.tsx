@@ -34,10 +34,20 @@ export default function AuthGate({
   const pathname = usePathname();
   const router = useRouter();
   const [authorised, setAuthorised] = useState(pathname === "/login");
+  const [sessionChecked, setSessionChecked] = useState(false);
 
   useEffect(() => {
+    // The login page is public. Reset the protected-route check so that
+    // the next successful login validates the new session exactly once.
     if (pathname === "/login") {
       setAuthorised(true);
+      setSessionChecked(false);
+      return;
+    }
+
+    // Once this mounted AuthGate has validated the session, do not block
+    // every client-side route change with another /api/auth/me request.
+    if (sessionChecked) {
       return;
     }
 
@@ -49,6 +59,7 @@ export default function AuthGate({
     }, AUTH_CHECK_TIMEOUT_MS);
 
     async function checkSession() {
+      // Only show the session-check screen for the initial protected load.
       setAuthorised(false);
 
       try {
@@ -64,6 +75,7 @@ export default function AuthGate({
 
         if (!cancelled) {
           setAuthorised(true);
+          setSessionChecked(true);
         }
       } catch {
         if (cancelled) return;
@@ -90,7 +102,7 @@ export default function AuthGate({
       window.clearTimeout(timeoutId);
       controller.abort();
     };
-  }, [pathname, router]);
+  }, [pathname, router, sessionChecked]);
 
   useEffect(() => {
     if (!authorised || pathname === "/login") return;
