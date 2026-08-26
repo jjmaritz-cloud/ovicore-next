@@ -402,10 +402,42 @@ export default function LoginPage() {
           pointer-events: none;
           background-image: url("/assets/login-chickens.jpg");
           background-repeat: no-repeat;
-          background-size: auto 72%;
-          background-position: 94% 56%;
-          opacity: 0.88;
-          filter: contrast(1.18) brightness(1.14) saturate(0.82);
+          background-size: 78% auto;
+          background-position: 118% 56%;
+          opacity: 0.82;
+          filter: contrast(1.14) brightness(1.08) saturate(0.78);
+          -webkit-mask-image:
+            linear-gradient(
+              to bottom,
+              transparent 0%,
+              #000 10%,
+              #000 88%,
+              transparent 100%
+            ),
+            linear-gradient(
+              to right,
+              transparent 0%,
+              rgba(0, 0, 0, 0.55) 24%,
+              #000 54%,
+              #000 100%
+            );
+          -webkit-mask-composite: source-in;
+          mask-image:
+            linear-gradient(
+              to bottom,
+              transparent 0%,
+              #000 10%,
+              #000 88%,
+              transparent 100%
+            ),
+            linear-gradient(
+              to right,
+              transparent 0%,
+              rgba(0, 0, 0, 0.55) 24%,
+              #000 54%,
+              #000 100%
+            );
+          mask-composite: intersect;
         }
 
         .brand-overlay {
@@ -416,11 +448,11 @@ export default function LoginPage() {
           background:
             linear-gradient(
               90deg,
-              rgba(5, 37, 29, 0.86) 0%,
-              rgba(5, 37, 29, 0.66) 32%,
-              rgba(7, 62, 47, 0.26) 58%,
-              rgba(8, 82, 59, 0.08) 82%,
-              rgba(8, 82, 59, 0.03) 100%
+              rgba(5, 37, 29, 0.84) 0%,
+              rgba(5, 37, 29, 0.62) 30%,
+              rgba(7, 62, 47, 0.22) 58%,
+              rgba(8, 82, 59, 0.05) 82%,
+              transparent 100%
             ),
             linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
             linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
@@ -872,9 +904,9 @@ export default function LoginPage() {
           }
 
           .brand-chicken-image {
-            background-size: auto 66%;
-            background-position: 102% 56%;
-            opacity: 0.92;
+            background-size: 86% auto;
+            background-position: 132% 58%;
+            opacity: 0.84;
           }
 
           .brand-overlay {
@@ -938,9 +970,9 @@ export default function LoginPage() {
           }
 
           .brand-chicken-image {
-            background-size: auto 58%;
-            background-position: 108% 57%;
-            opacity: 0.96;
+            background-size: 96% auto;
+            background-position: 150% 60%;
+            opacity: 0.82;
           }
 
           .brand-overlay {
