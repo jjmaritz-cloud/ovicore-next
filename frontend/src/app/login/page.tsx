@@ -167,7 +167,6 @@ export default function LoginPage() {
   return (
     <main className="login-page">
       <section className="login-brand-panel">
-        <div className="brand-chicken-image" aria-hidden="true" />
         <div className="brand-overlay" />
 
         <div className="brand-orbit brand-orbit-one" />
@@ -387,76 +386,22 @@ export default function LoginPage() {
         .login-brand-panel {
           position: relative;
           overflow: hidden;
-          isolation: isolate;
           min-height: 100vh;
-          background:
-            radial-gradient(circle at 17% 14%, rgba(255, 170, 30, 0.16), transparent 25%),
-            radial-gradient(circle at 82% 76%, rgba(55, 185, 119, 0.18), transparent 32%),
-            linear-gradient(145deg, #062a21 0%, #0a4535 48%, #0b6548 100%);
-        }
-
-        .brand-chicken-image {
-          position: absolute;
-          inset: 0;
-          z-index: 0;
-          pointer-events: none;
-          background-image: url("/assets/login-chickens.jpg");
+          background-color: #064233;
+          background-image: url("/assets/login-poultry-bg.jpg");
+          background-size: cover;
+          background-position: 58% center;
           background-repeat: no-repeat;
-          background-size: 78% auto;
-          background-position: 118% 56%;
-          opacity: 0.82;
-          filter: contrast(1.14) brightness(1.08) saturate(0.78);
-          -webkit-mask-image:
-            linear-gradient(
-              to bottom,
-              transparent 0%,
-              #000 10%,
-              #000 88%,
-              transparent 100%
-            ),
-            linear-gradient(
-              to right,
-              transparent 0%,
-              rgba(0, 0, 0, 0.55) 24%,
-              #000 54%,
-              #000 100%
-            );
-          -webkit-mask-composite: source-in;
-          mask-image:
-            linear-gradient(
-              to bottom,
-              transparent 0%,
-              #000 10%,
-              #000 88%,
-              transparent 100%
-            ),
-            linear-gradient(
-              to right,
-              transparent 0%,
-              rgba(0, 0, 0, 0.55) 24%,
-              #000 54%,
-              #000 100%
-            );
-          mask-composite: intersect;
         }
 
         .brand-overlay {
           position: absolute;
           inset: 0;
-          z-index: 0;
-          pointer-events: none;
-          background:
-            linear-gradient(
-              90deg,
-              rgba(5, 37, 29, 0.84) 0%,
-              rgba(5, 37, 29, 0.62) 30%,
-              rgba(7, 62, 47, 0.22) 58%,
-              rgba(8, 82, 59, 0.05) 82%,
-              transparent 100%
-            ),
-            linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
-          background-size: 100% 100%, 52px 52px, 52px 52px;
+          background-image:
+            linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+          background-size: 52px 52px;
+          mask-image: linear-gradient(to bottom right, #000, transparent 86%);
         }
 
         .brand-orbit {
@@ -880,113 +825,23 @@ export default function LoginPage() {
         }
 
         @media (max-width: 1280px) and (min-width: 901px) {
-          .login-page {
-            grid-template-columns: minmax(0, 1.02fr) minmax(410px, 0.98fr);
-          }
-
-          .brand-content {
-            padding: 38px 42px;
-            gap: 28px;
-          }
-
-          .brand-message {
-            max-width: 560px;
-            padding: 22px 0 20px;
-          }
-
-          .brand-message h1 {
-            font-size: clamp(42px, 5vw, 60px);
-          }
-
-          .brand-message p {
-            max-width: 500px;
-            font-size: 14px;
-          }
-
-          .brand-chicken-image {
-            background-size: 86% auto;
-            background-position: 132% 58%;
-            opacity: 0.84;
-          }
-
-          .brand-overlay {
-            background:
-              linear-gradient(
-                90deg,
-                rgba(5, 37, 29, 0.9) 0%,
-                rgba(5, 37, 29, 0.7) 38%,
-                rgba(7, 62, 47, 0.2) 68%,
-                rgba(8, 82, 59, 0.04) 100%
-              ),
-              linear-gradient(rgba(255, 255, 255, 0.016) 1px, transparent 1px),
-              linear-gradient(90deg, rgba(255, 255, 255, 0.016) 1px, transparent 1px);
-            background-size: 100% 100%, 46px 46px, 46px 46px;
-          }
-
-          .golden-logo-shell {
-            width: 76px;
-            height: 76px;
-          }
-
-          .golden-logo {
-            width: 72px;
-            height: 72px;
-          }
-
-          .brand-name {
-            font-size: 28px;
-          }
-
-          .brand-capabilities {
-            margin-top: 20px;
-          }
-
-          .brand-capabilities span {
-            min-height: 30px;
-            padding: 0 10px;
-            font-size: 10px;
-          }
-
-          .login-form-panel {
-            padding: 28px;
-          }
-
-          .login-card {
-            width: min(100%, 430px);
+          .login-brand-panel {
+            background-position: 62% center;
           }
         }
 
         @media (max-width: 1050px) and (min-width: 901px) {
-          .login-page {
-            grid-template-columns: minmax(0, 0.92fr) minmax(430px, 1.08fr);
+          .login-brand-panel {
+            background-position: 66% center;
           }
 
           .brand-content {
-            padding: 32px 34px;
+            padding-left: 38px;
+            padding-right: 38px;
           }
 
           .brand-message h1 {
-            font-size: 44px;
-          }
-
-          .brand-chicken-image {
-            background-size: 96% auto;
-            background-position: 150% 60%;
-            opacity: 0.82;
-          }
-
-          .brand-overlay {
-            background:
-              linear-gradient(
-                90deg,
-                rgba(5, 37, 29, 0.92) 0%,
-                rgba(5, 37, 29, 0.73) 42%,
-                rgba(7, 62, 47, 0.16) 76%,
-                rgba(8, 82, 59, 0.02) 100%
-              ),
-              linear-gradient(rgba(255, 255, 255, 0.014) 1px, transparent 1px),
-              linear-gradient(90deg, rgba(255, 255, 255, 0.014) 1px, transparent 1px);
-            background-size: 100% 100%, 42px 42px, 42px 42px;
+            font-size: clamp(42px, 5vw, 58px);
           }
         }
 
