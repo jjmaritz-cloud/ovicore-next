@@ -799,7 +799,7 @@ function CommercialLayerPerformanceContent() {
           padding: 7px 10px 8px;
           box-sizing: border-box;
           display: grid;
-          grid-template-rows: auto auto auto minmax(0, 1fr);
+          grid-template-rows: auto auto auto auto minmax(0, 1fr);
           gap: 6px;
           overflow: hidden;
         }
@@ -871,11 +871,15 @@ function CommercialLayerPerformanceContent() {
         }
 
         .metric-strip {
+          position: relative;
+          z-index: 2;
           display: flex;
           flex-wrap: wrap;
           align-items: center;
           gap: 5px;
+          min-height: 30px;
           margin: 0;
+          overflow: visible;
         }
 
         .metric-chip {
@@ -912,6 +916,8 @@ function CommercialLayerPerformanceContent() {
         }
 
         .chart-card {
+          position: relative;
+          z-index: 1;
           min-height: 0;
           padding: 9px 10px 7px;
           display: grid;
