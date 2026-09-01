@@ -704,9 +704,16 @@ function CommercialLayerPerformanceContent() {
 
       <section className="chart-card">
         <div className="chart-card-head">
-          <div>
+          <div className="chart-title-block">
             <p className="eyebrow">Flock performance</p>
-            <h2>Actual versus standard</h2>
+            <div className="chart-title-line">
+              <h2>Actual versus standard</h2>
+              {filteredRows.length === 0 ? (
+                <span className="standards-only-inline">
+                  Standards only
+                </span>
+              ) : null}
+            </div>
             <p>
               Solid lines show actual performance. Dashed lines show
               the applicable standard.
@@ -741,11 +748,6 @@ function CommercialLayerPerformanceContent() {
           </div>
         ) : (
           <>
-            {filteredRows.length === 0 ? (
-              <div className="standards-only-note">
-                No flock actuals yet — showing {ISA_ALT_STANDARD_LABEL} standards only.
-              </div>
-            ) : null}
             <ProfessionalLayerChart
               rows={filteredRows}
               selectedMetrics={selectedMetrics}
@@ -929,8 +931,35 @@ function CommercialLayerPerformanceContent() {
           display: flex;
           justify-content: space-between;
           align-items: flex-start;
-          gap: 18px;
+          gap: 12px;
           margin-bottom: 4px;
+        }
+
+        .chart-title-block {
+          min-width: 0;
+        }
+
+        .chart-title-line {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          min-width: 0;
+        }
+
+        .chart-title-line h2 {
+          min-width: 0;
+        }
+
+        .standards-only-inline {
+          flex: 0 0 auto;
+          padding: 3px 7px;
+          border: 1px solid #e6dcfb;
+          border-radius: 999px;
+          background: #faf7ff;
+          color: #7046b7;
+          font-size: 8.5px;
+          font-weight: 850;
+          white-space: nowrap;
         }
 
         .eyebrow {
@@ -957,7 +986,10 @@ function CommercialLayerPerformanceContent() {
         .chart-head-actions {
           display: flex;
           align-items: center;
-          gap: 7px;
+          justify-content: flex-end;
+          gap: 6px;
+          flex-wrap: wrap;
+          flex: 0 0 auto;
         }
 
         .standard-pill,
@@ -980,16 +1012,6 @@ function CommercialLayerPerformanceContent() {
           color: #0f6b43;
         }
 
-        .standards-only-note {
-          margin: 2px 0 8px;
-          padding: 7px 9px;
-          border: 1px solid #e6dcfb;
-          border-radius: 9px;
-          background: #faf7ff;
-          color: #7046b7;
-          font-size: 10px;
-          font-weight: 750;
-        }
 
         .expand-button {
           width: 32px;
@@ -1093,6 +1115,59 @@ function CommercialLayerPerformanceContent() {
 
           .metric-card {
             min-width: 0;
+          }
+        }
+
+        @media (max-width: 1100px) {
+          .chart-card-head {
+            align-items: center;
+          }
+
+          .chart-card-head p {
+            display: none;
+          }
+
+          .chart-card-head h2 {
+            font-size: 16px;
+          }
+
+          .standard-pill {
+            max-width: 170px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          }
+
+          .age-pill {
+            display: none;
+          }
+
+          .metric-strip {
+            gap: 4px;
+          }
+
+          .metric-chip {
+            min-height: 28px;
+            padding: 0 8px;
+            font-size: 9px;
+          }
+
+          .metric-strip small {
+            display: none;
+          }
+        }
+
+        @media (max-width: 900px) {
+          .chart-card-head {
+            gap: 8px;
+          }
+
+          .standard-pill {
+            max-width: 135px;
+            font-size: 8.5px;
+          }
+
+          .standards-only-inline {
+            display: none;
           }
         }
 
@@ -1312,7 +1387,7 @@ function ProfessionalLayerChart({
   const height = expanded ? 660 : 500;
   const left = 72;
   const right = 160;
-  const top = 42;
+  const top = 38;
   const bottom = 72;
   const plotWidth = width - left - right;
   const plotHeight = height - top - bottom;
@@ -1489,38 +1564,37 @@ function ProfessionalLayerChart({
 
                 <rect
                   x={bandX + 2}
-                  y={5}
-                  width={Math.max(
-                    0,
-                    bandWidth - 4,
-                  )}
-                  height="29"
-                  rx="7"
+                  y={8}
+                  width={Math.max(0, bandWidth - 4)}
+                  height="24"
+                  rx="6"
                   fill={band.fill}
                   stroke="#dce8e2"
                 />
 
                 <text
                   x={bandX + bandWidth / 2}
-                  y={17}
+                  y={18}
                   textAnchor="middle"
                   fill="#3f5d4f"
-                  fontSize="9.5"
+                  fontSize={bandWidth < 90 ? "7.5" : "9"}
                   fontWeight="800"
                 >
                   {band.label}
                 </text>
 
-                <text
-                  x={bandX + bandWidth / 2}
-                  y={28}
-                  textAnchor="middle"
-                  fill="#72857b"
-                  fontSize="7.5"
-                  fontWeight="700"
-                >
-                  {band.sublabel}
-                </text>
+                {bandWidth >= 105 ? (
+                  <text
+                    x={bandX + bandWidth / 2}
+                    y={27}
+                    textAnchor="middle"
+                    fill="#72857b"
+                    fontSize="7"
+                    fontWeight="700"
+                  >
+                    {band.sublabel}
+                  </text>
+                ) : null}
               </g>
             );
           })}
@@ -1950,6 +2024,7 @@ function ProfessionalLayerChart({
           height: 100%;
           min-width: 0;
           min-height: 0;
+          max-width: 100%;
         }
 
         .legend {
