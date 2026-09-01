@@ -187,6 +187,142 @@ const LIFE_STAGES = [
   { start: 72, end: 96, label: "Layer 4", sublabel: "73+ wks", fill: "#edf4ff" },
 ];
 
+type IsaAlternativeStandard = {
+  ageWeeks: number;
+  productionPct: number;
+  eggWeightG: number;
+  feedGBirdDay: number;
+  eggsPerBirdCum: number;
+  bodyweightG: number;
+  mortalityCumPct: number;
+};
+
+const ISA_ALT_STANDARD_LABEL = "ISA Brown Alternative";
+
+// Temporary locked reference for the Commercial Layers graph.
+// Source: ISA Brown Product Guide – Alternative Housing.
+// Water is intentionally excluded because the guide does not provide a
+// weekly water-intake standard.
+const ISA_ALT_STANDARDS: IsaAlternativeStandard[] = [
+  { ageWeeks: 18, productionPct: 1.0, eggWeightG: 41.6, feedGBirdDay: 95, eggsPerBirdCum: 0, bodyweightG: 1485, mortalityCumPct: 0.1 },
+  { ageWeeks: 19, productionPct: 17.1, eggWeightG: 44.0, feedGBirdDay: 101, eggsPerBirdCum: 1, bodyweightG: 1585, mortalityCumPct: 0.2 },
+  { ageWeeks: 20, productionPct: 40.5, eggWeightG: 46.9, feedGBirdDay: 107, eggsPerBirdCum: 4, bodyweightG: 1655, mortalityCumPct: 0.3 },
+  { ageWeeks: 21, productionPct: 64.4, eggWeightG: 49.5, feedGBirdDay: 111, eggsPerBirdCum: 9, bodyweightG: 1715, mortalityCumPct: 0.4 },
+  { ageWeeks: 22, productionPct: 82.9, eggWeightG: 51.7, feedGBirdDay: 115, eggsPerBirdCum: 14, bodyweightG: 1770, mortalityCumPct: 0.5 },
+  { ageWeeks: 23, productionPct: 93.1, eggWeightG: 53.6, feedGBirdDay: 118, eggsPerBirdCum: 21, bodyweightG: 1810, mortalityCumPct: 0.5 },
+  { ageWeeks: 24, productionPct: 95.4, eggWeightG: 55.3, feedGBirdDay: 120, eggsPerBirdCum: 27, bodyweightG: 1840, mortalityCumPct: 0.6 },
+  { ageWeeks: 25, productionPct: 95.9, eggWeightG: 56.6, feedGBirdDay: 122, eggsPerBirdCum: 34, bodyweightG: 1865, mortalityCumPct: 0.7 },
+  { ageWeeks: 26, productionPct: 96.1, eggWeightG: 57.6, feedGBirdDay: 123, eggsPerBirdCum: 41, bodyweightG: 1883, mortalityCumPct: 0.8 },
+  { ageWeeks: 27, productionPct: 96.2, eggWeightG: 58.5, feedGBirdDay: 124, eggsPerBirdCum: 47, bodyweightG: 1895, mortalityCumPct: 0.8 },
+  { ageWeeks: 28, productionPct: 96.3, eggWeightG: 59.2, feedGBirdDay: 125, eggsPerBirdCum: 54, bodyweightG: 1907, mortalityCumPct: 0.9 },
+  { ageWeeks: 29, productionPct: 96.4, eggWeightG: 59.8, feedGBirdDay: 125, eggsPerBirdCum: 61, bodyweightG: 1917, mortalityCumPct: 1.0 },
+  { ageWeeks: 30, productionPct: 96.5, eggWeightG: 60.4, feedGBirdDay: 125, eggsPerBirdCum: 68, bodyweightG: 1925, mortalityCumPct: 1.0 },
+  { ageWeeks: 31, productionPct: 96.5, eggWeightG: 60.7, feedGBirdDay: 125, eggsPerBirdCum: 74, bodyweightG: 1933, mortalityCumPct: 1.1 },
+  { ageWeeks: 32, productionPct: 96.5, eggWeightG: 61.0, feedGBirdDay: 125, eggsPerBirdCum: 81, bodyweightG: 1937, mortalityCumPct: 1.2 },
+  { ageWeeks: 33, productionPct: 96.5, eggWeightG: 61.2, feedGBirdDay: 125, eggsPerBirdCum: 88, bodyweightG: 1940, mortalityCumPct: 1.2 },
+  { ageWeeks: 34, productionPct: 96.4, eggWeightG: 61.4, feedGBirdDay: 125, eggsPerBirdCum: 94, bodyweightG: 1942, mortalityCumPct: 1.3 },
+  { ageWeeks: 35, productionPct: 96.3, eggWeightG: 61.6, feedGBirdDay: 125, eggsPerBirdCum: 101, bodyweightG: 1943, mortalityCumPct: 1.4 },
+  { ageWeeks: 36, productionPct: 96.2, eggWeightG: 61.7, feedGBirdDay: 125, eggsPerBirdCum: 108, bodyweightG: 1944, mortalityCumPct: 1.4 },
+  { ageWeeks: 37, productionPct: 96.0, eggWeightG: 61.9, feedGBirdDay: 125, eggsPerBirdCum: 114, bodyweightG: 1945, mortalityCumPct: 1.5 },
+  { ageWeeks: 38, productionPct: 95.9, eggWeightG: 62.1, feedGBirdDay: 125, eggsPerBirdCum: 121, bodyweightG: 1946, mortalityCumPct: 1.6 },
+  { ageWeeks: 39, productionPct: 95.7, eggWeightG: 62.2, feedGBirdDay: 125, eggsPerBirdCum: 127, bodyweightG: 1948, mortalityCumPct: 1.7 },
+  { ageWeeks: 40, productionPct: 95.5, eggWeightG: 62.3, feedGBirdDay: 125, eggsPerBirdCum: 134, bodyweightG: 1949, mortalityCumPct: 1.7 },
+  { ageWeeks: 41, productionPct: 95.4, eggWeightG: 62.4, feedGBirdDay: 125, eggsPerBirdCum: 140, bodyweightG: 1950, mortalityCumPct: 1.8 },
+  { ageWeeks: 42, productionPct: 95.1, eggWeightG: 62.6, feedGBirdDay: 125, eggsPerBirdCum: 147, bodyweightG: 1950, mortalityCumPct: 1.9 },
+  { ageWeeks: 43, productionPct: 94.8, eggWeightG: 62.7, feedGBirdDay: 125, eggsPerBirdCum: 153, bodyweightG: 1950, mortalityCumPct: 2.0 },
+  { ageWeeks: 44, productionPct: 94.6, eggWeightG: 62.7, feedGBirdDay: 125, eggsPerBirdCum: 160, bodyweightG: 1950, mortalityCumPct: 2.0 },
+  { ageWeeks: 45, productionPct: 94.3, eggWeightG: 62.8, feedGBirdDay: 125, eggsPerBirdCum: 166, bodyweightG: 1950, mortalityCumPct: 2.1 },
+  { ageWeeks: 46, productionPct: 94.2, eggWeightG: 62.9, feedGBirdDay: 125, eggsPerBirdCum: 173, bodyweightG: 1950, mortalityCumPct: 2.2 },
+  { ageWeeks: 47, productionPct: 93.8, eggWeightG: 63.0, feedGBirdDay: 125, eggsPerBirdCum: 179, bodyweightG: 1950, mortalityCumPct: 2.3 },
+  { ageWeeks: 48, productionPct: 93.6, eggWeightG: 63.1, feedGBirdDay: 125, eggsPerBirdCum: 186, bodyweightG: 1950, mortalityCumPct: 2.4 },
+  { ageWeeks: 49, productionPct: 93.4, eggWeightG: 63.2, feedGBirdDay: 125, eggsPerBirdCum: 192, bodyweightG: 1950, mortalityCumPct: 2.5 },
+  { ageWeeks: 50, productionPct: 93.1, eggWeightG: 63.2, feedGBirdDay: 125, eggsPerBirdCum: 198, bodyweightG: 1950, mortalityCumPct: 2.6 },
+  { ageWeeks: 51, productionPct: 92.8, eggWeightG: 63.3, feedGBirdDay: 125, eggsPerBirdCum: 205, bodyweightG: 1950, mortalityCumPct: 2.7 },
+  { ageWeeks: 52, productionPct: 92.5, eggWeightG: 63.3, feedGBirdDay: 125, eggsPerBirdCum: 211, bodyweightG: 1950, mortalityCumPct: 2.8 },
+  { ageWeeks: 53, productionPct: 92.2, eggWeightG: 63.3, feedGBirdDay: 125, eggsPerBirdCum: 217, bodyweightG: 1950, mortalityCumPct: 2.9 },
+  { ageWeeks: 54, productionPct: 91.9, eggWeightG: 63.4, feedGBirdDay: 125, eggsPerBirdCum: 224, bodyweightG: 1950, mortalityCumPct: 3.0 },
+  { ageWeeks: 55, productionPct: 91.5, eggWeightG: 63.4, feedGBirdDay: 125, eggsPerBirdCum: 230, bodyweightG: 1950, mortalityCumPct: 3.1 },
+  { ageWeeks: 56, productionPct: 91.2, eggWeightG: 63.5, feedGBirdDay: 125, eggsPerBirdCum: 236, bodyweightG: 1950, mortalityCumPct: 3.2 },
+  { ageWeeks: 57, productionPct: 90.9, eggWeightG: 63.5, feedGBirdDay: 125, eggsPerBirdCum: 242, bodyweightG: 1950, mortalityCumPct: 3.3 },
+  { ageWeeks: 58, productionPct: 90.5, eggWeightG: 63.5, feedGBirdDay: 125, eggsPerBirdCum: 248, bodyweightG: 1950, mortalityCumPct: 3.4 },
+  { ageWeeks: 59, productionPct: 90.2, eggWeightG: 63.6, feedGBirdDay: 125, eggsPerBirdCum: 254, bodyweightG: 1950, mortalityCumPct: 3.5 },
+  { ageWeeks: 60, productionPct: 89.8, eggWeightG: 63.6, feedGBirdDay: 125, eggsPerBirdCum: 260, bodyweightG: 1950, mortalityCumPct: 3.6 },
+  { ageWeeks: 61, productionPct: 89.4, eggWeightG: 63.7, feedGBirdDay: 125, eggsPerBirdCum: 266, bodyweightG: 1950, mortalityCumPct: 3.8 },
+  { ageWeeks: 62, productionPct: 89.0, eggWeightG: 63.7, feedGBirdDay: 125, eggsPerBirdCum: 272, bodyweightG: 1950, mortalityCumPct: 3.9 },
+  { ageWeeks: 63, productionPct: 88.6, eggWeightG: 63.7, feedGBirdDay: 125, eggsPerBirdCum: 278, bodyweightG: 1950, mortalityCumPct: 4.0 },
+  { ageWeeks: 64, productionPct: 88.2, eggWeightG: 63.8, feedGBirdDay: 125, eggsPerBirdCum: 284, bodyweightG: 1950, mortalityCumPct: 4.1 },
+  { ageWeeks: 65, productionPct: 87.8, eggWeightG: 63.8, feedGBirdDay: 125, eggsPerBirdCum: 290, bodyweightG: 1950, mortalityCumPct: 4.2 },
+  { ageWeeks: 66, productionPct: 87.4, eggWeightG: 63.9, feedGBirdDay: 125, eggsPerBirdCum: 296, bodyweightG: 1950, mortalityCumPct: 4.3 },
+  { ageWeeks: 67, productionPct: 87.0, eggWeightG: 63.9, feedGBirdDay: 125, eggsPerBirdCum: 302, bodyweightG: 1950, mortalityCumPct: 4.4 },
+  { ageWeeks: 68, productionPct: 86.6, eggWeightG: 63.9, feedGBirdDay: 125, eggsPerBirdCum: 308, bodyweightG: 1950, mortalityCumPct: 4.5 },
+  { ageWeeks: 69, productionPct: 86.1, eggWeightG: 64.0, feedGBirdDay: 125, eggsPerBirdCum: 313, bodyweightG: 1950, mortalityCumPct: 4.6 },
+  { ageWeeks: 70, productionPct: 85.7, eggWeightG: 64.0, feedGBirdDay: 125, eggsPerBirdCum: 319, bodyweightG: 1950, mortalityCumPct: 4.7 },
+  { ageWeeks: 71, productionPct: 85.2, eggWeightG: 64.1, feedGBirdDay: 125, eggsPerBirdCum: 325, bodyweightG: 1950, mortalityCumPct: 4.9 },
+  { ageWeeks: 72, productionPct: 84.8, eggWeightG: 64.1, feedGBirdDay: 125, eggsPerBirdCum: 330, bodyweightG: 1950, mortalityCumPct: 5.0 },
+  { ageWeeks: 73, productionPct: 84.3, eggWeightG: 64.1, feedGBirdDay: 125, eggsPerBirdCum: 336, bodyweightG: 1950, mortalityCumPct: 5.1 },
+  { ageWeeks: 74, productionPct: 83.8, eggWeightG: 64.2, feedGBirdDay: 125, eggsPerBirdCum: 342, bodyweightG: 1950, mortalityCumPct: 5.2 },
+  { ageWeeks: 75, productionPct: 83.3, eggWeightG: 64.2, feedGBirdDay: 125, eggsPerBirdCum: 347, bodyweightG: 1950, mortalityCumPct: 5.3 },
+  { ageWeeks: 76, productionPct: 82.8, eggWeightG: 64.3, feedGBirdDay: 125, eggsPerBirdCum: 353, bodyweightG: 1950, mortalityCumPct: 5.4 },
+  { ageWeeks: 77, productionPct: 82.3, eggWeightG: 64.3, feedGBirdDay: 125, eggsPerBirdCum: 358, bodyweightG: 1950, mortalityCumPct: 5.5 },
+  { ageWeeks: 78, productionPct: 81.8, eggWeightG: 64.3, feedGBirdDay: 125, eggsPerBirdCum: 363, bodyweightG: 1950, mortalityCumPct: 5.6 },
+  { ageWeeks: 79, productionPct: 81.2, eggWeightG: 64.4, feedGBirdDay: 125, eggsPerBirdCum: 369, bodyweightG: 1950, mortalityCumPct: 5.7 },
+  { ageWeeks: 80, productionPct: 80.7, eggWeightG: 64.4, feedGBirdDay: 125, eggsPerBirdCum: 374, bodyweightG: 1950, mortalityCumPct: 5.8 },
+  { ageWeeks: 81, productionPct: 80.2, eggWeightG: 64.5, feedGBirdDay: 125, eggsPerBirdCum: 379, bodyweightG: 1950, mortalityCumPct: 6.0 },
+  { ageWeeks: 82, productionPct: 79.6, eggWeightG: 64.5, feedGBirdDay: 125, eggsPerBirdCum: 385, bodyweightG: 1950, mortalityCumPct: 6.1 },
+  { ageWeeks: 83, productionPct: 79.0, eggWeightG: 64.5, feedGBirdDay: 125, eggsPerBirdCum: 390, bodyweightG: 1950, mortalityCumPct: 6.2 },
+  { ageWeeks: 84, productionPct: 78.4, eggWeightG: 64.6, feedGBirdDay: 125, eggsPerBirdCum: 395, bodyweightG: 1950, mortalityCumPct: 6.3 },
+  { ageWeeks: 85, productionPct: 77.8, eggWeightG: 64.6, feedGBirdDay: 125, eggsPerBirdCum: 400, bodyweightG: 1950, mortalityCumPct: 6.4 },
+  { ageWeeks: 86, productionPct: 77.2, eggWeightG: 64.7, feedGBirdDay: 125, eggsPerBirdCum: 405, bodyweightG: 1950, mortalityCumPct: 6.5 },
+  { ageWeeks: 87, productionPct: 76.5, eggWeightG: 64.7, feedGBirdDay: 125, eggsPerBirdCum: 410, bodyweightG: 1950, mortalityCumPct: 6.6 },
+  { ageWeeks: 88, productionPct: 75.9, eggWeightG: 64.7, feedGBirdDay: 125, eggsPerBirdCum: 415, bodyweightG: 1950, mortalityCumPct: 6.7 },
+  { ageWeeks: 89, productionPct: 75.2, eggWeightG: 64.8, feedGBirdDay: 125, eggsPerBirdCum: 420, bodyweightG: 1950, mortalityCumPct: 6.8 },
+  { ageWeeks: 90, productionPct: 74.5, eggWeightG: 64.8, feedGBirdDay: 125, eggsPerBirdCum: 425, bodyweightG: 1950, mortalityCumPct: 6.9 },
+  { ageWeeks: 91, productionPct: 73.8, eggWeightG: 64.9, feedGBirdDay: 125, eggsPerBirdCum: 430, bodyweightG: 1950, mortalityCumPct: 7.1 },
+  { ageWeeks: 92, productionPct: 73.1, eggWeightG: 64.9, feedGBirdDay: 125, eggsPerBirdCum: 434, bodyweightG: 1950, mortalityCumPct: 7.2 },
+  { ageWeeks: 93, productionPct: 72.3, eggWeightG: 64.9, feedGBirdDay: 125, eggsPerBirdCum: 439, bodyweightG: 1950, mortalityCumPct: 7.3 },
+  { ageWeeks: 94, productionPct: 71.6, eggWeightG: 65.0, feedGBirdDay: 125, eggsPerBirdCum: 444, bodyweightG: 1950, mortalityCumPct: 7.4 },
+  { ageWeeks: 95, productionPct: 70.8, eggWeightG: 65.0, feedGBirdDay: 125, eggsPerBirdCum: 448, bodyweightG: 1950, mortalityCumPct: 7.5 },
+  { ageWeeks: 96, productionPct: 70.0, eggWeightG: 65.1, feedGBirdDay: 125, eggsPerBirdCum: 453, bodyweightG: 1950, mortalityCumPct: 7.6 },
+  { ageWeeks: 97, productionPct: 69.1, eggWeightG: 65.1, feedGBirdDay: 125, eggsPerBirdCum: 457, bodyweightG: 1950, mortalityCumPct: 7.7 },
+  { ageWeeks: 98, productionPct: 68.3, eggWeightG: 65.1, feedGBirdDay: 125, eggsPerBirdCum: 462, bodyweightG: 1950, mortalityCumPct: 7.8 },
+  { ageWeeks: 99, productionPct: 67.4, eggWeightG: 65.2, feedGBirdDay: 125, eggsPerBirdCum: 466, bodyweightG: 1950, mortalityCumPct: 7.9 },
+  { ageWeeks: 100, productionPct: 66.4, eggWeightG: 65.2, feedGBirdDay: 125, eggsPerBirdCum: 470, bodyweightG: 1950, mortalityCumPct: 8.0 },
+];
+
+function isaStandardValue(
+  metricKey: MetricKey,
+  standard: IsaAlternativeStandard,
+): number | null {
+  switch (metricKey) {
+    case "production":
+      return standard.productionPct;
+    case "mortality":
+      return standard.mortalityCumPct;
+    case "eggWeight":
+      return standard.eggWeightG;
+    case "feed":
+      return standard.feedGBirdDay;
+    case "eggsPerBird":
+      return standard.eggsPerBirdCum;
+    case "bodyweight":
+      return standard.bodyweightG;
+    case "water":
+      return null;
+    default:
+      return null;
+  }
+}
+
+function nearestIsaStandard(ageWeeks: number) {
+  return ISA_ALT_STANDARDS.reduce((best, item) =>
+    Math.abs(item.ageWeeks - ageWeeks) <
+    Math.abs(best.ageWeeks - ageWeeks)
+      ? item
+      : best,
+  );
+}
+
+
 async function authenticatedFetch(
   input: RequestInfo | URL,
   init: RequestInit = {},
@@ -509,7 +645,15 @@ function CommercialLayerPerformanceContent() {
       >
         {METRICS.map((metric) => {
           const actual = latest ? metric.actual(latest) : null;
-          const standard = latest ? metric.standard(latest) : null;
+          const apiStandard = latest ? metric.standard(latest) : null;
+          const fallbackStandard =
+            latest?.age_weeks != null && metric.key !== "water"
+              ? isaStandardValue(
+                  metric.key,
+                  nearestIsaStandard(latest.age_weeks),
+                )
+              : null;
+          const standard = apiStandard ?? fallbackStandard;
 
           const variance =
             actual !== null && standard !== null
@@ -569,6 +713,9 @@ function CommercialLayerPerformanceContent() {
           </div>
 
           <div className="chart-head-actions">
+            <span className="standard-pill">
+              Standard: {ISA_ALT_STANDARD_LABEL}
+            </span>
             <span className="age-pill">
               Age in {showDaily ? "days" : "weeks"}
             </span>
@@ -591,17 +738,19 @@ function CommercialLayerPerformanceContent() {
           <div className="empty-state error">
             {error || userError}
           </div>
-        ) : filteredRows.length === 0 ? (
-          <div className="empty-state">
-            No Commercial Layer performance data is available for this
-            flock yet.
-          </div>
         ) : (
-          <ProfessionalLayerChart
-            rows={filteredRows}
-            selectedMetrics={selectedMetrics}
-            showDaily={showDaily}
-          />
+          <>
+            {filteredRows.length === 0 ? (
+              <div className="standards-only-note">
+                No flock actuals yet — showing {ISA_ALT_STANDARD_LABEL} standards only.
+              </div>
+            ) : null}
+            <ProfessionalLayerChart
+              rows={filteredRows}
+              selectedMetrics={selectedMetrics}
+              showDaily={showDaily}
+            />
+          </>
         )}
       </section>
 
@@ -794,14 +943,35 @@ function CommercialLayerPerformanceContent() {
           gap: 7px;
         }
 
+        .standard-pill,
         .age-pill {
           padding: 6px 9px;
           border-radius: 999px;
-          background: #edf7f1;
-          color: #0f6b43;
           font-size: 10px;
           font-weight: 850;
           white-space: nowrap;
+        }
+
+        .standard-pill {
+          border: 1px solid #e5d9ff;
+          background: #f7f2ff;
+          color: #6d3cc7;
+        }
+
+        .age-pill {
+          background: #edf7f1;
+          color: #0f6b43;
+        }
+
+        .standards-only-note {
+          margin: 2px 0 8px;
+          padding: 7px 9px;
+          border: 1px solid #e6dcfb;
+          border-radius: 9px;
+          background: #faf7ff;
+          color: #7046b7;
+          font-size: 10px;
+          font-weight: 750;
         }
 
         .expand-button {
@@ -1132,11 +1302,19 @@ function ProfessionalLayerChart({
       : Number(row.age_weeks ?? 0),
   }));
 
-  const minX = Math.min(...points.map((point) => point.x));
-  const maxX = Math.max(
-    ...points.map((point) => point.x),
-    minX + 1,
-  );
+  const standardPoints = ISA_ALT_STANDARDS.map((standard) => ({
+    standard,
+    x: showDaily
+      ? standard.ageWeeks * 7
+      : standard.ageWeeks,
+  }));
+
+  const actualX = points.map((point) => point.x);
+  const standardX = standardPoints.map((point) => point.x);
+  const allX = [...actualX, ...standardX];
+
+  const minX = Math.min(...allX);
+  const maxX = Math.max(...allX, minX + 1);
 
   const ranges = new Map<
     MetricKey,
@@ -1144,12 +1322,15 @@ function ProfessionalLayerChart({
   >();
 
   activeMetrics.forEach((metric) => {
-    const values = points
-      .flatMap(({ row }) => [
+    const values = [
+      ...points.flatMap(({ row }) => [
         metric.actual(row),
         metric.standard(row),
-      ])
-      .filter((value): value is number => value !== null);
+      ]),
+      ...standardPoints.map(({ standard }) =>
+        isaStandardValue(metric.key, standard),
+      ),
+    ].filter((value): value is number => value !== null);
 
     const min = Math.min(...values, 0);
     const max = Math.max(...values, 1);
@@ -1446,26 +1627,39 @@ function ProfessionalLayerChart({
             .filter(Boolean)
             .join(" ");
 
-          const standardPoints = points
+          const apiStandardPoints = points
             .map(({ row, x: pointX }) => {
-              const value =
-                metric.standard(row);
+              const value = metric.standard(row);
 
               return value === null
                 ? null
-                : `${x(pointX)},${y(
-                    metric,
-                    value,
-                  )}`;
+                : `${x(pointX)},${y(metric, value)}`;
             })
             .filter(Boolean)
             .join(" ");
 
+          const isaStandardPoints = standardPoints
+            .map(({ standard, x: pointX }) => {
+              const value = isaStandardValue(
+                metric.key,
+                standard,
+              );
+
+              return value === null
+                ? null
+                : `${x(pointX)},${y(metric, value)}`;
+            })
+            .filter(Boolean)
+            .join(" ");
+
+          const standardLinePoints =
+            apiStandardPoints || isaStandardPoints;
+
           return (
             <g key={metric.key}>
-              {standardPoints ? (
+              {standardLinePoints ? (
                 <polyline
-                  points={standardPoints}
+                  points={standardLinePoints}
                   fill="none"
                   stroke={metric.colour}
                   strokeWidth="1.8"
@@ -1602,10 +1796,19 @@ function ProfessionalLayerChart({
                       nearestPoint.row,
                     );
 
+                  const apiStandard =
+                    metric.standard(nearestPoint.row);
+                  const ageWeeks =
+                    nearestPoint.row.age_weeks ??
+                    nearestPoint.x / (showDaily ? 7 : 1);
                   const standard =
-                    metric.standard(
-                      nearestPoint.row,
-                    );
+                    apiStandard ??
+                    (metric.key !== "water"
+                      ? isaStandardValue(
+                          metric.key,
+                          nearestIsaStandard(ageWeeks),
+                        )
+                      : null);
 
                   const variance =
                     actual !== null &&
@@ -1702,7 +1905,9 @@ function ProfessionalLayerChart({
                 borderColor: metric.colour,
               }}
             />
-            standard
+            {metric.key === "water"
+              ? "standard unavailable"
+              : `${ISA_ALT_STANDARD_LABEL} standard`}
           </div>
         ))}
       </div>
