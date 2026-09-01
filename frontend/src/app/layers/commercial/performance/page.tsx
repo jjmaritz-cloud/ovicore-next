@@ -7,11 +7,9 @@ import {
   useMemo,
   useState,
 } from "react";
-
 import { useSearchParams } from "next/navigation";
 
 import OviCorePageHeader from "@/components/ovicore/OviCorePageHeader";
-import OviCoreKpiStrip from "@/components/ovicore/OviCoreKpiStrip";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 const API_BASE = "";
@@ -36,18 +34,28 @@ type PerformanceRow = {
   entry_date: string;
   age_days?: number | null;
   age_weeks?: number | null;
+
   production_pct?: number | null;
   cumulative_mortality_pct?: number | null;
   egg_weight_g?: number | null;
   feed_g_bird_day?: number | null;
   eggs_per_bird_cumulative?: number | null;
   bodyweight_g?: number | null;
+
+  // Water aliases supported so the page is ready for whichever API field
+  // is currently exposed. L/bird/day is converted to mL/bird/day.
+  water_ml_bird_day?: number | null;
+  water_intake_ml_bird_day?: number | null;
+  water_l_bird_day?: number | null;
+
   production_standard_pct?: number | null;
   mortality_standard_pct?: number | null;
   egg_weight_standard_g?: number | null;
   feed_standard_g_bird_day?: number | null;
   eggs_per_bird_standard?: number | null;
   bodyweight_standard_g?: number | null;
+  water_standard_ml_bird_day?: number | null;
+  water_standard_l_bird_day?: number | null;
 };
 
 type MetricKey =
@@ -55,6 +63,7 @@ type MetricKey =
   | "mortality"
   | "eggWeight"
   | "feed"
+  | "water"
   | "eggsPerBird"
   | "bodyweight";
 
@@ -63,11 +72,36 @@ type MetricDefinition = {
   label: string;
   shortLabel: string;
   unit: string;
-  actual: keyof PerformanceRow;
-  standard: keyof PerformanceRow;
   decimals: number;
   colour: string;
+  actual: (row: PerformanceRow) => number | null;
+  standard: (row: PerformanceRow) => number | null;
 };
+
+function finite(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : null;
+}
+
+function waterActual(row: PerformanceRow) {
+  const direct =
+    finite(row.water_ml_bird_day) ??
+    finite(row.water_intake_ml_bird_day);
+
+  if (direct !== null) return direct;
+
+  const litres = finite(row.water_l_bird_day);
+  return litres === null ? null : litres * 1000;
+}
+
+function waterStandard(row: PerformanceRow) {
+  const direct = finite(row.water_standard_ml_bird_day);
+  if (direct !== null) return direct;
+
+  const litres = finite(row.water_standard_l_bird_day);
+  return litres === null ? null : litres * 1000;
+}
 
 const METRICS: MetricDefinition[] = [
   {
@@ -75,61 +109,81 @@ const METRICS: MetricDefinition[] = [
     label: "Production %",
     shortLabel: "Production",
     unit: "%",
-    actual: "production_pct",
-    standard: "production_standard_pct",
     decimals: 1,
-    colour: "#0b6fa4",
+    colour: "#1677d2",
+    actual: (row) => finite(row.production_pct),
+    standard: (row) => finite(row.production_standard_pct),
   },
   {
     key: "mortality",
     label: "Mortality % cum",
     shortLabel: "Mortality",
     unit: "%",
-    actual: "cumulative_mortality_pct",
-    standard: "mortality_standard_pct",
     decimals: 2,
-    colour: "#d63b32",
+    colour: "#ef4444",
+    actual: (row) => finite(row.cumulative_mortality_pct),
+    standard: (row) => finite(row.mortality_standard_pct),
   },
   {
     key: "eggWeight",
     label: "Egg weight",
     shortLabel: "Egg weight",
     unit: "g",
-    actual: "egg_weight_g",
-    standard: "egg_weight_standard_g",
     decimals: 1,
-    colour: "#2d9b4e",
+    colour: "#16a34a",
+    actual: (row) => finite(row.egg_weight_g),
+    standard: (row) => finite(row.egg_weight_standard_g),
   },
   {
     key: "feed",
     label: "Feed intake/day",
     shortLabel: "Feed intake",
     unit: "g",
-    actual: "feed_g_bird_day",
-    standard: "feed_standard_g_bird_day",
     decimals: 1,
-    colour: "#ef7d17",
+    colour: "#f97316",
+    actual: (row) => finite(row.feed_g_bird_day),
+    standard: (row) => finite(row.feed_standard_g_bird_day),
+  },
+  {
+    key: "water",
+    label: "Water intake/bird",
+    shortLabel: "Water intake",
+    unit: "mL",
+    decimals: 0,
+    colour: "#0891b2",
+    actual: waterActual,
+    standard: waterStandard,
   },
   {
     key: "eggsPerBird",
     label: "Eggs/bird cumulative",
     shortLabel: "Eggs/bird",
     unit: "",
-    actual: "eggs_per_bird_cumulative",
-    standard: "eggs_per_bird_standard",
-    decimals: 2,
-    colour: "#7d4bc2",
+    decimals: 1,
+    colour: "#7c3aed",
+    actual: (row) => finite(row.eggs_per_bird_cumulative),
+    standard: (row) => finite(row.eggs_per_bird_standard),
   },
   {
     key: "bodyweight",
     label: "Bodyweight",
     shortLabel: "Bodyweight",
     unit: "g",
-    actual: "bodyweight_g",
-    standard: "bodyweight_standard_g",
     decimals: 0,
-    colour: "#8c4f3d",
+    colour: "#9a5b42",
+    actual: (row) => finite(row.bodyweight_g),
+    standard: (row) => finite(row.bodyweight_standard_g),
   },
+];
+
+const LIFE_STAGES = [
+  { start: 0, end: 3, label: "Starter", sublabel: "0–3 wks", fill: "#fff7e6" },
+  { start: 3, end: 8, label: "Grower", sublabel: "3–8 wks", fill: "#eef9ef" },
+  { start: 8, end: 16, label: "Developer", sublabel: "8–16 wks", fill: "#eaf8f5" },
+  { start: 17, end: 36, label: "Layer 1", sublabel: "17–36 wks", fill: "#edf4ff" },
+  { start: 36, end: 56, label: "Layer 2", sublabel: "37–56 wks", fill: "#f7efff" },
+  { start: 56, end: 72, label: "Layer 3", sublabel: "57–72 wks", fill: "#fff4e5" },
+  { start: 72, end: 96, label: "Layer 4", sublabel: "73+ wks", fill: "#edf4ff" },
 ];
 
 async function authenticatedFetch(
@@ -154,33 +208,15 @@ async function authenticatedFetch(
   return response;
 }
 
-function valueOf(
-  row: PerformanceRow,
-  field: keyof PerformanceRow,
-) {
-  const value = row[field];
-  return typeof value === "number" && Number.isFinite(value)
-    ? value
-    : null;
-}
-
 function CommercialLayerPerformanceContent() {
   const searchParams = useSearchParams();
-  const {
-    currentUser,
-    loadingUser,
-    userError,
-  } = useCurrentUser();
+  const { currentUser, loadingUser, userError } = useCurrentUser();
 
   const companyId = useMemo(() => {
-    const parsed = Number(
-      searchParams.get("company_id"),
-    );
+    const parsed = Number(searchParams.get("company_id"));
 
     if (currentUser?.is_global_admin) {
-      return Number.isInteger(parsed) && parsed > 0
-        ? parsed
-        : null;
+      return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
     }
 
     return currentUser?.company_id ?? null;
@@ -208,9 +244,9 @@ function CommercialLayerPerformanceContent() {
       "eggWeight",
       "feed",
     ]);
+  const [chartExpanded, setChartExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [error, setError] =
-    useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const loadFlocks = useCallback(async () => {
     if (!companyId || loadingUser) return;
@@ -299,16 +335,19 @@ function CommercialLayerPerformanceContent() {
     flocks.forEach((flock) =>
       map.set(flock.farm_id, flock.farm_name),
     );
+
     return Array.from(map, ([id, name]) => ({ id, name }));
   }, [flocks]);
 
   const sheds = useMemo(() => {
     const map = new Map<number, string>();
+
     flocks
       .filter((flock) => flock.farm_id === selectedFarmId)
       .forEach((flock) =>
         map.set(flock.shed_id, flock.shed_name),
       );
+
     return Array.from(map, ([id, name]) => ({ id, name }));
   }, [flocks, selectedFarmId]);
 
@@ -327,8 +366,7 @@ function CommercialLayerPerformanceContent() {
   );
 
   const filteredRows = useMemo(() => {
-    const minimumAge =
-      ageRange === "laying" ? 17 * 7 : 0;
+    const minimumAge = ageRange === "laying" ? 17 * 7 : 0;
 
     return rows.filter(
       (row) => (row.age_days ?? 0) >= minimumAge,
@@ -345,7 +383,7 @@ function CommercialLayerPerformanceContent() {
           : current.filter((item) => item !== key);
       }
 
-      if (current.length >= 4) return current;
+      if (current.length >= 5) return current;
       return [...current, key];
     });
   };
@@ -354,7 +392,7 @@ function CommercialLayerPerformanceContent() {
     <div className="commercial-performance-page">
       <OviCorePageHeader
         title="Commercial Layers Performance"
-        subtitle="Actual-versus-standard production, mortality, egg quality, feed and bodyweight performance."
+        subtitle="Actual-versus-standard flock performance across production, mortality, egg quality, feed, water and bodyweight."
       />
 
       <section className="selector-card">
@@ -368,6 +406,7 @@ function CommercialLayerPerformanceContent() {
                 const firstFlock = flocks.find(
                   (flock) => flock.farm_id === farmId,
                 );
+
                 setSelectedFarmId(farmId);
                 setSelectedShedId(firstFlock?.shed_id ?? "");
                 setSelectedFlockId(firstFlock?.id ?? "");
@@ -392,6 +431,7 @@ function CommercialLayerPerformanceContent() {
                     flock.farm_id === selectedFarmId &&
                     flock.shed_id === shedId,
                 );
+
                 setSelectedShedId(shedId);
                 setSelectedFlockId(firstFlock?.id ?? "");
               }}
@@ -415,9 +455,7 @@ function CommercialLayerPerformanceContent() {
               {availableFlocks.map((flock) => (
                 <option key={flock.id} value={flock.id}>
                   {flock.flock_code}
-                  {flock.housed_date
-                    ? ` / ${flock.housed_date}`
-                    : ""}
+                  {flock.housed_date ? ` / ${flock.housed_date}` : ""}
                 </option>
               ))}
             </select>
@@ -435,9 +473,11 @@ function CommercialLayerPerformanceContent() {
                 )
               }
             >
-              <option value="full">Full flock (0-90+)</option>
               <option value="laying">
                 Laying default (17-depletion)
+              </option>
+              <option value="full">
+                Full flock (0-90+)
               </option>
             </select>
           </label>
@@ -461,45 +501,36 @@ function CommercialLayerPerformanceContent() {
         </p>
       </section>
 
-      <OviCoreKpiStrip
-        items={[
-          {
-            label: "Latest Production",
-            value:
-              latest?.production_pct != null
-                ? `${latest.production_pct.toFixed(1)}%`
-                : "—",
-          },
-          {
-            label: "Cumulative Mortality",
-            value:
-              latest?.cumulative_mortality_pct != null
-                ? `${latest.cumulative_mortality_pct.toFixed(2)}%`
-                : "—",
-          },
-          {
-            label: "Egg Weight",
-            value:
-              latest?.egg_weight_g != null
-                ? `${latest.egg_weight_g.toFixed(1)} g`
-                : "—",
-          },
-          {
-            label: "Feed Intake",
-            value:
-              latest?.feed_g_bird_day != null
-                ? `${latest.feed_g_bird_day.toFixed(1)} g`
-                : "—",
-          },
-          {
-            label: "Eggs / Bird",
-            value:
-              latest?.eggs_per_bird_cumulative != null
-                ? latest.eggs_per_bird_cumulative.toFixed(2)
-                : "—",
-          },
-        ]}
-      />
+      <section
+        className="compact-kpi-strip"
+        aria-label="Latest flock performance"
+      >
+        {METRICS.map((metric) => {
+          const actual = latest ? metric.actual(latest) : null;
+          const standard = latest ? metric.standard(latest) : null;
+
+          const variance =
+            actual !== null && standard !== null
+              ? actual - standard
+              : null;
+
+          const history = filteredRows
+            .slice(-18)
+            .map((row) => metric.actual(row))
+            .filter((value): value is number => value !== null);
+
+          return (
+            <CompactMetricCard
+              key={metric.key}
+              metric={metric}
+              value={actual}
+              standard={standard}
+              variance={variance}
+              history={history}
+            />
+          );
+        })}
+      </section>
 
       <section className="metric-strip">
         {METRICS.map((metric) => (
@@ -520,13 +551,14 @@ function CommercialLayerPerformanceContent() {
             {metric.shortLabel}
           </button>
         ))}
-        <small>Select up to four metrics</small>
+
+        <small>Select up to five metrics</small>
       </section>
 
       <section className="chart-card">
         <div className="chart-card-head">
           <div>
-            <p className="eyebrow">Commercial performance</p>
+            <p className="eyebrow">Flock performance</p>
             <h2>Actual versus standard</h2>
             <p>
               Solid lines show actual performance. Dashed lines show
@@ -534,9 +566,21 @@ function CommercialLayerPerformanceContent() {
             </p>
           </div>
 
-          <span className="age-pill">
-            X-axis: age in {showDaily ? "days" : "weeks"}
-          </span>
+          <div className="chart-head-actions">
+            <span className="age-pill">
+              Age in {showDaily ? "days" : "weeks"}
+            </span>
+
+            <button
+              type="button"
+              className="expand-button"
+              onClick={() => setChartExpanded(true)}
+              aria-label="Enlarge performance chart"
+              title="Enlarge chart"
+            >
+              ⛶
+            </button>
+          </div>
         </div>
 
         {loading ? (
@@ -559,6 +603,41 @@ function CommercialLayerPerformanceContent() {
         )}
       </section>
 
+      {chartExpanded ? (
+        <div className="chart-expanded-overlay">
+          <div className="chart-expanded-shell">
+            <div className="chart-expanded-head">
+              <div>
+                <strong>
+                  Commercial Layers · Flock Performance
+                </strong>
+                <span>
+                  {selectedFlock
+                    ? `${selectedFlock.farm_name} / ${selectedFlock.shed_name} / ${selectedFlock.flock_code}`
+                    : ""}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setChartExpanded(false)}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="chart-expanded-body">
+              <ProfessionalLayerChart
+                rows={filteredRows}
+                selectedMetrics={selectedMetrics}
+                showDaily={showDaily}
+                expanded
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <style jsx>{`
         .commercial-performance-page {
           width: 100%;
@@ -570,14 +649,14 @@ function CommercialLayerPerformanceContent() {
         .selector-card,
         .chart-card {
           border: 1px solid #dce8e2;
-          border-radius: 16px;
+          border-radius: 15px;
           background: #ffffff;
-          box-shadow: 0 10px 28px rgba(19, 70, 51, 0.07);
+          box-shadow: 0 8px 24px rgba(19, 70, 51, 0.055);
         }
 
         .selector-card {
-          margin-bottom: 10px;
-          padding: 12px;
+          margin-bottom: 9px;
+          padding: 11px 12px;
         }
 
         .selector-grid {
@@ -590,17 +669,18 @@ function CommercialLayerPerformanceContent() {
           display: grid;
           gap: 5px;
           color: #405148;
-          font-size: 11px;
+          font-size: 10.5px;
           font-weight: 850;
         }
 
         select {
-          min-height: 38px;
+          min-height: 36px;
           padding: 0 10px;
           border: 1px solid #cbd8d1;
           border-radius: 9px;
           background: #ffffff;
           color: #173c2b;
+          font-size: 12px;
         }
 
         .range-row {
@@ -608,42 +688,49 @@ function CommercialLayerPerformanceContent() {
           grid-template-columns: minmax(260px, 1fr) auto;
           align-items: end;
           gap: 10px;
-          margin-top: 10px;
+          margin-top: 9px;
         }
 
         .daily-toggle {
           display: flex;
           align-items: center;
           gap: 7px;
-          min-height: 38px;
+          min-height: 36px;
           white-space: nowrap;
         }
 
         .selection-caption {
-          margin: 8px 0 0;
+          margin: 7px 0 0;
           color: #718078;
-          font-size: 11px;
+          font-size: 10px;
+        }
+
+        .compact-kpi-strip {
+          display: grid;
+          grid-template-columns: repeat(7, minmax(0, 1fr));
+          gap: 7px;
+          margin: 9px 0 7px;
         }
 
         .metric-strip {
           display: flex;
           flex-wrap: wrap;
           align-items: center;
-          gap: 7px;
-          margin: 10px 0;
+          gap: 6px;
+          margin: 7px 0 9px;
         }
 
         .metric-chip {
           display: inline-flex;
           align-items: center;
           gap: 7px;
-          min-height: 32px;
-          padding: 0 10px;
+          min-height: 30px;
+          padding: 0 9px;
           border: 1px solid #d4e1da;
           border-radius: 999px;
           background: #ffffff;
           color: #486157;
-          font-size: 11px;
+          font-size: 10px;
           font-weight: 850;
           cursor: pointer;
         }
@@ -652,34 +739,36 @@ function CommercialLayerPerformanceContent() {
           border-color: #0d6845;
           background: #eef8f2;
           color: #0d5c3d;
-          box-shadow: 0 4px 12px rgba(13, 104, 69, 0.1);
+          box-shadow: 0 3px 9px rgba(13, 104, 69, 0.09);
         }
 
         .metric-chip span {
-          width: 9px;
-          height: 9px;
+          width: 8px;
+          height: 8px;
           border-radius: 50%;
         }
 
         .metric-strip small {
           color: #7b8a82;
+          font-size: 9.5px;
         }
 
         .chart-card {
-          padding: 13px;
+          padding: 12px;
         }
 
         .chart-card-head {
           display: flex;
           justify-content: space-between;
+          align-items: flex-start;
           gap: 18px;
-          margin-bottom: 8px;
+          margin-bottom: 6px;
         }
 
         .eyebrow {
           margin: 0;
           color: #0f6b43;
-          font-size: 9px;
+          font-size: 8.5px;
           font-weight: 950;
           letter-spacing: 0.13em;
           text-transform: uppercase;
@@ -688,24 +777,43 @@ function CommercialLayerPerformanceContent() {
         .chart-card-head h2 {
           margin: 2px 0;
           color: #153f2d;
-          font-size: 20px;
+          font-size: 19px;
         }
 
         .chart-card-head p {
           margin: 0;
           color: #718078;
-          font-size: 11px;
+          font-size: 10px;
+        }
+
+        .chart-head-actions {
+          display: flex;
+          align-items: center;
+          gap: 7px;
         }
 
         .age-pill {
-          align-self: flex-start;
-          padding: 7px 10px;
+          padding: 6px 9px;
           border-radius: 999px;
           background: #edf7f1;
           color: #0f6b43;
-          font-size: 11px;
+          font-size: 10px;
           font-weight: 850;
           white-space: nowrap;
+        }
+
+        .expand-button {
+          width: 32px;
+          height: 32px;
+          display: inline-grid;
+          place-items: center;
+          border: 1px solid #d6e3dc;
+          border-radius: 9px;
+          background: #ffffff;
+          color: #174a34;
+          font-size: 16px;
+          font-weight: 900;
+          cursor: pointer;
         }
 
         .empty-state {
@@ -719,6 +827,81 @@ function CommercialLayerPerformanceContent() {
           color: #a13b30;
         }
 
+        .chart-expanded-overlay {
+          position: fixed;
+          inset: 0;
+          z-index: 5000;
+          display: grid;
+          place-items: center;
+          padding: 16px;
+          background: rgba(7, 25, 19, 0.72);
+          backdrop-filter: blur(8px);
+        }
+
+        .chart-expanded-shell {
+          width: min(98vw, 1820px);
+          height: min(94vh, 1120px);
+          display: grid;
+          grid-template-rows: auto 1fr;
+          overflow: hidden;
+          border-radius: 18px;
+          background: #ffffff;
+          box-shadow: 0 28px 80px rgba(0, 0, 0, 0.34);
+        }
+
+        .chart-expanded-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 18px;
+          padding: 11px 15px;
+          border-bottom: 1px solid #e5eee9;
+          background: #fbfdfc;
+        }
+
+        .chart-expanded-head div {
+          min-width: 0;
+          display: grid;
+          gap: 2px;
+        }
+
+        .chart-expanded-head strong {
+          color: #153f2d;
+          font-size: 13px;
+        }
+
+        .chart-expanded-head span {
+          overflow: hidden;
+          color: #74847c;
+          font-size: 10px;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .chart-expanded-head button {
+          min-height: 32px;
+          padding: 0 11px;
+          border: 1px solid #d6e3dc;
+          border-radius: 9px;
+          background: #ffffff;
+          color: #174a34;
+          font-size: 10px;
+          font-weight: 900;
+          cursor: pointer;
+        }
+
+        .chart-expanded-body {
+          min-height: 0;
+          overflow: auto;
+          padding: 8px 12px 12px;
+        }
+
+        @media (max-width: 1280px) {
+          .compact-kpi-strip {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+          }
+        }
+
         @media (max-width: 980px) {
           .selector-grid {
             grid-template-columns: 1fr 1fr;
@@ -730,6 +913,10 @@ function CommercialLayerPerformanceContent() {
         }
 
         @media (max-width: 680px) {
+          .compact-kpi-strip {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+
           .selector-grid,
           .range-row {
             grid-template-columns: 1fr;
@@ -744,14 +931,181 @@ function CommercialLayerPerformanceContent() {
   );
 }
 
+function CompactMetricCard({
+  metric,
+  value,
+  standard,
+  variance,
+  history,
+}: {
+  metric: MetricDefinition;
+  value: number | null;
+  standard: number | null;
+  variance: number | null;
+  history: number[];
+}) {
+  const sparkWidth = 86;
+  const sparkHeight = 22;
+
+  const sparkPoints = useMemo(() => {
+    if (history.length < 2) return "";
+
+    const min = Math.min(...history);
+    const max = Math.max(...history);
+    const span = Math.max(max - min, 1);
+
+    return history
+      .map((item, index) => {
+        const px =
+          (index / (history.length - 1)) * sparkWidth;
+        const py =
+          sparkHeight -
+          3 -
+          ((item - min) / span) * (sparkHeight - 6);
+
+        return `${px.toFixed(1)},${py.toFixed(1)}`;
+      })
+      .join(" ");
+  }, [history]);
+
+  const varianceText =
+    variance === null
+      ? "No standard"
+      : `${variance > 0 ? "+" : ""}${variance.toFixed(
+          metric.decimals,
+        )}${metric.unit ? ` ${metric.unit}` : ""}`;
+
+  return (
+    <article className="metric-card">
+      <div className="metric-top">
+        <span
+          className="dot"
+          style={{ background: metric.colour }}
+        />
+        <span>{metric.label}</span>
+      </div>
+
+      <div className="metric-main">
+        <strong>
+          {value === null
+            ? "—"
+            : `${value.toFixed(metric.decimals)}${
+                metric.unit ? ` ${metric.unit}` : ""
+              }`}
+        </strong>
+
+        <svg
+          viewBox={`0 0 ${sparkWidth} ${sparkHeight}`}
+          aria-hidden="true"
+        >
+          {sparkPoints ? (
+            <polyline
+              points={sparkPoints}
+              fill="none"
+              stroke={metric.colour}
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          ) : null}
+        </svg>
+      </div>
+
+      <div className="metric-foot">
+        <span>vs Standard</span>
+        <b>{varianceText}</b>
+      </div>
+
+      <style jsx>{`
+        .metric-card {
+          min-width: 0;
+          min-height: 78px;
+          padding: 9px 10px 8px;
+          border: 1px solid #dce8e2;
+          border-radius: 12px;
+          background: #ffffff;
+          box-shadow: 0 6px 16px rgba(19, 70, 51, 0.05);
+        }
+
+        .metric-top,
+        .metric-main,
+        .metric-foot {
+          display: flex;
+          align-items: center;
+        }
+
+        .metric-top {
+          gap: 6px;
+          min-width: 0;
+        }
+
+        .dot {
+          width: 7px;
+          height: 7px;
+          flex: 0 0 auto;
+          border-radius: 50%;
+        }
+
+        .metric-top span:last-child {
+          overflow: hidden;
+          color: #486157;
+          font-size: 9.5px;
+          font-weight: 900;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .metric-main {
+          justify-content: space-between;
+          gap: 7px;
+          margin-top: 6px;
+        }
+
+        .metric-main strong {
+          color: #143f2d;
+          font-size: 19px;
+          line-height: 1;
+          letter-spacing: -0.035em;
+          white-space: nowrap;
+        }
+
+        .metric-main svg {
+          width: 66px;
+          height: 20px;
+          overflow: visible;
+          flex: 0 1 auto;
+        }
+
+        .metric-foot {
+          justify-content: space-between;
+          gap: 6px;
+          margin-top: 7px;
+          color: #7a8a82;
+          font-size: 8.5px;
+        }
+
+        .metric-foot b {
+          overflow: hidden;
+          color: #456358;
+          font-size: 8.5px;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+      `}</style>
+    </article>
+  );
+}
+
 function ProfessionalLayerChart({
   rows,
   selectedMetrics,
   showDaily,
+  expanded = false,
 }: {
   rows: PerformanceRow[];
   selectedMetrics: MetricKey[];
   showDaily: boolean;
+  expanded?: boolean;
 }) {
   const [hoverX, setHoverX] = useState<number | null>(null);
 
@@ -759,12 +1113,12 @@ function ProfessionalLayerChart({
     selectedMetrics.includes(metric.key),
   );
 
-  const width = 1320;
-  const height = 530;
-  const left = 76;
-  const right = 170;
-  const top = 34;
-  const bottom = 74;
+  const width = expanded ? 1600 : 1400;
+  const height = expanded ? 660 : 560;
+  const left = 72;
+  const right = 160;
+  const top = 42;
+  const bottom = 72;
   const plotWidth = width - left - right;
   const plotHeight = height - top - bottom;
 
@@ -776,7 +1130,10 @@ function ProfessionalLayerChart({
   }));
 
   const minX = Math.min(...points.map((point) => point.x));
-  const maxX = Math.max(...points.map((point) => point.x), minX + 1);
+  const maxX = Math.max(
+    ...points.map((point) => point.x),
+    minX + 1,
+  );
 
   const ranges = new Map<
     MetricKey,
@@ -784,14 +1141,20 @@ function ProfessionalLayerChart({
   >();
 
   activeMetrics.forEach((metric) => {
-    const values = points.flatMap(({ row }) => [
-      valueOf(row, metric.actual),
-      valueOf(row, metric.standard),
-    ]).filter((value): value is number => value !== null);
+    const values = points
+      .flatMap(({ row }) => [
+        metric.actual(row),
+        metric.standard(row),
+      ])
+      .filter((value): value is number => value !== null);
 
     const min = Math.min(...values, 0);
     const max = Math.max(...values, 1);
-    const pad = Math.max((max - min) * 0.12, max * 0.04, 1);
+    const pad = Math.max(
+      (max - min) * 0.12,
+      max * 0.04,
+      1,
+    );
 
     ranges.set(metric.key, {
       min: Math.max(0, min - pad),
@@ -800,14 +1163,21 @@ function ProfessionalLayerChart({
   });
 
   const x = (value: number) =>
-    left + ((value - minX) / (maxX - minX)) * plotWidth;
+    left +
+    ((value - minX) / (maxX - minX)) * plotWidth;
 
-  const y = (metric: MetricDefinition, value: number) => {
-    const range = ranges.get(metric.key) ?? { min: 0, max: 1 };
+  const y = (
+    metric: MetricDefinition,
+    value: number,
+  ) => {
+    const range =
+      ranges.get(metric.key) ?? { min: 0, max: 1 };
+
     return (
       top +
       plotHeight -
-      ((value - range.min) / (range.max - range.min)) *
+      ((value - range.min) /
+        (range.max - range.min)) *
         plotHeight
     );
   };
@@ -825,13 +1195,16 @@ function ProfessionalLayerChart({
   const handleMove = (
     event: React.MouseEvent<SVGRectElement>,
   ) => {
-    const svg = event.currentTarget.ownerSVGElement;
+    const svg =
+      event.currentTarget.ownerSVGElement;
+
     if (!svg) return;
 
     const bounds = svg.getBoundingClientRect();
     const svgX =
       (event.clientX - bounds.left) *
       (width / bounds.width);
+
     const clamped = Math.max(
       left,
       Math.min(left + plotWidth, svgX),
@@ -844,16 +1217,11 @@ function ProfessionalLayerChart({
     );
   };
 
-  const xTicks = Array.from({ length: 9 }, (_, index) =>
-    minX + ((maxX - minX) / 8) * index,
+  const xTicks = Array.from(
+    { length: 10 },
+    (_, index) =>
+      minX + ((maxX - minX) / 9) * index,
   );
-
-  const stageBands = [
-    { start: 17, end: 24, label: "Early Lay", fill: "#faf7fb" },
-    { start: 24, end: 40, label: "Peak", fill: "#f7fbf8" },
-    { start: 40, end: 60, label: "Mid Lay", fill: "#fffaf4" },
-    { start: 60, end: 90, label: "Late Lay", fill: "#f5f8fc" },
-  ];
 
   return (
     <div className="chart-wrap">
@@ -884,51 +1252,92 @@ function ProfessionalLayerChart({
         />
 
         {!showDaily &&
-          stageBands.map((band) => {
-            const bandStart = Math.max(band.start, minX);
-            const bandEnd = Math.min(band.end, maxX);
+          LIFE_STAGES.map((band) => {
+            const bandStart = Math.max(
+              band.start,
+              minX,
+            );
+            const bandEnd = Math.min(
+              band.end,
+              maxX,
+            );
 
-            if (bandEnd <= bandStart) return null;
+            if (bandEnd <= bandStart) {
+              return null;
+            }
+
+            const bandX = x(bandStart);
+            const bandWidth =
+              x(bandEnd) - x(bandStart);
 
             return (
               <g key={band.label}>
                 <rect
-                  x={x(bandStart)}
+                  x={bandX}
                   y={top}
-                  width={x(bandEnd) - x(bandStart)}
+                  width={bandWidth}
                   height={plotHeight}
                   fill={band.fill}
+                  opacity="0.68"
                 />
+
+                <rect
+                  x={bandX + 2}
+                  y={5}
+                  width={Math.max(
+                    0,
+                    bandWidth - 4,
+                  )}
+                  height="29"
+                  rx="7"
+                  fill={band.fill}
+                  stroke="#dce8e2"
+                />
+
                 <text
-                  x={(x(bandStart) + x(bandEnd)) / 2}
-                  y={top + 18}
+                  x={bandX + bandWidth / 2}
+                  y={17}
                   textAnchor="middle"
-                  fill="#809087"
-                  fontSize="10"
-                  fontWeight="700"
+                  fill="#3f5d4f"
+                  fontSize="9.5"
+                  fontWeight="800"
                 >
                   {band.label}
+                </text>
+
+                <text
+                  x={bandX + bandWidth / 2}
+                  y={28}
+                  textAnchor="middle"
+                  fill="#72857b"
+                  fontSize="7.5"
+                  fontWeight="700"
+                >
+                  {band.sublabel}
                 </text>
               </g>
             );
           })}
 
-        {Array.from({ length: 6 }, (_, index) => index).map(
-          (index) => {
-            const yPos = top + (plotHeight / 5) * index;
-            return (
-              <line
-                key={index}
-                x1={left}
-                x2={left + plotWidth}
-                y1={yPos}
-                y2={yPos}
-                stroke="#dfe8e3"
-                strokeDasharray="4 5"
-              />
-            );
-          },
-        )}
+        {Array.from(
+          { length: 6 },
+          (_, index) => index,
+        ).map((index) => {
+          const yPos =
+            top + (plotHeight / 5) * index;
+
+          return (
+            <line
+              key={index}
+              x1={left}
+              x2={left + plotWidth}
+              y1={yPos}
+              y2={yPos}
+              stroke="#dfe8e3"
+              strokeDasharray="4 5"
+            />
+          );
+        })}
 
         {xTicks.map((tick) => (
           <g key={tick}>
@@ -939,12 +1348,13 @@ function ProfessionalLayerChart({
               y2={top + plotHeight}
               stroke="#edf2ef"
             />
+
             <text
               x={x(tick)}
               y={top + plotHeight + 24}
               textAnchor="middle"
               fill="#687970"
-              fontSize="11"
+              fontSize="10"
             >
               {showDaily
                 ? Math.round(tick)
@@ -953,132 +1363,170 @@ function ProfessionalLayerChart({
           </g>
         ))}
 
-        {activeMetrics.map((metric, metricIndex) => {
-          const range =
-            ranges.get(metric.key) ?? { min: 0, max: 1 };
+        {activeMetrics.map(
+          (metric, metricIndex) => {
+            const range =
+              ranges.get(metric.key) ?? {
+                min: 0,
+                max: 1,
+              };
 
-          const axisX =
-            left + plotWidth + 22 + metricIndex * 38;
+            const axisX =
+              left +
+              plotWidth +
+              20 +
+              metricIndex * 29;
 
-          return (
-            <g key={metric.key}>
-              <line
-                x1={axisX}
-                x2={axisX}
-                y1={top}
-                y2={top + plotHeight}
-                stroke={metric.colour}
-                strokeWidth="1.2"
-                opacity="0.82"
-              />
+            return (
+              <g key={metric.key}>
+                <line
+                  x1={axisX}
+                  x2={axisX}
+                  y1={top}
+                  y2={top + plotHeight}
+                  stroke={metric.colour}
+                  strokeWidth="1"
+                  opacity="0.75"
+                />
 
-              {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
-                const value =
-                  range.min +
-                  (range.max - range.min) * (1 - ratio);
-                const yPos = top + plotHeight * ratio;
+                {[0, 0.25, 0.5, 0.75, 1].map(
+                  (ratio) => {
+                    const value =
+                      range.min +
+                      (range.max - range.min) *
+                        (1 - ratio);
 
-                return (
-                  <g key={ratio}>
-                    <line
-                      x1={axisX}
-                      x2={axisX + 5}
-                      y1={yPos}
-                      y2={yPos}
-                      stroke={metric.colour}
-                    />
-                    <text
-                      x={axisX + 8}
-                      y={yPos + 4}
-                      fill={metric.colour}
-                      fontSize="9"
-                    >
-                      {value.toFixed(metric.decimals)}
-                    </text>
-                  </g>
-                );
-              })}
+                    const yPos =
+                      top + plotHeight * ratio;
 
-              <text
-                transform={`translate(${axisX + 28} ${
-                  top + plotHeight / 2
-                }) rotate(-90)`}
-                textAnchor="middle"
-                fill={metric.colour}
-                fontSize="10"
-                fontWeight="700"
-              >
-                {metric.label}
-                {metric.unit ? ` (${metric.unit})` : ""}
-              </text>
-            </g>
-          );
-        })}
+                    return (
+                      <g key={ratio}>
+                        <line
+                          x1={axisX}
+                          x2={axisX + 4}
+                          y1={yPos}
+                          y2={yPos}
+                          stroke={metric.colour}
+                        />
+
+                        <text
+                          x={axisX + 6}
+                          y={yPos + 3}
+                          fill={metric.colour}
+                          fontSize="7.7"
+                        >
+                          {value.toFixed(
+                            metric.decimals,
+                          )}
+                        </text>
+                      </g>
+                    );
+                  },
+                )}
+              </g>
+            );
+          },
+        )}
 
         {activeMetrics.map((metric) => {
           const actualPoints = points
             .map(({ row, x: pointX }) => {
-              const value = valueOf(row, metric.actual);
+              const value = metric.actual(row);
+
               return value === null
                 ? null
-                : `${x(pointX)},${y(metric, value)}`;
+                : `${x(pointX)},${y(
+                    metric,
+                    value,
+                  )}`;
             })
             .filter(Boolean)
             .join(" ");
 
           const standardPoints = points
             .map(({ row, x: pointX }) => {
-              const value = valueOf(row, metric.standard);
+              const value =
+                metric.standard(row);
+
               return value === null
                 ? null
-                : `${x(pointX)},${y(metric, value)}`;
+                : `${x(pointX)},${y(
+                    metric,
+                    value,
+                  )}`;
             })
             .filter(Boolean)
             .join(" ");
 
           return (
             <g key={metric.key}>
-              {standardPoints && (
+              {standardPoints ? (
                 <polyline
                   points={standardPoints}
                   fill="none"
                   stroke={metric.colour}
-                  strokeWidth="2.1"
-                  strokeDasharray="8 7"
+                  strokeWidth="1.8"
+                  strokeDasharray="7 6"
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  opacity="0.85"
+                  opacity="0.82"
                 />
-              )}
+              ) : null}
 
-              {actualPoints && (
+              {actualPoints ? (
                 <polyline
                   points={actualPoints}
                   fill="none"
                   stroke={metric.colour}
-                  strokeWidth="3.2"
+                  strokeWidth="2.8"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 />
-              )}
+              ) : null}
 
-              {points.map(({ row, x: pointX }) => {
-                const value = valueOf(row, metric.actual);
-                return value === null ? null : (
-                  <circle
-                    key={`${metric.key}-${row.id}`}
-                    cx={x(pointX)}
-                    cy={y(metric, value)}
-                    r="3.3"
-                    fill="#ffffff"
-                    stroke={metric.colour}
-                    strokeWidth="2"
-                  />
-                );
-              })}
+              {points.map(
+                ({ row, x: pointX }) => {
+                  const value =
+                    metric.actual(row);
+
+                  return value === null ? null : (
+                    <circle
+                      key={`${metric.key}-${row.id}`}
+                      cx={x(pointX)}
+                      cy={y(metric, value)}
+                      r="2.8"
+                      fill="#ffffff"
+                      stroke={metric.colour}
+                      strokeWidth="1.8"
+                    />
+                  );
+                },
+              )}
             </g>
           );
         })}
+
+        {nearestPoint
+          ? activeMetrics.map((metric) => {
+              const value =
+                metric.actual(
+                  nearestPoint.row,
+                );
+
+              return value === null ? null : (
+                <circle
+                  key={`hover-${metric.key}`}
+                  cx={x(nearestPoint.x)}
+                  cy={y(metric, value)}
+                  r="5.5"
+                  fill="#ffffff"
+                  stroke={metric.colour}
+                  strokeWidth="2.5"
+                  pointerEvents="none"
+                />
+              );
+            })
+          : null}
 
         <rect
           x={left}
@@ -1091,7 +1539,7 @@ function ProfessionalLayerChart({
           onClick={handleMove}
         />
 
-        {nearestPoint && (
+        {nearestPoint ? (
           <g pointerEvents="none">
             <line
               x1={x(nearestPoint.x)}
@@ -1105,16 +1553,20 @@ function ProfessionalLayerChart({
             <g
               transform={`translate(${Math.min(
                 x(nearestPoint.x) + 14,
-                left + plotWidth - 300,
+                left + plotWidth - 310,
               )} ${top + 34})`}
               filter="url(#tooltip-shadow)"
             >
               <rect
-                width="286"
-                height={62 + activeMetrics.length * 24}
+                width="300"
+                height={
+                  64 +
+                  activeMetrics.length * 25
+                }
                 rx="12"
                 fill="#103f2d"
               />
+
               <text
                 x="16"
                 y="23"
@@ -1123,83 +1575,110 @@ function ProfessionalLayerChart({
                 fontWeight="800"
               >
                 {showDaily
-                  ? `Day ${nearestPoint.x.toFixed(0)}`
-                  : `Week ${nearestPoint.x.toFixed(1)}`}
+                  ? `Day ${nearestPoint.x.toFixed(
+                      0,
+                    )}`
+                  : `Week ${nearestPoint.x.toFixed(
+                      1,
+                    )}`}
               </text>
+
               <text
                 x="16"
                 y="42"
                 fill="#c9e5d6"
-                fontSize="10.5"
+                fontSize="10"
               >
                 {nearestPoint.row.entry_date}
               </text>
 
-              {activeMetrics.map((metric, index) => {
-                const actual = valueOf(
-                  nearestPoint.row,
-                  metric.actual,
-                );
-                const standard = valueOf(
-                  nearestPoint.row,
-                  metric.standard,
-                );
+              {activeMetrics.map(
+                (metric, index) => {
+                  const actual =
+                    metric.actual(
+                      nearestPoint.row,
+                    );
 
-                return (
-                  <g
-                    key={metric.key}
-                    transform={`translate(0 ${
-                      62 + index * 24
-                    })`}
-                  >
-                    <circle
-                      cx="18"
-                      cy="-4"
-                      r="4"
-                      fill={metric.colour}
-                    />
-                    <text
-                      x="30"
-                      y="0"
-                      fill="#d9eee3"
-                      fontSize="10.5"
+                  const standard =
+                    metric.standard(
+                      nearestPoint.row,
+                    );
+
+                  const variance =
+                    actual !== null &&
+                    standard !== null
+                      ? actual - standard
+                      : null;
+
+                  return (
+                    <g
+                      key={metric.key}
+                      transform={`translate(0 ${
+                        65 + index * 25
+                      })`}
                     >
-                      {metric.shortLabel}
-                    </text>
-                    <text
-                      x="270"
-                      y="0"
-                      textAnchor="end"
-                      fill="#ffffff"
-                      fontSize="11"
-                      fontWeight="750"
-                    >
-                      {actual === null
-                        ? "—"
-                        : `${actual.toFixed(metric.decimals)}${
-                            metric.unit
-                              ? ` ${metric.unit}`
-                              : ""
-                          }`}
-                      {standard !== null
-                        ? ` / ${standard.toFixed(
-                            metric.decimals,
-                          )}`
-                        : ""}
-                    </text>
-                  </g>
-                );
-              })}
+                      <circle
+                        cx="18"
+                        cy="-4"
+                        r="4"
+                        fill={metric.colour}
+                      />
+
+                      <text
+                        x="30"
+                        y="0"
+                        fill="#d9eee3"
+                        fontSize="10.5"
+                      >
+                        {metric.shortLabel}
+                      </text>
+
+                      <text
+                        x="284"
+                        y="0"
+                        textAnchor="end"
+                        fill="#ffffff"
+                        fontSize="10.5"
+                        fontWeight="750"
+                      >
+                        {actual === null
+                          ? "—"
+                          : `${actual.toFixed(
+                              metric.decimals,
+                            )}${
+                              metric.unit
+                                ? ` ${metric.unit}`
+                                : ""
+                            }`}
+                        {standard !== null
+                          ? ` · Std ${standard.toFixed(
+                              metric.decimals,
+                            )}`
+                          : ""}
+                        {variance !== null
+                          ? ` · ${
+                              variance > 0
+                                ? "+"
+                                : ""
+                            }${variance.toFixed(
+                              metric.decimals,
+                            )}`
+                          : ""}
+                      </text>
+                    </g>
+                  );
+                },
+              )}
             </g>
           </g>
-        )}
+        ) : null}
 
         <text
           x={left + plotWidth / 2}
           y={height - 18}
           textAnchor="middle"
           fill="#50645a"
-          fontSize="12"
+          fontSize="11"
           fontWeight="750"
         >
           Age in {showDaily ? "days" : "weeks"}
@@ -1216,7 +1695,9 @@ function ProfessionalLayerChart({
             {metric.shortLabel} actual
             <span
               className="dashed"
-              style={{ borderColor: metric.colour }}
+              style={{
+                borderColor: metric.colour,
+              }}
             />
             standard
           </div>
@@ -1232,38 +1713,40 @@ function ProfessionalLayerChart({
         svg {
           display: block;
           width: 100%;
-          min-width: 980px;
+          min-width: ${expanded
+            ? "1180px"
+            : "980px"};
           height: auto;
         }
 
         .legend {
           display: flex;
           flex-wrap: wrap;
-          gap: 8px;
-          margin-top: 8px;
+          gap: 6px;
+          margin-top: 7px;
         }
 
         .legend div {
           display: inline-flex;
           align-items: center;
-          gap: 6px;
-          padding: 6px 9px;
+          gap: 5px;
+          padding: 5px 8px;
           border: 1px solid #e0e9e4;
           border-radius: 999px;
           background: #ffffff;
           color: #607269;
-          font-size: 10px;
+          font-size: 9px;
           font-weight: 750;
         }
 
         .solid {
-          width: 18px;
+          width: 16px;
           height: 3px;
           border-radius: 99px;
         }
 
         .dashed {
-          width: 18px;
+          width: 16px;
           border-top: 2px dashed;
         }
       `}</style>
