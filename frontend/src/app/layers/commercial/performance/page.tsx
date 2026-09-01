@@ -57,6 +57,13 @@ type PerformanceRow = {
   bodyweight_standard_g?: number | null;
   water_standard_ml_bird_day?: number | null;
   water_standard_l_bird_day?: number | null;
+
+  // Daily Data Entry comment aliases. The first populated field is used.
+  // Once the backend field name is locked, these can be reduced to one field.
+  comment?: string | null;
+  comments?: string | null;
+  daily_comment?: string | null;
+  notes?: string | null;
 };
 
 type MetricKey =
@@ -84,6 +91,25 @@ function finite(value: unknown) {
     ? value
     : null;
 }
+function dailyComment(row: PerformanceRow) {
+  const candidates = [
+    row.comment,
+    row.comments,
+    row.daily_comment,
+    row.notes,
+  ];
+
+  const comment = candidates.find(
+    (value) =>
+      typeof value === "string" &&
+      value.trim().length > 0,
+  );
+
+  return typeof comment === "string"
+    ? comment.trim()
+    : null;
+}
+
 
 function waterActual(row: PerformanceRow) {
   const direct =
@@ -1473,6 +1499,38 @@ function ProfessionalLayerChart({
             ? point
             : best,
         );
+  // Daily mode shows the actual Daily Data Entry comment.
+  // Weekly mode never merges/rephrases daily comments: it only flags that
+  // one or more comments exist within the hovered week.
+  const hoverComment = useMemo(() => {
+    if (!nearestPoint) return null;
+
+    if (showDaily) {
+      return dailyComment(nearestPoint.row);
+    }
+
+    const hoveredWeek = Math.floor(
+      nearestPoint.row.age_weeks ??
+        nearestPoint.x,
+    );
+
+    const hasDailyCommentInWeek = rows.some((row) => {
+      const rowWeek = Math.floor(
+        row.age_weeks ??
+          Number(row.age_days ?? 0) / 7,
+      );
+
+      return (
+        rowWeek === hoveredWeek &&
+        dailyComment(row) !== null
+      );
+    });
+
+    return hasDailyCommentInWeek
+      ? "Comments in daily"
+      : null;
+  }, [nearestPoint, rows, showDaily]);
+
 
   const handleMove = (
     event: React.MouseEvent<SVGRectElement>,
@@ -1507,6 +1565,122 @@ function ProfessionalLayerChart({
 
   return (
     <div className="chart-wrap">
+      <div
+        className={
+          nearestPoint
+            ? "hover-banner visible"
+            : "hover-banner"
+        }
+        aria-live="polite"
+      >
+        {nearestPoint ? (
+          <>
+            <div className="hover-banner-age">
+              <strong>
+                {showDaily
+                  ? `Day ${nearestPoint.x.toFixed(0)}`
+                  : `Week ${Math.floor(
+                      nearestPoint.row.age_weeks ??
+                        nearestPoint.x,
+                    )}`}
+              </strong>
+              <span>{nearestPoint.row.entry_date}</span>
+            </div>
+
+            <div className="hover-banner-metrics">
+              {activeMetrics.map((metric) => {
+                const actual = metric.actual(
+                  nearestPoint.row,
+                );
+
+                const apiStandard =
+                  metric.standard(nearestPoint.row);
+
+                const ageWeeks =
+                  nearestPoint.row.age_weeks ??
+                  nearestPoint.x /
+                    (showDaily ? 7 : 1);
+
+                const standard =
+                  apiStandard ??
+                  (metric.key !== "water"
+                    ? isaStandardValue(
+                        metric.key,
+                        nearestIsaStandard(ageWeeks),
+                      )
+                    : null);
+
+                const variance =
+                  actual !== null &&
+                  standard !== null
+                    ? actual - standard
+                    : null;
+
+                return (
+                  <span
+                    key={metric.key}
+                    className="hover-metric"
+                  >
+                    <i
+                      style={{
+                        background: metric.colour,
+                      }}
+                    />
+                    <b>{metric.shortLabel}</b>
+                    <em>
+                      {actual === null
+                        ? "—"
+                        : `${actual.toFixed(
+                            metric.decimals,
+                          )}${
+                            metric.unit
+                              ? ` ${metric.unit}`
+                              : ""
+                          }`}
+                    </em>
+                    {standard !== null ? (
+                      <small>
+                        Std{" "}
+                        {standard.toFixed(
+                          metric.decimals,
+                        )}
+                      </small>
+                    ) : null}
+                    {variance !== null ? (
+                      <small
+                        className={
+                          variance > 0
+                            ? "variance positive"
+                            : variance < 0
+                              ? "variance negative"
+                              : "variance"
+                        }
+                      >
+                        {variance > 0 ? "+" : ""}
+                        {variance.toFixed(
+                          metric.decimals,
+                        )}
+                      </small>
+                    ) : null}
+                  </span>
+                );
+              })}
+            </div>
+
+            {hoverComment ? (
+              <div className="hover-comment">
+                <span>💬</span>
+                <strong>{hoverComment}</strong>
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <span className="hover-banner-placeholder">
+            Hover over the graph for flock values
+          </span>
+        )}
+      </div>
+
       <svg
         viewBox={`0 0 ${width} ${height}`}
         preserveAspectRatio="xMidYMin meet"
@@ -1835,146 +2009,15 @@ function ProfessionalLayerChart({
         />
 
         {nearestPoint ? (
-          <g pointerEvents="none">
-            <line
-              x1={x(nearestPoint.x)}
-              x2={x(nearestPoint.x)}
-              y1={top}
-              y2={top + plotHeight}
-              stroke="#5f7168"
-              strokeDasharray="4 5"
-            />
-
-            <g
-              transform={`translate(${Math.min(
-                x(nearestPoint.x) + 14,
-                left + plotWidth - 310,
-              )} ${top + 34})`}
-              filter="url(#tooltip-shadow)"
-            >
-              <rect
-                width="300"
-                height={
-                  64 +
-                  activeMetrics.length * 25
-                }
-                rx="12"
-                fill="#103f2d"
-              />
-
-              <text
-                x="16"
-                y="23"
-                fill="#ffffff"
-                fontSize="13"
-                fontWeight="800"
-              >
-                {showDaily
-                  ? `Day ${nearestPoint.x.toFixed(
-                      0,
-                    )}`
-                  : `Week ${nearestPoint.x.toFixed(
-                      1,
-                    )}`}
-              </text>
-
-              <text
-                x="16"
-                y="42"
-                fill="#c9e5d6"
-                fontSize="10"
-              >
-                {nearestPoint.row.entry_date}
-              </text>
-
-              {activeMetrics.map(
-                (metric, index) => {
-                  const actual =
-                    metric.actual(
-                      nearestPoint.row,
-                    );
-
-                  const apiStandard =
-                    metric.standard(nearestPoint.row);
-                  const ageWeeks =
-                    nearestPoint.row.age_weeks ??
-                    nearestPoint.x / (showDaily ? 7 : 1);
-                  const standard =
-                    apiStandard ??
-                    (metric.key !== "water"
-                      ? isaStandardValue(
-                          metric.key,
-                          nearestIsaStandard(ageWeeks),
-                        )
-                      : null);
-
-                  const variance =
-                    actual !== null &&
-                    standard !== null
-                      ? actual - standard
-                      : null;
-
-                  return (
-                    <g
-                      key={metric.key}
-                      transform={`translate(0 ${
-                        65 + index * 25
-                      })`}
-                    >
-                      <circle
-                        cx="18"
-                        cy="-4"
-                        r="4"
-                        fill={metric.colour}
-                      />
-
-                      <text
-                        x="30"
-                        y="0"
-                        fill="#d9eee3"
-                        fontSize="10.5"
-                      >
-                        {metric.shortLabel}
-                      </text>
-
-                      <text
-                        x="284"
-                        y="0"
-                        textAnchor="end"
-                        fill="#ffffff"
-                        fontSize="10.5"
-                        fontWeight="750"
-                      >
-                        {actual === null
-                          ? "—"
-                          : `${actual.toFixed(
-                              metric.decimals,
-                            )}${
-                              metric.unit
-                                ? ` ${metric.unit}`
-                                : ""
-                            }`}
-                        {standard !== null
-                          ? ` · Std ${standard.toFixed(
-                              metric.decimals,
-                            )}`
-                          : ""}
-                        {variance !== null
-                          ? ` · ${
-                              variance > 0
-                                ? "+"
-                                : ""
-                            }${variance.toFixed(
-                              metric.decimals,
-                            )}`
-                          : ""}
-                      </text>
-                    </g>
-                  );
-                },
-              )}
-            </g>
-          </g>
+          <line
+            x1={x(nearestPoint.x)}
+            x2={x(nearestPoint.x)}
+            y1={top}
+            y2={top + plotHeight}
+            stroke="#5f7168"
+            strokeDasharray="4 5"
+            pointerEvents="none"
+          />
         ) : null}
 
         <text
@@ -2015,9 +2058,130 @@ function ProfessionalLayerChart({
           width: 100%;
           min-height: 0;
           display: grid;
-          grid-template-rows: auto auto;
+          grid-template-rows: auto auto auto;
           align-content: start;
+          gap: 4px;
           overflow: hidden;
+        }
+
+        .hover-banner {
+          min-height: 34px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 5px 8px;
+          border: 1px solid #e0e9e4;
+          border-radius: 9px;
+          background: #fbfdfc;
+          color: #607269;
+          overflow: hidden;
+        }
+
+        .hover-banner.visible {
+          border-color: #cfe2d7;
+          background: #f8fcfa;
+          box-shadow: 0 3px 10px rgba(19, 70, 51, 0.05);
+        }
+
+        .hover-banner-placeholder {
+          color: #8a9891;
+          font-size: 9px;
+          font-weight: 700;
+        }
+
+        .hover-banner-age {
+          flex: 0 0 auto;
+          display: grid;
+          gap: 1px;
+          padding-right: 9px;
+          border-right: 1px solid #e2ebe6;
+        }
+
+        .hover-banner-age strong {
+          color: #173f2d;
+          font-size: 10px;
+          line-height: 1.1;
+        }
+
+        .hover-banner-age span {
+          color: #7a8981;
+          font-size: 8px;
+          line-height: 1.1;
+        }
+
+        .hover-banner-metrics {
+          min-width: 0;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex: 1 1 auto;
+          overflow: hidden;
+        }
+
+        .hover-metric {
+          min-width: 0;
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+          white-space: nowrap;
+        }
+
+        .hover-metric i {
+          width: 6px;
+          height: 6px;
+          flex: 0 0 auto;
+          border-radius: 50%;
+        }
+
+        .hover-metric b {
+          color: #486157;
+          font-size: 8px;
+        }
+
+        .hover-metric em {
+          color: #173f2d;
+          font-size: 9px;
+          font-style: normal;
+          font-weight: 850;
+        }
+
+        .hover-metric small {
+          color: #84928b;
+          font-size: 7px;
+        }
+
+        .hover-metric .variance {
+          padding-left: 2px;
+          font-weight: 850;
+        }
+
+        .hover-metric .variance.positive {
+          color: #16834f;
+        }
+
+        .hover-metric .variance.negative {
+          color: #d94841;
+        }
+
+        .hover-comment {
+          flex: 0 1 auto;
+          min-width: 0;
+          max-width: 260px;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          padding: 3px 7px;
+          border: 1px solid #f0dfaa;
+          border-radius: 999px;
+          background: #fff9e8;
+          color: #725815;
+          white-space: nowrap;
+        }
+
+        .hover-comment strong {
+          overflow: hidden;
+          font-size: 8px;
+          text-overflow: ellipsis;
         }
 
         svg {
@@ -2026,6 +2190,24 @@ function ProfessionalLayerChart({
           height: auto;
           min-width: 0;
           max-width: 100%;
+        }
+
+        @media (max-width: 1100px) {
+          .hover-banner {
+            align-items: flex-start;
+            flex-wrap: wrap;
+            gap: 5px 8px;
+          }
+
+          .hover-banner-metrics {
+            flex-wrap: wrap;
+            overflow: visible;
+            gap: 4px 8px;
+          }
+
+          .hover-comment {
+            max-width: 100%;
+          }
         }
 
         .legend {
