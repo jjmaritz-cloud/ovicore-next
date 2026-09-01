@@ -10,6 +10,7 @@ import {
 import { useSearchParams } from "next/navigation";
 
 import OviCorePageHeader from "@/components/ovicore/OviCorePageHeader";
+import OviCoreShell from "@/components/ovicore/OviCoreShell";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 const API_BASE = "";
@@ -389,7 +390,8 @@ function CommercialLayerPerformanceContent() {
   };
 
   return (
-    <div className="commercial-performance-page">
+    <OviCoreShell module="layers">
+      <div className="commercial-performance-page">
       <OviCorePageHeader
         title="Commercial Layers Performance"
         subtitle="Actual-versus-standard flock performance across production, mortality, egg quality, feed, water and bodyweight."
@@ -927,7 +929,8 @@ function CommercialLayerPerformanceContent() {
           }
         }
       `}</style>
-    </div>
+      </div>
+    </OviCoreShell>
   );
 }
 
