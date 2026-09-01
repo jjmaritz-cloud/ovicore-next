@@ -796,14 +796,14 @@ function CommercialLayerPerformanceContent() {
         .commercial-performance-page {
           width: 100%;
           min-width: 0;
-          height: calc(100vh - 58px);
-          min-height: 0;
+          min-height: calc(100vh - 58px);
           padding: 7px 10px 8px;
           box-sizing: border-box;
           display: grid;
-          grid-template-rows: auto auto auto auto minmax(0, 1fr);
+          grid-template-rows: auto auto auto auto auto;
+          align-content: start;
           gap: 6px;
-          overflow: hidden;
+          overflow-x: hidden;
         }
 
         .selector-card,
@@ -923,7 +923,8 @@ function CommercialLayerPerformanceContent() {
           min-height: 0;
           padding: 9px 10px 7px;
           display: grid;
-          grid-template-rows: auto minmax(0, 1fr);
+          grid-template-rows: auto auto;
+          align-content: start;
           overflow: hidden;
         }
 
@@ -1384,11 +1385,11 @@ function ProfessionalLayerChart({
   );
 
   const width = expanded ? 1600 : 1400;
-  const height = expanded ? 660 : 500;
+  const height = expanded ? 660 : 455;
   const left = 72;
   const right = 160;
   const top = 38;
-  const bottom = 72;
+  const bottom = 58;
   const plotWidth = width - left - right;
   const plotHeight = height - top - bottom;
 
@@ -1508,6 +1509,7 @@ function ProfessionalLayerChart({
     <div className="chart-wrap">
       <svg
         viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="xMidYMin meet"
         role="img"
         aria-label="Commercial layer actual versus standard performance chart"
         onMouseLeave={() => setHoverX(null)}
@@ -2011,19 +2013,18 @@ function ProfessionalLayerChart({
       <style jsx>{`
         .chart-wrap {
           width: 100%;
-          height: 100%;
           min-height: 0;
           display: grid;
-          grid-template-rows: minmax(0, 1fr) auto;
+          grid-template-rows: auto auto;
+          align-content: start;
           overflow: hidden;
         }
 
         svg {
           display: block;
           width: 100%;
-          height: 100%;
+          height: auto;
           min-width: 0;
-          min-height: 0;
           max-width: 100%;
         }
 
