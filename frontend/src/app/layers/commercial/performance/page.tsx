@@ -1499,6 +1499,22 @@ function ProfessionalLayerChart({
             ? point
             : best,
         );
+  // Standards-only mode still needs a hover target.
+  // When there are no flock actuals, hover follows the nearest ISA standard week.
+  const nearestStandardPoint =
+    hoverX === null || standardPoints.length === 0
+      ? null
+      : standardPoints.reduce((best, point) =>
+          Math.abs(point.x - hoverX) <
+          Math.abs(best.x - hoverX)
+            ? point
+            : best,
+        );
+
+  const activeHoverX =
+    nearestPoint?.x ??
+    nearestStandardPoint?.x ??
+    null;
   // Daily mode shows the actual Daily Data Entry comment.
   // Weekly mode never merges/rephrases daily comments: it only flags that
   // one or more comments exist within the hovered week.
@@ -1567,42 +1583,48 @@ function ProfessionalLayerChart({
     <div className="chart-wrap">
       <div
         className={
-          nearestPoint
+          activeHoverX !== null
             ? "hover-banner visible"
             : "hover-banner"
         }
         aria-live="polite"
       >
-        {nearestPoint ? (
+        {activeHoverX !== null ? (
           <>
             <div className="hover-banner-age">
               <strong>
                 {showDaily
-                  ? `Day ${nearestPoint.x.toFixed(0)}`
-                  : `Week ${Math.floor(
-                      nearestPoint.row.age_weeks ??
-                        nearestPoint.x,
+                  ? `Day ${activeHoverX.toFixed(0)}`
+                  : `Week ${Math.round(
+                      activeHoverX / (showDaily ? 7 : 1),
                     )}`}
               </strong>
-              <span>{nearestPoint.row.entry_date}</span>
+              <span>
+                {nearestPoint
+                  ? nearestPoint.row.entry_date
+                  : "ISA Brown Alternative"}
+              </span>
             </div>
 
             <div className="hover-banner-metrics">
               {activeMetrics.map((metric) => {
-                const actual = metric.actual(
-                  nearestPoint.row,
-                );
+                const actual = nearestPoint
+                  ? metric.actual(nearestPoint.row)
+                  : null;
 
-                const apiStandard =
-                  metric.standard(nearestPoint.row);
+                const ageWeeks = nearestPoint
+                  ? nearestPoint.row.age_weeks ??
+                    nearestPoint.x /
+                      (showDaily ? 7 : 1)
+                  : nearestStandardPoint?.standard.ageWeeks ??
+                    activeHoverX /
+                      (showDaily ? 7 : 1);
 
-                const ageWeeks =
-                  nearestPoint.row.age_weeks ??
-                  nearestPoint.x /
-                    (showDaily ? 7 : 1);
+                const apiStandard = nearestPoint
+                  ? metric.standard(nearestPoint.row)
+                  : null;
 
-                const standard =
-                  apiStandard ??
+                const standard = apiStandard ??
                   (metric.key !== "water"
                     ? isaStandardValue(
                         metric.key,
@@ -1627,41 +1649,58 @@ function ProfessionalLayerChart({
                       }}
                     />
                     <b>{metric.shortLabel}</b>
-                    <em>
-                      {actual === null
-                        ? "—"
-                        : `${actual.toFixed(
-                            metric.decimals,
-                          )}${
-                            metric.unit
-                              ? ` ${metric.unit}`
-                              : ""
-                          }`}
-                    </em>
-                    {standard !== null ? (
-                      <small>
-                        Std{" "}
-                        {standard.toFixed(
-                          metric.decimals,
-                        )}
-                      </small>
-                    ) : null}
-                    {variance !== null ? (
-                      <small
-                        className={
-                          variance > 0
-                            ? "variance positive"
-                            : variance < 0
-                              ? "variance negative"
-                              : "variance"
-                        }
-                      >
-                        {variance > 0 ? "+" : ""}
-                        {variance.toFixed(
-                          metric.decimals,
-                        )}
-                      </small>
-                    ) : null}
+
+                    {nearestPoint ? (
+                      <>
+                        <em>
+                          {actual === null
+                            ? "—"
+                            : `${actual.toFixed(
+                                metric.decimals,
+                              )}${
+                                metric.unit
+                                  ? ` ${metric.unit}`
+                                  : ""
+                              }`}
+                        </em>
+                        {standard !== null ? (
+                          <small>
+                            Std{" "}
+                            {standard.toFixed(
+                              metric.decimals,
+                            )}
+                          </small>
+                        ) : null}
+                        {variance !== null ? (
+                          <small
+                            className={
+                              variance > 0
+                                ? "variance positive"
+                                : variance < 0
+                                  ? "variance negative"
+                                  : "variance"
+                            }
+                          >
+                            {variance > 0 ? "+" : ""}
+                            {variance.toFixed(
+                              metric.decimals,
+                            )}
+                          </small>
+                        ) : null}
+                      </>
+                    ) : (
+                      <em>
+                        {standard === null
+                          ? "No standard"
+                          : `${standard.toFixed(
+                              metric.decimals,
+                            )}${
+                              metric.unit
+                                ? ` ${metric.unit}`
+                                : ""
+                            }`}
+                      </em>
+                    )}
                   </span>
                 );
               })}
@@ -1996,6 +2035,28 @@ function ProfessionalLayerChart({
               );
             })
           : null}
+        {!nearestPoint && nearestStandardPoint
+          ? activeMetrics.map((metric) => {
+              const value = isaStandardValue(
+                metric.key,
+                nearestStandardPoint.standard,
+              );
+
+              return value === null ? null : (
+                <circle
+                  key={`hover-standard-${metric.key}`}
+                  cx={x(nearestStandardPoint.x)}
+                  cy={y(metric, value)}
+                  r="4.8"
+                  fill="#ffffff"
+                  stroke={metric.colour}
+                  strokeWidth="2.2"
+                  pointerEvents="none"
+                />
+              );
+            })
+          : null}
+
 
         <rect
           x={left}
@@ -2008,10 +2069,10 @@ function ProfessionalLayerChart({
           onClick={handleMove}
         />
 
-        {nearestPoint ? (
+        {activeHoverX !== null ? (
           <line
-            x1={x(nearestPoint.x)}
-            x2={x(nearestPoint.x)}
+            x1={x(activeHoverX)}
+            x2={x(activeHoverX)}
             y1={top}
             y2={top + plotHeight}
             stroke="#5f7168"
