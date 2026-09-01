@@ -1367,7 +1367,7 @@ function ProfessionalLayerChart({
   };
 
   const nearestPoint =
-    hoverX === null
+    hoverX === null || points.length === 0
       ? null
       : points.reduce((best, point) =>
           Math.abs(point.x - hoverX) <
