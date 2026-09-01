@@ -380,6 +380,8 @@ function CommercialLayerPerformanceContent() {
       "mortality",
       "eggWeight",
       "feed",
+      "eggsPerBird",
+      "bodyweight",
     ]);
   const [chartExpanded, setChartExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -520,7 +522,6 @@ function CommercialLayerPerformanceContent() {
           : current.filter((item) => item !== key);
       }
 
-      if (current.length >= 5) return current;
       return [...current, key];
     });
   };
@@ -698,7 +699,7 @@ function CommercialLayerPerformanceContent() {
           </button>
         ))}
 
-        <small>Select up to five metrics</small>
+        <small>Select any metrics</small>
       </section>
 
       <section className="chart-card">
@@ -793,8 +794,14 @@ function CommercialLayerPerformanceContent() {
         .commercial-performance-page {
           width: 100%;
           min-width: 0;
-          padding: 10px 12px 18px;
+          height: calc(100vh - 58px);
+          min-height: 0;
+          padding: 7px 10px 8px;
           box-sizing: border-box;
+          display: grid;
+          grid-template-rows: auto auto auto minmax(0, 1fr);
+          gap: 6px;
+          overflow: hidden;
         }
 
         .selector-card,
@@ -806,8 +813,8 @@ function CommercialLayerPerformanceContent() {
         }
 
         .selector-card {
-          margin-bottom: 9px;
-          padding: 11px 12px;
+          margin-bottom: 0;
+          padding: 8px 10px;
         }
 
         .selector-grid {
@@ -825,7 +832,7 @@ function CommercialLayerPerformanceContent() {
         }
 
         select {
-          min-height: 36px;
+          min-height: 32px;
           padding: 0 10px;
           border: 1px solid #cbd8d1;
           border-radius: 9px;
@@ -839,19 +846,19 @@ function CommercialLayerPerformanceContent() {
           grid-template-columns: minmax(260px, 1fr) auto;
           align-items: end;
           gap: 10px;
-          margin-top: 9px;
+          margin-top: 4px;
         }
 
         .daily-toggle {
           display: flex;
           align-items: center;
           gap: 7px;
-          min-height: 36px;
+          min-height: 32px;
           white-space: nowrap;
         }
 
         .selection-caption {
-          margin: 7px 0 0;
+          margin: 5px 0 0;
           color: #718078;
           font-size: 10px;
         }
@@ -859,16 +866,16 @@ function CommercialLayerPerformanceContent() {
         .compact-kpi-strip {
           display: grid;
           grid-template-columns: repeat(7, minmax(0, 1fr));
-          gap: 7px;
-          margin: 9px 0 7px;
+          gap: 6px;
+          margin: 0;
         }
 
         .metric-strip {
           display: flex;
           flex-wrap: wrap;
           align-items: center;
-          gap: 6px;
-          margin: 7px 0 9px;
+          gap: 5px;
+          margin: 0;
         }
 
         .metric-chip {
@@ -905,7 +912,11 @@ function CommercialLayerPerformanceContent() {
         }
 
         .chart-card {
-          padding: 12px;
+          min-height: 0;
+          padding: 9px 10px 7px;
+          display: grid;
+          grid-template-rows: auto minmax(0, 1fr);
+          overflow: hidden;
         }
 
         .chart-card-head {
@@ -913,7 +924,7 @@ function CommercialLayerPerformanceContent() {
           justify-content: space-between;
           align-items: flex-start;
           gap: 18px;
-          margin-bottom: 6px;
+          margin-bottom: 4px;
         }
 
         .eyebrow {
@@ -928,7 +939,7 @@ function CommercialLayerPerformanceContent() {
         .chart-card-head h2 {
           margin: 2px 0;
           color: #153f2d;
-          font-size: 19px;
+          font-size: 17px;
         }
 
         .chart-card-head p {
@@ -989,7 +1000,8 @@ function CommercialLayerPerformanceContent() {
         }
 
         .empty-state {
-          min-height: 500px;
+          min-height: 0;
+          height: 100%;
           display: grid;
           place-items: center;
           color: #718078;
@@ -1070,7 +1082,11 @@ function CommercialLayerPerformanceContent() {
 
         @media (max-width: 1280px) {
           .compact-kpi-strip {
-            grid-template-columns: repeat(4, minmax(0, 1fr));
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+          }
+
+          .metric-card {
+            min-width: 0;
           }
         }
 
@@ -1192,8 +1208,8 @@ function CompactMetricCard({
       <style jsx>{`
         .metric-card {
           min-width: 0;
-          min-height: 78px;
-          padding: 9px 10px 8px;
+          min-height: 66px;
+          padding: 7px 9px 6px;
           border: 1px solid #dce8e2;
           border-radius: 12px;
           background: #ffffff;
@@ -1244,7 +1260,7 @@ function CompactMetricCard({
 
         .metric-main svg {
           width: 66px;
-          height: 20px;
+          height: 17px;
           overflow: visible;
           flex: 0 1 auto;
         }
@@ -1252,7 +1268,7 @@ function CompactMetricCard({
         .metric-foot {
           justify-content: space-between;
           gap: 6px;
-          margin-top: 7px;
+          margin-top: 5px;
           color: #7a8a82;
           font-size: 8.5px;
         }
@@ -1287,7 +1303,7 @@ function ProfessionalLayerChart({
   );
 
   const width = expanded ? 1600 : 1400;
-  const height = expanded ? 660 : 560;
+  const height = expanded ? 660 : 500;
   const left = 72;
   const right = 160;
   const top = 42;
@@ -1915,30 +1931,33 @@ function ProfessionalLayerChart({
       <style jsx>{`
         .chart-wrap {
           width: 100%;
-          overflow-x: auto;
+          height: 100%;
+          min-height: 0;
+          display: grid;
+          grid-template-rows: minmax(0, 1fr) auto;
+          overflow: hidden;
         }
 
         svg {
           display: block;
           width: 100%;
-          min-width: ${expanded
-            ? "1180px"
-            : "980px"};
-          height: auto;
+          height: 100%;
+          min-width: 0;
+          min-height: 0;
         }
 
         .legend {
           display: flex;
           flex-wrap: wrap;
-          gap: 6px;
-          margin-top: 7px;
+          gap: 4px;
+          margin-top: 4px;
         }
 
         .legend div {
           display: inline-flex;
           align-items: center;
           gap: 5px;
-          padding: 5px 8px;
+          padding: 4px 7px;
           border: 1px solid #e0e9e4;
           border-radius: 999px;
           background: #ffffff;
