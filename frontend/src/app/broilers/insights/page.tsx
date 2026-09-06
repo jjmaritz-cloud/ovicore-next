@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import BroilerSidebar from "@/components/BroilerSidebar";
-import OviCoreModuleHeader from "@/components/OviCoreModuleHeader";
 
 const API_BASE = "";
 
@@ -257,8 +256,16 @@ export default function BroilerPerformanceWorkspacePage() {
   const [selectedIds, setSelectedIds] =
     useState<number[]>([]);
 
-  const [metric, setMetric] =
-    useState<Metric>("bodyweight");
+  // Broiler Performance standard:
+  // show multiple operational metrics on one graph, matching Commercial Layers.
+  const [selectedMetrics, setSelectedMetrics] =
+    useState<Metric[]>([
+      "bodyweight",
+      "mortality",
+      "feed",
+      "water",
+      "fcr",
+    ]);
 
   const [workspaceTab, setWorkspaceTab] =
     useState<WorkspaceTab>("graphs");
@@ -477,24 +484,15 @@ export default function BroilerPerformanceWorkspacePage() {
             );
 
             return {
-              age: n(
-                record.age_days,
-              ),
-              date: displayDate(
-                record.entry_date,
-              ),
-              value: metricValue(
+              age: n(record.age_days),
+              date: displayDate(record.entry_date),
+              values: allMetricValues(
                 record,
                 plan,
-                metric,
                 cumulativeMortality,
               ),
             };
-          })
-          .filter(
-            (point) =>
-              point.value > 0,
-          );
+          });
 
         return {
           plan,
@@ -503,8 +501,7 @@ export default function BroilerPerformanceWorkspacePage() {
           } / ${
             plan.shed_name || "Shed"
           } / ${
-            plan.cycle_code ||
-            plan.id
+            plan.cycle_code || plan.id
           }`,
           points,
         };
@@ -513,7 +510,6 @@ export default function BroilerPerformanceWorkspacePage() {
     selectedIds,
     plans,
     records,
-    metric,
   ]);
 
   const comparisonReport = useMemo(
@@ -768,31 +764,30 @@ export default function BroilerPerformanceWorkspacePage() {
       )
       ?.points.at(-1);
 
-  const config =
-    METRICS[metric];
-
   return (
     <div className="page-shell">
       <BroilerSidebar />
 
       <main className="main-panel performance-workspace">
-        <OviCoreModuleHeader
-          eyebrow="OviCore Broiler Production"
-          title="Performance"
-          description="Graphs and reports in one workspace. Use the same flock selection to compare visually or inspect the underlying numbers."
-          actions={[
-            {
-              label: "Broiler Overview",
-              href: "/broilers",
-              type: "home",
-            },
-            {
-              label: "Refresh",
-              type: "refresh",
-              onClick: loadData,
-            },
-          ]}
-        />
+        <section className="compact-page-header">
+          <div>
+            <p className="compact-page-eyebrow">
+              OviCore Broiler Production
+            </p>
+            <h1>Performance</h1>
+            <p>
+              Actual-versus-age performance across bodyweight,
+              mortality, feed, water and estimated FCR.
+            </p>
+          </div>
+
+          <div className="compact-page-actions">
+            <a href="/broilers">Broiler Overview</a>
+            <button type="button" onClick={loadData}>
+              Refresh
+            </button>
+          </div>
+        </section>
 
         <section className="workspace-switcher">
           <button
@@ -1016,48 +1011,18 @@ export default function BroilerPerformanceWorkspacePage() {
           </div>
 
           <div>
-            <span>
-              Latest {config.label}
-            </span>
+            <span>Active metrics</span>
             <strong>
-              {latestPrimary
-                ? formatMetric(
-                    latestPrimary.value,
-                    metric,
-                  )
-                : "—"}
+              {selectedMetrics.length}
             </strong>
             <small>
-              Primary flock
+              Toggle from graph legend
             </small>
           </div>
         </section>
 
         {workspaceTab === "graphs" ? (
           <>
-            <section className="metric-tabs">
-              {(
-                Object.keys(
-                  METRICS,
-                ) as Metric[]
-              ).map((key) => (
-                <button
-                  key={key}
-                  type="button"
-                  className={
-                    metric === key
-                      ? "active"
-                      : ""
-                  }
-                  onClick={() =>
-                    setMetric(key)
-                  }
-                >
-                  {METRICS[key].label}
-                </button>
-              ))}
-            </section>
-
             <section className="compare-card graph-card">
               <div className="compare-card-head">
                 <div>
@@ -1065,13 +1030,11 @@ export default function BroilerPerformanceWorkspacePage() {
                     Age-aligned comparison
                   </p>
                   <h3>
-                    {config.label}
+                    Broiler performance overlay
                   </h3>
                   <p>
-                    Compare selected flocks
-                    on the same flock-age
-                    axis. Hover or tap a point
-                    for the exact value.
+                    Hover anywhere vertically in the plot.
+                    The graph snaps to the nearest flock age.
                   </p>
                 </div>
 
@@ -1107,7 +1070,20 @@ export default function BroilerPerformanceWorkspacePage() {
                           item.plan.id,
                         ),
                     )}
-                    metric={config}
+                    selectedMetrics={selectedMetrics}
+                    onToggleMetric={(key) =>
+                      setSelectedMetrics((current) => {
+                        if (current.includes(key)) {
+                          return current.length === 1
+                            ? current
+                            : current.filter(
+                                (item) => item !== key,
+                              );
+                        }
+
+                        return [...current, key];
+                      })
+                    }
                   />
 
                   <div className="legend">
@@ -1214,10 +1190,7 @@ export default function BroilerPerformanceWorkspacePage() {
                       <th>
                         Recorded Days
                       </th>
-                      <th>
-                        Latest{" "}
-                        {config.label}
-                      </th>
+                      <th>Latest Age</th>
                     </tr>
                   </thead>
 
@@ -1279,10 +1252,7 @@ export default function BroilerPerformanceWorkspacePage() {
                             </td>
                             <td>
                               {latest
-                                ? formatMetric(
-                                    latest.value,
-                                    metric,
-                                  )
+                                ? `Day ${latest.age}`
                                 : "—"}
                             </td>
                           </tr>
@@ -1661,13 +1631,76 @@ export default function BroilerPerformanceWorkspacePage() {
         <style jsx>{`
           .performance-workspace {
             min-width: 0;
+            padding-top: 6px;
+          }
+
+          .compact-page-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 6px;
+            padding: 8px 10px;
+            border: 1px solid #dce7e1;
+            border-radius: 12px;
+            background: #ffffff;
+            box-shadow: 0 6px 18px rgba(19, 70, 51, 0.05);
+          }
+
+          .compact-page-header > div:first-child {
+            min-width: 0;
+          }
+
+          .compact-page-eyebrow {
+            margin: 0 0 2px;
+            color: #0f6b43;
+            font-size: 8px;
+            font-weight: 950;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+          }
+
+          .compact-page-header h1 {
+            margin: 0;
+            color: #123f2b;
+            font-size: 19px;
+            line-height: 1.05;
+          }
+
+          .compact-page-header p {
+            margin: 3px 0 0;
+            color: #68776f;
+            font-size: 9.5px;
+          }
+
+          .compact-page-actions {
+            display: flex;
+            gap: 6px;
+            flex: 0 0 auto;
+          }
+
+          .compact-page-actions a,
+          .compact-page-actions button {
+            min-height: 30px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 10px;
+            border: 1px solid #cbd8d1;
+            border-radius: 8px;
+            background: #ffffff;
+            color: #174a33;
+            font-size: 9px;
+            font-weight: 850;
+            text-decoration: none;
+            cursor: pointer;
           }
 
           .workspace-switcher {
             display: flex;
             align-items: center;
             gap: 7px;
-            margin: 12px 0 10px;
+            margin: 5px 0 5px;
             padding: 5px;
             width: fit-content;
             border: 1px solid #d9e6df;
@@ -1705,8 +1738,8 @@ export default function BroilerPerformanceWorkspacePage() {
           .compare-card,
           .flock-picker,
           .report-toolbar {
-            margin-bottom: 10px;
-            padding: 12px 13px;
+            margin-bottom: 6px;
+            padding: 8px 10px;
             border: 1px solid #dce7e1;
             border-radius: 13px;
             background: #fff;
@@ -1730,7 +1763,7 @@ export default function BroilerPerformanceWorkspacePage() {
           }
 
           .compare-toolbar select {
-            min-height: 38px;
+            min-height: 32px;
             padding: 0 10px;
             border: 1px solid #cbd8d1;
             border-radius: 9px;
@@ -1832,14 +1865,14 @@ export default function BroilerPerformanceWorkspacePage() {
               4,
               minmax(0, 1fr)
             );
-            gap: 8px;
-            margin-bottom: 10px;
+            gap: 6px;
+            margin-bottom: 6px;
           }
 
           .selection-strip > div {
             display: grid;
             gap: 3px;
-            padding: 10px 11px;
+            padding: 7px 9px;
             border: 1px solid #dce7e1;
             border-radius: 11px;
             background: #fff;
@@ -1877,7 +1910,7 @@ export default function BroilerPerformanceWorkspacePage() {
           }
 
           .compare-card-head {
-            margin-bottom: 8px;
+            margin-bottom: 5px;
           }
 
           .compare-card-head h3,
@@ -2000,6 +2033,20 @@ export default function BroilerPerformanceWorkspacePage() {
           }
 
           @media (max-width: 1050px) {
+            .compact-page-header {
+              align-items: flex-start;
+              flex-direction: column;
+            }
+
+            .compact-page-actions {
+              width: 100%;
+            }
+
+            .compact-page-actions a,
+            .compact-page-actions button {
+              flex: 1;
+            }
+
             .compare-toolbar,
             .report-toolbar {
               align-items: stretch;
@@ -2040,7 +2087,8 @@ export default function BroilerPerformanceWorkspacePage() {
 
 function ComparisonSvg({
   series,
-  metric,
+  selectedMetrics,
+  onToggleMetric,
 }: {
   series: Array<{
     plan: DemandPlan;
@@ -2048,38 +2096,28 @@ function ComparisonSvg({
     points: Array<{
       age: number;
       date: string;
-      value: number;
+      values: Record<Metric, number>;
     }>;
   }>;
-  metric: {
-    label: string;
-    unit: string;
-    decimals: number;
-  };
+  selectedMetrics: Metric[];
+  onToggleMetric: (key: Metric) => void;
 }) {
-  const [hovered, setHovered] =
-    useState<{
-      seriesIndex: number;
-      pointIndex: number;
-    } | null>(null);
+  const [hoverAge, setHoverAge] =
+    useState<number | null>(null);
 
   const width = 1200;
-  const height = 285;
-  const left = 75;
-  const right = 25;
+  const height = 330;
+  const left = 64;
+  const right = 175;
   const top = 18;
-  const bottom = 42;
+  const bottom = 48;
 
-  const plotWidth =
-    width - left - right;
+  const plotWidth = width - left - right;
+  const plotHeight = height - top - bottom;
 
-  const plotHeight =
-    height - top - bottom;
-
-  const allPoints =
-    series.flatMap(
-      (item) => item.points,
-    );
+  const allPoints = series.flatMap(
+    (item) => item.points,
+  );
 
   const maxAge = Math.max(
     1,
@@ -2088,23 +2126,63 @@ function ComparisonSvg({
     ),
   );
 
-  const maxValue =
-    Math.max(
-      1,
-      ...allPoints.map(
-        (point) => point.value,
-      ),
-    ) * 1.08;
-
   const x = (age: number) =>
     left +
     (age / maxAge) * plotWidth;
 
-  const y = (value: number) =>
-    top +
-    plotHeight -
-    (value / maxValue) *
-      plotHeight;
+  const ranges = useMemo(() => {
+    const next = new Map<
+      Metric,
+      { min: number; max: number }
+    >();
+
+    selectedMetrics.forEach((metricKey) => {
+      const values = allPoints
+        .map((point) => point.values[metricKey])
+        .filter(
+          (value) =>
+            Number.isFinite(value) &&
+            value > 0,
+        );
+
+      const min = Math.min(...values, 0);
+      const max = Math.max(...values, 1);
+      const pad = Math.max(
+        (max - min) * 0.12,
+        max * 0.05,
+        0.01,
+      );
+
+      next.set(metricKey, {
+        min: Math.max(0, min - pad),
+        max: max + pad,
+      });
+    });
+
+    return next;
+  }, [allPoints, selectedMetrics]);
+
+  const y = (
+    metricKey: Metric,
+    value: number,
+  ) => {
+    const range =
+      ranges.get(metricKey) ?? {
+        min: 0,
+        max: 1,
+      };
+
+    return (
+      top +
+      plotHeight -
+      ((value - range.min) /
+        Math.max(
+          range.max - range.min,
+          0.000001,
+        )) *
+        plotHeight
+    );
+  };
 
   const xTicks = [
     0,
@@ -2117,78 +2195,150 @@ function ComparisonSvg({
     maxAge,
   ]
     .filter(
-      (
-        value,
-        index,
-        values,
-      ) =>
+      (value, index, values) =>
         value <= maxAge &&
-        values.indexOf(value) ===
-          index,
+        values.indexOf(value) === index,
     )
-    .sort(
-      (a, b) => a - b,
+    .sort((a, b) => a - b);
+
+  const metricColours: Record<
+    Metric,
+    string
+  > = {
+    bodyweight: "#1677d2",
+    mortality: "#ef4444",
+    feed: "#f97316",
+    water: "#0891b2",
+    fcr: "#7c3aed",
+  };
+
+  function handleChartMove(
+    event: React.MouseEvent<SVGRectElement>,
+  ) {
+    const svg =
+      event.currentTarget.ownerSVGElement;
+
+    if (!svg || allPoints.length === 0) {
+      return;
+    }
+
+    const bounds =
+      svg.getBoundingClientRect();
+
+    const svgX =
+      (event.clientX - bounds.left) *
+      (width / bounds.width);
+
+    const clampedX = Math.max(
+      left,
+      Math.min(
+        left + plotWidth,
+        svgX,
+      ),
     );
 
-  const hoveredSeries =
-    hovered
-      ? series[
-          hovered.seriesIndex
-        ]
-      : null;
+    const ageAtPointer =
+      ((clampedX - left) /
+        plotWidth) *
+      maxAge;
 
-  const hoveredPoint =
-    hoveredSeries && hovered
-      ? hoveredSeries.points[
-          hovered.pointIndex
-        ]
-      : null;
+    const uniqueAges = Array.from(
+      new Set(
+        allPoints.map(
+          (point) => point.age,
+        ),
+      ),
+    );
+
+    const nearestAge =
+      uniqueAges.reduce(
+        (best, age) =>
+          Math.abs(
+            age - ageAtPointer,
+          ) <
+          Math.abs(
+            best - ageAtPointer,
+          )
+            ? age
+            : best,
+      );
+
+    setHoverAge(nearestAge);
+  }
+
+  const hoveredRows =
+    hoverAge === null
+      ? []
+      : series
+          .map((item) => {
+            const point =
+              item.points.find(
+                (candidate) =>
+                  candidate.age ===
+                  hoverAge,
+              );
+
+            return point
+              ? {
+                  label: item.label,
+                  point,
+                }
+              : null;
+          })
+          .filter(
+            (
+              item,
+            ): item is {
+              label: string;
+              point: {
+                age: number;
+                date: string;
+                values: Record<
+                  Metric,
+                  number
+                >;
+              };
+            } => Boolean(item),
+          );
 
   return (
-    <div className="chart-scroll">
+    <div className="broiler-overlay-chart">
       <svg
         viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="xMidYMin meet"
         role="img"
-        aria-label={`${metric.label} comparison by age`}
+        aria-label="Broiler performance overlay by flock age"
       >
         <rect
           x={left}
           y={top}
           width={plotWidth}
           height={plotHeight}
-          rx="8"
+          rx="9"
           fill="#fbfdfc"
         />
 
         {Array.from(
           { length: 6 },
-          (_, index) =>
-            (maxValue / 5) *
-            index,
-        ).map((tick) => (
-          <g key={tick}>
-            <line
-              x1={left}
-              x2={width - right}
-              y1={y(tick)}
-              y2={y(tick)}
-              stroke="#dfe8e3"
-              strokeDasharray="4 4"
-            />
+          (_, index) => index,
+        ).map((index) => {
+          const yPos =
+            top +
+            (plotHeight / 5) *
+              index;
 
-            <text
-              x={left - 10}
-              y={y(tick) + 4}
-              textAnchor="end"
-              fill="#66756d"
-              fontSize="12"
-            >
-              {tick.toFixed(
-                metric.decimals,
-              )}
-            </text>
-          </g>
-        ))}
+          return (
+            <line
+              key={index}
+              x1={left}
+              x2={left + plotWidth}
+              y1={yPos}
+              y2={yPos}
+              stroke="#dfe8e3"
+              strokeDasharray="4 5"
+            />
+          );
+        })}
 
         {xTicks.map((tick) => (
           <g key={tick}>
@@ -2205,234 +2355,521 @@ function ComparisonSvg({
               y={height - 20}
               textAnchor="middle"
               fill="#66756d"
-              fontSize="12"
+              fontSize="11"
             >
-              D{tick}
+              D{Math.round(tick)}
             </text>
           </g>
         ))}
 
-        {series.map(
-          (
-            item,
-            seriesIndex,
-          ) => (
-            <g
-              key={
-                item.plan.id
-              }
-            >
-              <polyline
-                points={item.points
-                  .map(
-                    (point) =>
-                      `${x(
-                        point.age,
-                      )},${y(
-                        point.value,
-                      )}`,
-                  )
-                  .join(" ")}
-                fill="none"
-                stroke={
-                  COLOURS[
-                    seriesIndex %
-                      COLOURS.length
-                  ]
-                }
-                strokeWidth="3"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
+        {selectedMetrics.map(
+          (metricKey, metricIndex) => {
+            const range =
+              ranges.get(metricKey) ?? {
+                min: 0,
+                max: 1,
+              };
 
-              {item.points.map(
-                (
-                  point,
-                  pointIndex,
-                ) => (
-                  <g
-                    key={`${item.plan.id}-${point.age}`}
-                  >
-                    <circle
-                      cx={x(
-                        point.age,
-                      )}
-                      cy={y(
-                        point.value,
-                      )}
-                      r="3.5"
-                      fill={
-                        COLOURS[
-                          seriesIndex %
-                            COLOURS.length
-                        ]
-                      }
-                    />
+            const axisX =
+              left +
+              plotWidth +
+              18 +
+              metricIndex * 30;
 
-                    <circle
-                      cx={x(
-                        point.age,
-                      )}
-                      cy={y(
-                        point.value,
-                      )}
-                      r="11"
-                      fill="transparent"
-                      onMouseEnter={() =>
-                        setHovered({
-                          seriesIndex,
-                          pointIndex,
-                        })
-                      }
-                      onClick={() =>
-                        setHovered({
-                          seriesIndex,
-                          pointIndex,
-                        })
-                      }
-                    />
-                  </g>
-                ),
-              )}
-            </g>
-          ),
+            return (
+              <g key={metricKey}>
+                <line
+                  x1={axisX}
+                  x2={axisX}
+                  y1={top}
+                  y2={top + plotHeight}
+                  stroke={
+                    metricColours[
+                      metricKey
+                    ]
+                  }
+                  opacity="0.75"
+                />
+
+                {[0, 0.25, 0.5, 0.75, 1].map(
+                  (ratio) => {
+                    const value =
+                      range.min +
+                      (range.max -
+                        range.min) *
+                        (1 - ratio);
+
+                    const yPos =
+                      top +
+                      plotHeight * ratio;
+
+                    return (
+                      <g key={ratio}>
+                        <line
+                          x1={axisX}
+                          x2={axisX + 4}
+                          y1={yPos}
+                          y2={yPos}
+                          stroke={
+                            metricColours[
+                              metricKey
+                            ]
+                          }
+                        />
+
+                        <text
+                          x={axisX + 6}
+                          y={yPos + 3}
+                          fill={
+                            metricColours[
+                              metricKey
+                            ]
+                          }
+                          fontSize="7.5"
+                        >
+                          {value.toFixed(
+                            METRICS[
+                              metricKey
+                            ].decimals,
+                          )}
+                        </text>
+                      </g>
+                    );
+                  },
+                )}
+              </g>
+            );
+          },
         )}
 
-        {hoveredSeries &&
-          hoveredPoint && (
-            <g>
-              <line
-                x1={x(
-                  hoveredPoint.age,
-                )}
-                x2={x(
-                  hoveredPoint.age,
-                )}
-                y1={top}
-                y2={
-                  top +
-                  plotHeight
-                }
-                stroke="#718078"
-                strokeDasharray="5 5"
-              />
+        {series.map(
+          (item, flockIndex) =>
+            selectedMetrics.map(
+              (metricKey) => {
+                const metricPoints =
+                  item.points
+                    .filter(
+                      (point) =>
+                        Number.isFinite(
+                          point.values[
+                            metricKey
+                          ],
+                        ) &&
+                        point.values[
+                          metricKey
+                        ] > 0,
+                    )
+                    .map(
+                      (point) =>
+                        `${x(
+                          point.age,
+                        )},${y(
+                          metricKey,
+                          point.values[
+                            metricKey
+                          ],
+                        )}`,
+                    )
+                    .join(" ");
 
-              <rect
-                x={Math.min(
-                  x(
-                    hoveredPoint.age,
-                  ) + 14,
-                  width - 320,
-                )}
-                y={Math.max(
-                  top + 8,
-                  y(
-                    hoveredPoint.value,
-                  ) - 88,
-                )}
-                width="300"
-                height="84"
-                rx="10"
-                fill="#103f2d"
-              />
+                return (
+                  <g
+                    key={`${item.plan.id}-${metricKey}`}
+                  >
+                    {metricPoints ? (
+                      <polyline
+                        points={
+                          metricPoints
+                        }
+                        fill="none"
+                        stroke={
+                          metricColours[
+                            metricKey
+                          ]
+                        }
+                        strokeWidth={
+                          flockIndex === 0
+                            ? "2.8"
+                            : "2"
+                        }
+                        strokeOpacity={
+                          flockIndex === 0
+                            ? "1"
+                            : "0.55"
+                        }
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    ) : null}
 
-              <text
-                x={Math.min(
-                  x(
-                    hoveredPoint.age,
-                  ) + 28,
-                  width - 306,
-                )}
-                y={Math.max(
-                  top + 31,
-                  y(
-                    hoveredPoint.value,
-                  ) - 65,
-                )}
-                fill="#fff"
-                fontSize="13"
-                fontWeight="700"
-              >
-                Day{" "}
-                {hoveredPoint.age} ·{" "}
-                {hoveredPoint.date}
-              </text>
+                    {item.points.map(
+                      (point) => {
+                        const value =
+                          point.values[
+                            metricKey
+                          ];
 
-              <text
-                x={Math.min(
-                  x(
-                    hoveredPoint.age,
-                  ) + 28,
-                  width - 306,
-                )}
-                y={Math.max(
-                  top + 52,
-                  y(
-                    hoveredPoint.value,
-                  ) - 44,
-                )}
-                fill="#d8eee3"
-                fontSize="12"
-              >
-                {
-                  hoveredSeries.label
-                }
-              </text>
+                        if (
+                          !Number.isFinite(
+                            value,
+                          ) ||
+                          value <= 0
+                        ) {
+                          return null;
+                        }
 
-              <text
-                x={Math.min(
-                  x(
-                    hoveredPoint.age,
-                  ) + 28,
-                  width - 306,
-                )}
-                y={Math.max(
-                  top + 73,
-                  y(
-                    hoveredPoint.value,
-                  ) - 23,
-                )}
-                fill="#fff"
-                fontSize="14"
-                fontWeight="800"
-              >
-                {metric.label}:{" "}
-                {hoveredPoint.value.toFixed(
-                  metric.decimals,
-                )}
-                {metric.unit
-                  ? ` ${metric.unit}`
-                  : ""}
-              </text>
-            </g>
-          )}
+                        const active =
+                          hoverAge ===
+                          point.age;
+
+                        return (
+                          <circle
+                            key={`${item.plan.id}-${metricKey}-${point.age}`}
+                            cx={x(
+                              point.age,
+                            )}
+                            cy={y(
+                              metricKey,
+                              value,
+                            )}
+                            r={
+                              active
+                                ? "5"
+                                : "2.8"
+                            }
+                            fill="#ffffff"
+                            stroke={
+                              metricColours[
+                                metricKey
+                              ]
+                            }
+                            strokeWidth={
+                              active
+                                ? "2.4"
+                                : "1.6"
+                            }
+                            pointerEvents="none"
+                          />
+                        );
+                      },
+                    )}
+                  </g>
+                );
+              },
+            ),
+        )}
+
+        <rect
+          x={left}
+          y={top}
+          width={plotWidth}
+          height={plotHeight}
+          fill="transparent"
+          style={{
+            cursor: "crosshair",
+          }}
+          onMouseMove={
+            handleChartMove
+          }
+          onClick={handleChartMove}
+          onMouseLeave={() =>
+            setHoverAge(null)
+          }
+        />
+
+        {hoverAge !== null ? (
+          <line
+            x1={x(hoverAge)}
+            x2={x(hoverAge)}
+            y1={top}
+            y2={top + plotHeight}
+            stroke="#5f7168"
+            strokeDasharray="4 5"
+            pointerEvents="none"
+          />
+        ) : null}
 
         <text
-          x={
-            left +
-            plotWidth / 2
-          }
+          x={left + plotWidth / 2}
           y={height - 2}
           textAnchor="middle"
           fill="#53645b"
-          fontSize="13"
+          fontSize="12"
           fontWeight="700"
         >
           Age (days)
         </text>
       </svg>
 
+      <div
+        className={
+          hoverAge !== null
+            ? "hover-card visible"
+            : "hover-card"
+        }
+      >
+        {hoverAge !== null &&
+        hoveredRows.length ? (
+          <>
+            <div className="hover-age">
+              <strong>
+                Day {hoverAge}
+              </strong>
+              <span>
+                {
+                  hoveredRows[0]
+                    .point.date
+                }
+              </span>
+            </div>
+
+            <div className="hover-values">
+              {hoveredRows.map(
+                (row) => (
+                  <div
+                    key={row.label}
+                    className="hover-flock"
+                  >
+                    <b>{row.label}</b>
+
+                    <span>
+                      {selectedMetrics.map(
+                        (
+                          metricKey,
+                        ) => (
+                          <em
+                            key={
+                              metricKey
+                            }
+                          >
+                            <i
+                              style={{
+                                background:
+                                  metricColours[
+                                    metricKey
+                                  ],
+                              }}
+                            />
+                            {
+                              METRICS[
+                                metricKey
+                              ]
+                                .shortLabel
+                            }{" "}
+                            {formatMetric(
+                              row.point
+                                .values[
+                                metricKey
+                              ],
+                              metricKey,
+                            )}
+                          </em>
+                        ),
+                      )}
+                    </span>
+                  </div>
+                ),
+              )}
+            </div>
+          </>
+        ) : (
+          <span className="hover-placeholder">
+            Hover anywhere over the graph for the nearest flock-age values
+          </span>
+        )}
+      </div>
+
+      <div className="metric-legend">
+        {(
+          Object.keys(
+            METRICS,
+          ) as Metric[]
+        ).map((metricKey) => {
+          const active =
+            selectedMetrics.includes(
+              metricKey,
+            );
+
+          return (
+            <button
+              key={metricKey}
+              type="button"
+              className={
+                active
+                  ? "active"
+                  : ""
+              }
+              onClick={() =>
+                onToggleMetric(
+                  metricKey,
+                )
+              }
+            >
+              <i
+                style={{
+                  background:
+                    metricColours[
+                      metricKey
+                    ],
+                }}
+              />
+              {
+                METRICS[
+                  metricKey
+                ].label
+              }
+            </button>
+          );
+        })}
+      </div>
+
       <style jsx>{`
-        .chart-scroll {
+        .broiler-overlay-chart {
           width: 100%;
-          overflow-x: auto;
+          min-width: 0;
+          display: grid;
+          gap: 5px;
+          overflow: hidden;
         }
 
         svg {
           display: block;
           width: 100%;
-          min-width: 760px;
+          min-width: 0;
           height: auto;
+        }
+
+        .hover-card {
+          min-height: 38px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 5px 8px;
+          border: 1px solid #e0e9e4;
+          border-radius: 9px;
+          background: #fbfdfc;
+          overflow: hidden;
+        }
+
+        .hover-card.visible {
+          border-color: #cfe2d7;
+          background: #f8fcfa;
+        }
+
+        .hover-placeholder {
+          color: #8a9891;
+          font-size: 9px;
+          font-weight: 700;
+        }
+
+        .hover-age {
+          flex: 0 0 auto;
+          display: grid;
+          gap: 1px;
+          padding-right: 9px;
+          border-right: 1px solid #e2ebe6;
+        }
+
+        .hover-age strong {
+          color: #173f2d;
+          font-size: 10px;
+        }
+
+        .hover-age span {
+          color: #7a8981;
+          font-size: 8px;
+        }
+
+        .hover-values {
+          min-width: 0;
+          display: flex;
+          gap: 10px;
+          overflow: hidden;
+        }
+
+        .hover-flock {
+          min-width: 0;
+          display: grid;
+          gap: 2px;
+        }
+
+        .hover-flock > b {
+          overflow: hidden;
+          color: #486157;
+          font-size: 8px;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .hover-flock > span {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 3px 7px;
+        }
+
+        .hover-flock em {
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+          color: #173f2d;
+          font-size: 8px;
+          font-style: normal;
+          font-weight: 800;
+          white-space: nowrap;
+        }
+
+        .hover-flock em i {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+        }
+
+        .metric-legend {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 5px;
+        }
+
+        .metric-legend button {
+          min-height: 28px;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 0 8px;
+          border: 1px solid #dce7e1;
+          border-radius: 999px;
+          background: #ffffff;
+          color: #65776d;
+          font-size: 9px;
+          font-weight: 850;
+          cursor: pointer;
+          opacity: 0.42;
+        }
+
+        .metric-legend button.active {
+          border-color: #bdd9ca;
+          background: #f4faf6;
+          color: #174a33;
+          opacity: 1;
+        }
+
+        .metric-legend i {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+        }
+
+        @media (max-width: 900px) {
+          .hover-card {
+            align-items: flex-start;
+            flex-wrap: wrap;
+          }
+
+          .hover-values {
+            width: 100%;
+            flex-wrap: wrap;
+            overflow: visible;
+          }
         }
       `}</style>
     </div>
