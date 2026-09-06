@@ -1,23 +1,19 @@
 "use client";
 
 import {
-  Suspense,
-  useCallback,
+  MouseEvent as ReactMouseEvent,
   useEffect,
   useMemo,
   useState,
 } from "react";
-
-import { useSearchParams } from "next/navigation";
-import DailyHouseCard from "@/components/daily-house-card";
 import BroilerSidebar from "@/components/BroilerSidebar";
-import { useCurrentUser } from "@/hooks/useCurrentUser";
+import OviCorePageHeader from "@/components/ovicore/OviCorePageHeader";
 
 const API_BASE = "";
 
 async function authenticatedFetch(
   input: RequestInfo | URL,
-  init: RequestInit = {}
+  init: RequestInit = {},
 ) {
   const response = await fetch(input, {
     ...init,
@@ -25,8 +21,7 @@ async function authenticatedFetch(
   });
 
   if (response.status === 401) {
-    const nextPath =
-      `${window.location.pathname}${window.location.search}`;
+    const nextPath = `${window.location.pathname}${window.location.search}`;
 
     window.location.href =
       `/login?next=${encodeURIComponent(nextPath)}`;
@@ -37,18 +32,21 @@ async function authenticatedFetch(
   return response;
 }
 
+type CurrentUser = {
+  company_id: number | null;
+  is_global_admin: boolean;
+};
+
 type DemandPlan = {
   id: number;
+  farm_id?: number;
+  shed_id?: number;
   farm_name?: string;
   shed_name?: string;
   cycle_code?: string;
   placement_date?: string;
   processing_date?: string;
   planned_birds?: number;
-  floor_area_m2?: number;
-  target_lw_kg?: number;
-  planned_kg_m2?: number;
-  growout_days?: number;
 };
 
 type PerformanceRecord = {
@@ -57,1088 +55,2357 @@ type PerformanceRecord = {
   entry_date: string;
   age_days?: number | null;
   opening_birds?: number | null;
-
-  mortality_front?: number | null;
-  mortality_middle?: number | null;
-  mortality_back?: number | null;
-  mortality_other?: number | null;
   mortality_birds?: number | null;
-
-  cull_legs?: number | null;
-  cull_runts?: number | null;
-  cull_beak?: number | null;
-  cull_other?: number | null;
   cull_birds?: number | null;
-
   closing_birds?: number | null;
   feed_kg?: number | null;
   water_litres?: number | null;
   body_weight_kg?: number | null;
   avg_weight_kg?: number | null;
-  notes?: string | null;
+  cumulative_mortality_pct?: number | null;
 };
 
-type DailyRow = {
-  local_key: string;
-  record_id?: number;
-  placement_plan_id: number;
-  entry_date: string;
-  age_days: number;
+type Metric =
+  | "bodyweight"
+  | "mortality"
+  | "feed"
+  | "water"
+  | "fcr";
 
-  opening_birds: number | "";
+type WorkspaceTab = "graphs" | "reports";
+type ReportType = "comparison" | "daily";
 
-  mortality_front: number | "";
-  mortality_middle: number | "";
-  mortality_back: number | "";
-  mortality_other: number | "";
-  mortality_birds: number | "";
-
-  cull_legs: number | "";
-  cull_runts: number | "";
-  cull_beak: number | "";
-  cull_other: number | "";
-  cull_birds: number | "";
-
-  total_bird_loss: number | "";
-  closing_birds: number | "";
-
-  feed_kg: number | "";
-  water_litres: number | "";
-  body_weight_kg: number | "";
-
-  mortality_pct: number | "";
-  cull_pct: number | "";
-  livability_pct: number | "";
-  kg_m2: number | "";
-  fcr: number | "";
-  review_status: string;
-
-  notes: string;
+const METRICS: Record<
+  Metric,
+  {
+    label: string;
+    shortLabel: string;
+    unit: string;
+    decimals: number;
+  }
+> = {
+  bodyweight: {
+    label: "Bodyweight",
+    shortLabel: "BW",
+    unit: "kg",
+    decimals: 3,
+  },
+  mortality: {
+    label: "Cumulative Mortality",
+    shortLabel: "Mort",
+    unit: "%",
+    decimals: 2,
+  },
+  feed: {
+    label: "Feed Intake",
+    shortLabel: "Feed",
+    unit: "g/bird",
+    decimals: 1,
+  },
+  water: {
+    label: "Water Intake",
+    shortLabel: "Water",
+    unit: "mL/bird",
+    decimals: 1,
+  },
+  fcr: {
+    label: "Estimated FCR",
+    shortLabel: "FCR",
+    unit: "",
+    decimals: 2,
+  },
 };
 
-function formatNumber(value: number | "" | null | undefined, decimals = 0) {
-  if (value === "" || value === null || value === undefined) return "";
+const COLOURS = [
+  "#0f6b43",
+  "#f07b22",
+  "#2563eb",
+  "#8b5cf6",
+  "#db2777",
+  "#0891b2",
+];
 
-  return Number(value).toLocaleString(undefined, {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  });
+function n(value: number | null | undefined) {
+  const result = Number(value ?? 0);
+  return Number.isFinite(result) ? result : 0;
 }
 
-function isoToDisplayDate(value?: string | null) {
-  if (!value) return "";
-
-  if (/^\d{2}-\d{2}-\d{4}$/.test(value)) return value;
+function displayDate(value?: string | null) {
+  if (!value) return "—";
 
   const [year, month, day] = value.split("-");
-  if (!year || !month || !day) return value;
 
-  return `${day}-${month}-${year}`;
+  return year && month && day
+    ? `${day}-${month}-${year}`
+    : value;
 }
 
-function displayDateToIso(value: string) {
-  if (!value) return null;
+function metricValue(
+  record: PerformanceRecord,
+  plan: DemandPlan,
+  metric: Metric,
+  cumulativeMortality: number,
+) {
+  const closing = n(record.closing_birds);
+  const placed = n(plan.planned_birds);
+  const feed = n(record.feed_kg);
+  const water = n(record.water_litres);
+  const weight = n(
+    record.body_weight_kg ??
+      record.avg_weight_kg,
+  );
 
-  const clean = String(value).trim();
+  if (metric === "bodyweight") return weight;
 
-  if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) return clean;
-
-  const parts = clean.split("-");
-  if (parts.length !== 3) return null;
-
-  const [day, month, year] = parts;
-
-  if (!day || !month || !year) return null;
-
-  return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
-}
-
-function toNumberOrNull(value: number | "" | string) {
-  if (value === "" || value === null || value === undefined) return null;
-
-  const num = Number(value);
-  return Number.isFinite(num) ? num : null;
-}
-
-function positiveOrBlank(value: number | null | undefined): number | "" {
-  if (value === null || value === undefined || Number(value) <= 0) {
-    return "";
+  if (metric === "mortality") {
+    return record.cumulative_mortality_pct != null
+      ? Number(
+          record.cumulative_mortality_pct,
+        )
+      : placed > 0
+        ? (cumulativeMortality / placed) * 100
+        : 0;
   }
 
-  return Number(value);
-}
-
-function valueToNumber(value: number | "" | null | undefined) {
-  if (value === "" || value === null || value === undefined) return 0;
-
-  const num = Number(value);
-  return Number.isFinite(num) ? num : 0;
-}
-
-function addDays(isoDate: string, days: number) {
-  if (!isoDate) return "";
-
-  const date = new Date(`${isoDate}T00:00:00`);
-
-  if (Number.isNaN(date.getTime())) return "";
-
-  date.setDate(date.getDate() + days);
-
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
-}
-
-function diffDays(startIso?: string, endIso?: string) {
-  if (!startIso || !endIso) return 42;
-
-  const start = new Date(`${startIso}T00:00:00`);
-  const end = new Date(`${endIso}T00:00:00`);
-
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 42;
-
-  return Math.max(0, Math.round((end.getTime() - start.getTime()) / 86400000));
-}
-
-function calculateRow(row: DailyRow, plan: DemandPlan): DailyRow {
-  const opening = valueToNumber(row.opening_birds);
-
-  const mortBreakdownTotal =
-    valueToNumber(row.mortality_front) +
-    valueToNumber(row.mortality_middle) +
-    valueToNumber(row.mortality_back) +
-    valueToNumber(row.mortality_other);
-
-  const cullBreakdownTotal =
-    valueToNumber(row.cull_legs) +
-    valueToNumber(row.cull_runts) +
-    valueToNumber(row.cull_beak) +
-    valueToNumber(row.cull_other);
-
-  // Important:
-  // Older saved rows may only have mortality_birds / cull_birds saved,
-  // before the front/middle/back and cull reason split existed.
-  // Use the split totals when they exist, otherwise keep the saved total.
-  const mortTotal =
-    mortBreakdownTotal > 0 ? mortBreakdownTotal : valueToNumber(row.mortality_birds);
-
-  const cullTotal =
-    cullBreakdownTotal > 0 ? cullBreakdownTotal : valueToNumber(row.cull_birds);
-
-  const totalBirdLoss = mortTotal + cullTotal;
-  const closing =
-    opening > 0 ? Math.max(0, opening - totalBirdLoss) : "";
-
-  const bodyWeight = valueToNumber(row.body_weight_kg);
-  const floorArea = valueToNumber(plan.floor_area_m2);
-  const feedKg = valueToNumber(row.feed_kg);
-  const placedBirds = valueToNumber(plan.planned_birds);
-
-  const mortalityPct =
-    opening > 0 ? Number(((mortTotal / opening) * 100).toFixed(2)) : "";
-
-  const cullPct =
-    opening > 0 ? Number(((cullTotal / opening) * 100).toFixed(2)) : "";
-
-  const livabilityPct =
-    placedBirds > 0 && typeof closing === "number"
-      ? Number(((closing / placedBirds) * 100).toFixed(2))
-      : "";
-
-  const kgM2 =
-    floorArea > 0 && typeof closing === "number" && bodyWeight > 0
-      ? Number(((closing * bodyWeight) / floorArea).toFixed(2))
-      : "";
-
-  const fcr =
-    typeof closing === "number" && bodyWeight > 0 && feedKg > 0
-      ? Number((feedKg / (closing * bodyWeight)).toFixed(2))
-      : "";
-
-  let review = "OK";
-
-  if (opening > 0 && mortTotal > Math.max(50, opening * 0.005)) {
-    review = "Mortality Review";
+  if (metric === "feed") {
+    return closing > 0
+      ? (feed * 1000) / closing
+      : 0;
   }
 
-  if (opening > 0 && cullTotal > Math.max(25, opening * 0.003)) {
-    review = "Cull Review";
+  if (metric === "water") {
+    return closing > 0
+      ? (water * 1000) / closing
+      : 0;
   }
 
-  if (typeof kgM2 === "number" && kgM2 >= 39) {
-    review = "Density Watch";
+  return closing > 0 &&
+    weight > 0 &&
+    feed > 0
+    ? feed / (closing * weight)
+    : 0;
+}
+
+function formatMetric(
+  value: number | null | undefined,
+  metric: Metric,
+) {
+  if (
+    value === null ||
+    value === undefined ||
+    !Number.isFinite(value)
+  ) {
+    return "—";
   }
 
-  const backMortalityShare =
-    mortTotal > 0 ? valueToNumber(row.mortality_back) / mortTotal : 0;
+  const config = METRICS[metric];
 
-  if (mortTotal >= 20 && backMortalityShare >= 0.5) {
-    review = "Back Zone Mortality";
-  }
+  return `${value.toFixed(config.decimals)}${
+    config.unit ? ` ${config.unit}` : ""
+  }`;
+}
 
+function allMetricValues(
+  record: PerformanceRecord,
+  plan: DemandPlan,
+  cumulativeMortality: number,
+) {
   return {
-    ...row,
-    mortality_birds: mortTotal,
-    cull_birds: cullTotal,
-    total_bird_loss: totalBirdLoss,
-    closing_birds: closing,
-    mortality_pct: mortalityPct,
-    cull_pct: cullPct,
-    livability_pct: livabilityPct,
-    kg_m2: kgM2,
-    fcr,
-    review_status: review,
+    bodyweight: metricValue(
+      record,
+      plan,
+      "bodyweight",
+      cumulativeMortality,
+    ),
+    mortality: metricValue(
+      record,
+      plan,
+      "mortality",
+      cumulativeMortality,
+    ),
+    feed: metricValue(
+      record,
+      plan,
+      "feed",
+      cumulativeMortality,
+    ),
+    water: metricValue(
+      record,
+      plan,
+      "water",
+      cumulativeMortality,
+    ),
+    fcr: metricValue(
+      record,
+      plan,
+      "fcr",
+      cumulativeMortality,
+    ),
   };
 }
 
-function recalculateStockFlow(rows: DailyRow[], plan: DemandPlan): DailyRow[] {
-  let previousClosing = valueToNumber(plan.planned_birds);
+export default function BroilerPerformanceWorkspacePage() {
+  const [companyId, setCompanyId] =
+    useState<number | null>(null);
 
-  return rows.map((row) => {
-    const openingBirds =
-      row.age_days === 0
-        ? valueToNumber(plan.planned_birds) || row.opening_birds
-        : previousClosing;
+  const [plans, setPlans] = useState<
+    DemandPlan[]
+  >([]);
 
-    const calculated = calculateRow(
-      {
-        ...row,
-        opening_birds: openingBirds,
-      },
-      plan,
-    );
+  const [records, setRecords] = useState<
+    PerformanceRecord[]
+  >([]);
 
-    if (typeof calculated.closing_birds === "number") {
-      previousClosing = calculated.closing_birds;
-    }
+  const [primaryId, setPrimaryId] =
+    useState<number | "">("");
 
-    return calculated;
-  });
-}
+  const [selectedIds, setSelectedIds] =
+    useState<number[]>([]);
 
-function DailyPerformancePageContent() {
-  const searchParams = useSearchParams();
+  const [metric, setMetric] =
+    useState<Metric>("bodyweight");
 
-  const {
-    currentUser,
-    loadingUser,
-    userError,
-  } = useCurrentUser();
+  const [workspaceTab, setWorkspaceTab] =
+    useState<WorkspaceTab>("graphs");
 
-  const activeCompanyId = useMemo(() => {
-    const companyParam = searchParams.get("company_id");
-    const parsedCompanyId = Number(companyParam);
+  const [reportType, setReportType] =
+    useState<ReportType>("comparison");
 
-    if (currentUser?.is_global_admin) {
-      if (
-        Number.isInteger(parsedCompanyId) &&
-        parsedCompanyId > 0
-      ) {
-        return parsedCompanyId;
-      }
+  const [pickerOpen, setPickerOpen] =
+    useState(false);
 
-      return null;
-    }
+  const [hiddenIds, setHiddenIds] =
+    useState<Set<number>>(new Set());
 
-    return currentUser?.company_id ?? null;
-  }, [
-    currentUser?.company_id,
-    currentUser?.is_global_admin,
-    searchParams,
-  ]);
+  const [loading, setLoading] =
+    useState(true);
 
-  const [plans, setPlans] = useState<DemandPlan[]>([]);
-  const [selectedPlanId, setSelectedPlanId] = useState<number | "">("");
-  const [records, setRecords] = useState<PerformanceRecord[]>([]);
-  const [rows, setRows] = useState<DailyRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [dirtyKeys, setDirtyKeys] = useState<Set<string>>(new Set());
-  const [message, setMessage] = useState("");
-
-  const selectedPlan = useMemo(() => {
-    return plans.find((plan) => plan.id === selectedPlanId);
-  }, [plans, selectedPlanId]);
-
-	const loadData = useCallback(async () => {
-		if (loadingUser) {
-			return;
-		}
-
-		if (!activeCompanyId) {
-			setPlans([]);
-			setRecords([]);
-			setRows([]);
-			setSelectedPlanId("");
-			setLoading(false);
-
-			setMessage(
-				currentUser?.is_global_admin
-					? "Select a company before loading Daily House Card data."
-					: "Your user account is not assigned to a company."
-			);
-
-			return;
-		}
-
-		setLoading(true);
-		setMessage("");
-
-		try {
-			const plansResponse = await authenticatedFetch(
-				`${API_BASE}/api/broilers/demand-plans?company_id=${activeCompanyId}`,
-				{
-					cache: "no-store",
-				}
-			);
-
-			if (!plansResponse.ok) {
-				throw new Error(
-					`Could not load plans: ${plansResponse.status}`
-				);
-			}
-
-			const plansData: DemandPlan[] =
-				await plansResponse.json();
-
-			setPlans(plansData);
-
-			setSelectedPlanId((currentPlanId) => {
-				const currentStillExists = plansData.some(
-					(plan) => plan.id === currentPlanId
-				);
-
-				if (currentStillExists) {
-					return currentPlanId;
-				}
-
-				return plansData.length > 0
-					? plansData[0].id
-					: "";
-			});
-
-			const performanceResponse =
-				await authenticatedFetch(
-					`${API_BASE}/api/broilers/performance?company_id=${activeCompanyId}`,
-					{
-						cache: "no-store",
-					}
-				);
-
-			if (!performanceResponse.ok) {
-				const errorText =
-					await performanceResponse.text();
-
-				console.error(
-					"Performance load failed:",
-					errorText
-				);
-
-				setRecords([]);
-				setDirtyKeys(new Set());
-
-				setMessage(
-					`Performance records not loaded yet: ${performanceResponse.status}`
-				);
-
-				return;
-			}
-
-			const performanceData: PerformanceRecord[] =
-				await performanceResponse.json();
-
-			setRecords(performanceData);
-			setDirtyKeys(new Set());
-		} catch (error) {
-			console.error(error);
-
-			setPlans([]);
-			setRecords([]);
-
-			setMessage(
-				error instanceof Error
-					? error.message
-					: "Could not load Daily Performance."
-			);
-		} finally {
-			setLoading(false);
-		}
-	}, [
-		activeCompanyId,
-		currentUser?.is_global_admin,
-		loadingUser,
-	]);
-
-	useEffect(() => {
-		void loadData();
-	}, [loadData]);
+  const [message, setMessage] =
+    useState("");
 
   useEffect(() => {
-    if (!selectedPlan) {
-      setRows([]);
+    async function resolveCompany() {
+      try {
+        const response =
+          await authenticatedFetch(
+            `${API_BASE}/api/auth/me`,
+            { cache: "no-store" },
+          );
+
+        if (!response.ok) {
+          throw new Error(
+            `Could not load current user: ${response.status}`,
+          );
+        }
+
+        const user: CurrentUser =
+          await response.json();
+
+        if (!user.is_global_admin) {
+          setCompanyId(user.company_id);
+          return;
+        }
+
+        const params =
+          new URLSearchParams(
+            window.location.search,
+          );
+
+        const fromUrl = Number(
+          params.get("company_id"),
+        );
+
+        const remembered = Number(
+          window.localStorage.getItem(
+            "ovicore_selected_company_id",
+          ),
+        );
+
+        setCompanyId(
+          Number.isInteger(fromUrl) &&
+            fromUrl > 0
+            ? fromUrl
+            : Number.isInteger(remembered) &&
+                remembered > 0
+              ? remembered
+              : null,
+        );
+      } catch (error) {
+        setLoading(false);
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : "Could not determine company.",
+        );
+      }
+    }
+
+    void resolveCompany();
+  }, []);
+
+  async function loadData() {
+    if (!companyId) {
+      setLoading(false);
+      setMessage(
+        "Select a working company.",
+      );
       return;
     }
 
-    const days =
-      selectedPlan.growout_days ??
-      diffDays(selectedPlan.placement_date, selectedPlan.processing_date);
+    setLoading(true);
+    setMessage("");
 
-    const existingByAge = new Map<number, PerformanceRecord>();
+    try {
+      const [
+        plansResponse,
+        recordsResponse,
+      ] = await Promise.all([
+        authenticatedFetch(
+          `${API_BASE}/api/broilers/demand-plans?company_id=${companyId}`,
+          { cache: "no-store" },
+        ),
+        authenticatedFetch(
+          `${API_BASE}/api/broilers/performance?company_id=${companyId}`,
+          { cache: "no-store" },
+        ),
+      ]);
 
-    for (const record of records) {
-      if (record.placement_plan_id === selectedPlan.id) {
-        existingByAge.set(Number(record.age_days || 0), record);
+      if (!plansResponse.ok) {
+        throw new Error(
+          `Could not load cycles: ${plansResponse.status}`,
+        );
+      }
+
+      if (!recordsResponse.ok) {
+        throw new Error(
+          `Could not load performance: ${recordsResponse.status}`,
+        );
+      }
+
+      const planData: DemandPlan[] =
+        await plansResponse.json();
+
+      const recordData: PerformanceRecord[] =
+        await recordsResponse.json();
+
+      const sorted = [...planData].sort(
+        (a, b) =>
+          String(
+            b.placement_date || "",
+          ).localeCompare(
+            String(
+              a.placement_date || "",
+            ),
+          ),
+      );
+
+      setPlans(sorted);
+      setRecords(recordData);
+
+      const firstId =
+        sorted[0]?.id ?? "";
+
+      setPrimaryId((current) =>
+        sorted.some(
+          (plan) =>
+            plan.id === current,
+        )
+          ? current
+          : firstId,
+      );
+
+      setSelectedIds((current) => {
+        const valid = current.filter(
+          (id) =>
+            sorted.some(
+              (plan) =>
+                plan.id === id,
+            ),
+        );
+
+        return valid.length
+          ? valid
+          : firstId
+            ? [Number(firstId)]
+            : [];
+      });
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not load performance data.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (companyId) {
+      void loadData();
+    }
+  }, [companyId]);
+
+  const primaryPlan = plans.find(
+    (plan) =>
+      plan.id === primaryId,
+  );
+
+  const series = useMemo(() => {
+    return selectedIds
+      .map((id) =>
+        plans.find(
+          (plan) => plan.id === id,
+        ),
+      )
+      .filter(
+        (plan): plan is DemandPlan =>
+          Boolean(plan),
+      )
+      .map((plan) => {
+        let cumulativeMortality = 0;
+
+        const points = records
+          .filter(
+            (record) =>
+              record.placement_plan_id ===
+              plan.id,
+          )
+          .sort(
+            (a, b) =>
+              n(a.age_days) -
+              n(b.age_days),
+          )
+          .map((record) => {
+            cumulativeMortality += n(
+              record.mortality_birds,
+            );
+
+            return {
+              age: n(
+                record.age_days,
+              ),
+              date: displayDate(
+                record.entry_date,
+              ),
+              value: metricValue(
+                record,
+                plan,
+                metric,
+                cumulativeMortality,
+              ),
+            };
+          })
+          .filter(
+            (point) =>
+              point.value > 0,
+          );
+
+        return {
+          plan,
+          label: `${
+            plan.farm_name || "Farm"
+          } / ${
+            plan.shed_name || "Shed"
+          } / ${
+            plan.cycle_code ||
+            plan.id
+          }`,
+          points,
+        };
+      });
+  }, [
+    selectedIds,
+    plans,
+    records,
+    metric,
+  ]);
+
+  const comparisonReport = useMemo(
+    () =>
+      selectedIds
+        .map((id) =>
+          plans.find(
+            (plan) =>
+              plan.id === id,
+          ),
+        )
+        .filter(
+          (plan): plan is DemandPlan =>
+            Boolean(plan),
+        )
+        .map((plan) => {
+          let cumulativeMortality = 0;
+
+          const flockRecords = records
+            .filter(
+              (record) =>
+                record.placement_plan_id ===
+                plan.id,
+            )
+            .sort(
+              (a, b) =>
+                n(a.age_days) -
+                n(b.age_days),
+            );
+
+          const enriched =
+            flockRecords.map(
+              (record) => {
+                cumulativeMortality += n(
+                  record.mortality_birds,
+                );
+
+                return {
+                  record,
+                  values:
+                    allMetricValues(
+                      record,
+                      plan,
+                      cumulativeMortality,
+                    ),
+                };
+              },
+            );
+
+          const latest =
+            enriched.at(-1);
+
+          return {
+            plan,
+            recordedDays:
+              enriched.length,
+            latestAge:
+              latest?.record
+                .age_days ?? null,
+            closingBirds:
+              latest?.record
+                .closing_birds ?? null,
+            values:
+              latest?.values ?? null,
+          };
+        }),
+    [
+      selectedIds,
+      plans,
+      records,
+    ],
+  );
+
+  const dailyReportRows = useMemo(() => {
+    const rows: Array<{
+      plan: DemandPlan;
+      record: PerformanceRecord;
+      values: Record<
+        Metric,
+        number
+      >;
+    }> = [];
+
+    for (const id of selectedIds) {
+      const plan = plans.find(
+        (item) => item.id === id,
+      );
+
+      if (!plan) continue;
+
+      let cumulativeMortality = 0;
+
+      const flockRecords = records
+        .filter(
+          (record) =>
+            record.placement_plan_id ===
+            plan.id,
+        )
+        .sort(
+          (a, b) =>
+            n(a.age_days) -
+            n(b.age_days),
+        );
+
+      for (const record of flockRecords) {
+        cumulativeMortality += n(
+          record.mortality_birds,
+        );
+
+        rows.push({
+          plan,
+          record,
+          values: allMetricValues(
+            record,
+            plan,
+            cumulativeMortality,
+          ),
+        });
       }
     }
 
-    const generatedRows: DailyRow[] = [];
+    return rows.sort((a, b) => {
+      const farmCompare =
+        String(
+          a.plan.farm_name || "",
+        ).localeCompare(
+          String(
+            b.plan.farm_name || "",
+          ),
+        );
 
-    for (let age = 0; age <= days; age += 1) {
-      const existing = existingByAge.get(age);
+      if (farmCompare !== 0) {
+        return farmCompare;
+      }
 
-      const entryIsoDate =
-        existing?.entry_date ||
-        addDays(selectedPlan.placement_date || "", age);
+      const shedCompare =
+        String(
+          a.plan.shed_name || "",
+        ).localeCompare(
+          String(
+            b.plan.shed_name || "",
+          ),
+        );
 
-      const openingBirds =
-        age === 0
-          ? selectedPlan.planned_birds ?? existing?.opening_birds ?? ""
-          : existing?.opening_birds ?? "";
+      if (shedCompare !== 0) {
+        return shedCompare;
+      }
 
-      const existingBodyWeight =
-        existing?.body_weight_kg ?? existing?.avg_weight_kg ?? "";
+      return (
+        n(a.record.age_days) -
+        n(b.record.age_days)
+      );
+    });
+  }, [
+    selectedIds,
+    plans,
+    records,
+  ]);
 
-      const baseRow: DailyRow = {
-        local_key: `${selectedPlan.id}-${age}`,
-        record_id: existing?.id,
-        placement_plan_id: selectedPlan.id,
-        entry_date: isoToDisplayDate(entryIsoDate),
-        age_days: age,
+  function chooseCurrentPrevious() {
+    if (!primaryPlan) return;
 
-        opening_birds: openingBirds ?? "",
-
-				mortality_front: positiveOrBlank(existing?.mortality_front),
-				mortality_middle: positiveOrBlank(existing?.mortality_middle),
-				mortality_back: positiveOrBlank(existing?.mortality_back),
-				mortality_other: positiveOrBlank(existing?.mortality_other),
-				mortality_birds: existing?.mortality_birds ?? 0,
-
-				cull_legs: positiveOrBlank(existing?.cull_legs),
-				cull_runts: positiveOrBlank(existing?.cull_runts),
-				cull_beak: positiveOrBlank(existing?.cull_beak),
-				cull_other: positiveOrBlank(existing?.cull_other),
-				cull_birds: existing?.cull_birds ?? 0,
-
-        total_bird_loss: "",
-        closing_birds: existing?.closing_birds ?? "",
-
-				feed_kg: positiveOrBlank(existing?.feed_kg),
-				water_litres: positiveOrBlank(existing?.water_litres),
-				body_weight_kg: positiveOrBlank(Number(existingBodyWeight || 0)),
-
-        mortality_pct: "",
-        cull_pct: "",
-        livability_pct: "",
-        kg_m2: "",
-        fcr: "",
-        review_status: "OK",
-
-        notes: existing?.notes || "",
-      };
-
-      generatedRows.push(baseRow);
-    }
-
-    setRows(recalculateStockFlow(generatedRows, selectedPlan));
-  }, [selectedPlan, records]);
-
-  const totals = useMemo(() => {
-    const totalMortality = rows.reduce(
-      (sum, row) => sum + Number(row.mortality_birds || 0),
-      0,
+    const sameShed = plans.filter(
+      (plan) =>
+        plan.farm_name ===
+          primaryPlan.farm_name &&
+        plan.shed_name ===
+          primaryPlan.shed_name,
     );
 
-    const totalCulls = rows.reduce(
-      (sum, row) => sum + Number(row.cull_birds || 0),
-      0,
+    const index =
+      sameShed.findIndex(
+        (plan) =>
+          plan.id ===
+          primaryPlan.id,
+      );
+
+    const chosen = [
+      sameShed[index],
+      sameShed[index + 1],
+    ]
+      .filter(Boolean)
+      .map(
+        (plan) => plan.id,
+      );
+
+    setSelectedIds(
+      chosen.length
+        ? chosen
+        : [primaryPlan.id],
     );
 
-    const totalLoss = rows.reduce(
-      (sum, row) => sum + Number(row.total_bird_loss || 0),
-      0,
+    setHiddenIds(new Set());
+  }
+
+  function chooseLastThree() {
+    if (!primaryPlan) return;
+
+    const chosen = plans
+      .filter(
+        (plan) =>
+          plan.farm_name ===
+            primaryPlan.farm_name &&
+          plan.shed_name ===
+            primaryPlan.shed_name,
+      )
+      .slice(0, 3)
+      .map(
+        (plan) => plan.id,
+      );
+
+    setSelectedIds(
+      chosen.length
+        ? chosen
+        : [primaryPlan.id],
     );
 
-    const latestRow = [...rows]
-      .reverse()
-      .find((row) => Number(row.closing_birds || 0) > 0);
+    setHiddenIds(new Set());
+  }
 
-    return {
-      totalMortality,
-      totalCulls,
-      totalLoss,
-      latestClosing: Number(latestRow?.closing_birds || 0),
-      latestKgM2: Number(latestRow?.kg_m2 || 0),
-      latestLivability: Number(latestRow?.livability_pct || 0),
-    };
-  }, [rows]);
+  function togglePlan(id: number) {
+    setSelectedIds((current) => {
+      if (current.includes(id)) {
+        return current.length === 1
+          ? current
+          : current.filter(
+              (value) =>
+                value !== id,
+            );
+      }
 
-	function updateRow(localKey: string, field: keyof DailyRow, value: string) {
-		if (!selectedPlan) return;
+      if (current.length >= 6) {
+        setMessage(
+          "Compare up to six flocks at once.",
+        );
 
-		setRows((currentRows) => {
-			const targetRow = currentRows.find((row) => row.local_key === localKey);
-			const targetAge = targetRow?.age_days ?? 0;
+        return current;
+      }
 
-			const numericFields: Array<keyof DailyRow> = [
-				"opening_birds",
-				"mortality_front",
-				"mortality_middle",
-				"mortality_back",
-				"mortality_other",
-				"cull_legs",
-				"cull_runts",
-				"cull_beak",
-				"cull_other",
-				"feed_kg",
-				"water_litres",
-				"body_weight_kg",
-			];
+      return [...current, id];
+    });
 
-			const editedRows = currentRows.map((row) => {
-				if (row.local_key !== localKey) return row;
+    setHiddenIds(new Set());
+  }
 
-				return {
-					...row,
-					[field]: numericFields.includes(field)
-						? value === ""
-							? ""
-							: Number(value)
-						: value,
-				};
-			});
+  const latestPrimary =
+    series
+      .find(
+        (item) =>
+          item.plan.id ===
+          primaryId,
+      )
+      ?.points.at(-1);
 
-			const recalculatedRows = recalculateStockFlow(editedRows, selectedPlan);
+  const config =
+    METRICS[metric];
 
-			setDirtyKeys((current) => {
-				const next = new Set(current);
+  return (
+    <div className="page-shell">
+      <BroilerSidebar />
 
-				// Only save the row the user actually edited.
-				// Downstream opening/closing birds can recalculate visually,
-				// but they should not be marked dirty unless the user edits them.
-				next.add(localKey);
+      <main className="main-panel performance-workspace">
+        {/*
+         * Keep Broiler Performance aligned with the cleaner OviCore graph shell.
+         * The large module banner was intentionally removed from this page only;
+         * Broiler Intelligence remains untouched.
+         */}
+        <OviCorePageHeader
+          title="Broiler Performance"
+          subtitle="Actual-versus-standard flock performance across bodyweight, mortality, feed, water and estimated FCR."
+        />
 
-				return next;
-			});
+        <section className="workspace-switcher">
+          <button
+            type="button"
+            className={
+              workspaceTab === "graphs"
+                ? "active"
+                : ""
+            }
+            onClick={() =>
+              setWorkspaceTab("graphs")
+            }
+          >
+            Graphs
+          </button>
 
-			return recalculatedRows;
-		});
-	}
+          <button
+            type="button"
+            className={
+              workspaceTab === "reports"
+                ? "active"
+                : ""
+            }
+            onClick={() =>
+              setWorkspaceTab("reports")
+            }
+          >
+            Reports
+          </button>
 
-	async function saveSingleRow(row: DailyRow) {
-		const entryIsoDate = displayDateToIso(row.entry_date);
+          <span>
+            Same selection · same data
+          </span>
 
-		const existingRecord = records.find((record) => {
-			return (
-				record.placement_plan_id === row.placement_plan_id &&
-				record.entry_date === entryIsoDate
-			);
-		});
+          <div className="workspace-actions">
+            <button
+              type="button"
+              onClick={() => {
+                window.location.href = "/broilers";
+              }}
+            >
+              Broiler Overview
+            </button>
+            <button type="button" onClick={() => void loadData()}>
+              Refresh
+            </button>
+          </div>
+        </section>
 
-		const recordId = row.record_id ?? existingRecord?.id;
-
-		const payload = {
-			placement_plan_id: row.placement_plan_id,
-			entry_date: entryIsoDate,
-			age_days: row.age_days,
-			opening_birds: toNumberOrNull(row.opening_birds),
-
-			mortality_front: toNumberOrNull(row.mortality_front),
-			mortality_middle: toNumberOrNull(row.mortality_middle),
-			mortality_back: toNumberOrNull(row.mortality_back),
-			mortality_other: toNumberOrNull(row.mortality_other),
-			mortality_birds: toNumberOrNull(row.mortality_birds),
-
-			cull_legs: toNumberOrNull(row.cull_legs),
-			cull_runts: toNumberOrNull(row.cull_runts),
-			cull_beak: toNumberOrNull(row.cull_beak),
-			cull_other: toNumberOrNull(row.cull_other),
-			cull_birds: toNumberOrNull(row.cull_birds),
-
-			closing_birds: toNumberOrNull(row.closing_birds),
-			feed_kg: toNumberOrNull(row.feed_kg),
-			water_litres: toNumberOrNull(row.water_litres),
-			body_weight_kg: toNumberOrNull(row.body_weight_kg),
-			avg_weight_kg: toNumberOrNull(row.body_weight_kg),
-			notes: row.notes || null,
-			last_saved_by: "JJ",
-		};
-
-		const url = recordId
-			? `${API_BASE}/api/broilers/performance/${recordId}`
-			: `${API_BASE}/api/broilers/performance`;
-
-		const response = await authenticatedFetch(url, {
-			method: recordId ? "PATCH" : "POST",
-			headers: {
-				"Content-Type": "application/json",
-			},
-			body: JSON.stringify(payload),
-		});
-
-		if (!response.ok) {
-			const errorText = await response.text();
-			throw new Error(`Save failed: ${response.status}. ${errorText}`);
-		}
-
-		return response.json() as Promise<PerformanceRecord>;
-	}
-
-	async function saveAllChanges() {
-		const changedRows = rows
-			.filter((row) => dirtyKeys.has(row.local_key))
-			.sort((a, b) => a.age_days - b.age_days);
-
-		if (changedRows.length === 0) {
-			return;
-		}
-
-		setSaving(true);
-		setMessage("");
-
-		try {
-			const savedRecords: PerformanceRecord[] = [];
-
-			for (const row of changedRows) {
-				const saved = await saveSingleRow(row);
-				savedRecords.push(saved);
-			}
-
-			setRecords((current) => {
-				const savedIds = new Set(savedRecords.map((record) => record.id));
-				const withoutSaved = current.filter((record) => !savedIds.has(record.id));
-				return [...withoutSaved, ...savedRecords];
-			});
-
-			setDirtyKeys(new Set());
-			setMessage(`${savedRecords.length} daily performance row(s) saved.`);
-		} catch (error) {
-			console.error(error);
-			setMessage(
-				error instanceof Error ? error.message : "Could not save changes.",
-			);
-		} finally {
-			setSaving(false);
-		}
-	}
-
-	function discardChanges() {
-		setRecords((current) => [...current]);
-		setDirtyKeys(new Set());
-		setMessage("Unsaved changes discarded.");
-	}
-
-		return (
-      <div className="page-shell broiler-daily-entry">
-        <BroilerSidebar />
-
-        <main className="main-panel">
-          <DailyHouseCard
-          moduleLabel="Broiler Production"
-          description="Daily broiler entry for mortality, culls, feed, water, bodyweight and shed comments."
-          homeAction={{
-            label: "Broiler Home",
-            href: "/broilers",
-          }}
-          secondaryAction={{
-            label: "Refresh",
-            onClick: () => void loadData(),
-            variant: "secondary",
-          }}
-          selectorLabel="Select Cycle"
-          selector={
+        <section className="compare-toolbar">
+          <label>
+            Primary flock
             <select
-              value={selectedPlanId}
-              onChange={(event) => setSelectedPlanId(Number(event.target.value))}
+              value={primaryId}
+              onChange={(event) => {
+                const id = Number(
+                  event.target.value,
+                );
+
+                setPrimaryId(id);
+
+                if (
+                  !selectedIds.includes(
+                    id,
+                  )
+                ) {
+                  setSelectedIds([id]);
+                }
+              }}
             >
               {plans.map((plan) => (
-                <option key={plan.id} value={plan.id}>
-                  {plan.farm_name} / {plan.shed_name} / {plan.cycle_code} /{" "}
-                  {isoToDisplayDate(plan.placement_date)}
+                <option
+                  key={plan.id}
+                  value={plan.id}
+                >
+                  {plan.farm_name} /{" "}
+                  {plan.shed_name} /{" "}
+                  {plan.cycle_code} /{" "}
+                  {displayDate(
+                    plan.placement_date,
+                  )}
                 </option>
               ))}
             </select>
-          }
-          onDiscard={discardChanges}
-          onSave={saveAllChanges}
-          discardDisabled={dirtyKeys.size === 0 || saving}
-          saveDisabled={dirtyKeys.size === 0 || saving}
-          saving={saving}
-          unsavedCount={dirtyKeys.size}
-          kpis={[
-            {
-              label: "Total Mortality",
-              value: formatNumber(totals.totalMortality),
-              helper: "Front + middle + back + other.",
-            },
-            {
-              label: "Total Culls",
-              value: formatNumber(totals.totalCulls),
-              helper: "Legs + runts + beak + other.",
-            },
-            {
-              label: "Total Bird Loss",
-              value: formatNumber(totals.totalLoss),
-              helper: "Mortality plus culls.",
-            },
-            {
-              label: "Closing Birds",
-              value: formatNumber(totals.latestClosing),
-              helper: "Latest calculated closing stock.",
-            },
-            {
-              label: "Livability",
-              value: `${formatNumber(totals.latestLivability, 2)}%`,
-              helper: "Latest closing birds vs placed birds.",
-            },
-            {
-              label: "Unsaved Rows",
-              value: dirtyKeys.size,
-              helper:
-                dirtyKeys.size > 0 ? "Changes not saved." : "All rows saved.",
-              tone: dirtyKeys.size > 0 ? "warning" : "good",
-            },
-          ]}
-          tableDescription="Yellow cells are editable. Calculated review columns are shown beside entry fields."
-          tableSummary={`Closing birds: ${formatNumber(
-            totals.latestClosing,
-          )} · Livability: ${formatNumber(totals.latestLivability, 2)}%`}
-          message={userError || message}
-          footerItems={[
-            { label: "Mortality", value: formatNumber(totals.totalMortality) },
-            { label: "Culls", value: formatNumber(totals.totalCulls) },
-            { label: "Total loss", value: formatNumber(totals.totalLoss) },
-            { label: "Unsaved rows", value: dirtyKeys.size },
-          ]}
-        >
-          <table >
-            <thead>
-              <tr>
-                <th colSpan={2}>Day</th>
-                <th colSpan={6}>Bird Count</th>
-                <th colSpan={5}>Mortality Location</th>
-                <th colSpan={5}>Cull Reasons</th>
-                <th colSpan={4}>Daily Inputs</th>
-                <th colSpan={6}>Review</th>
-              </tr>
+          </label>
 
-              <tr>
-                {[
-                  "Date",
-                  "Age",
+          <div className="quick-buttons">
+            <button
+              type="button"
+              onClick={
+                chooseCurrentPrevious
+              }
+            >
+              Current vs previous
+            </button>
 
-                  "Opening",
-                  "Mort Total",
-                  "Cull Total",
-                  "Total Loss",
-                  "Closing",
-                  "Bird Balance",
+            <button
+              type="button"
+              onClick={chooseLastThree}
+            >
+              Last 3 in shed
+            </button>
 
-                  "Front",
-                  "Middle",
-                  "Back",
-                  "Other",
-                  "Mort %",
+            <button
+              type="button"
+              onClick={() =>
+                setPickerOpen(
+                  (value) => !value,
+                )
+              }
+            >
+              Compare farms / sheds
+            </button>
 
-                  "Legs",
-                  "Runts",
-                  "Beak",
-                  "Other",
-                  "Cull %",
+            <button
+              type="button"
+              onClick={() =>
+                primaryPlan &&
+                setSelectedIds([
+                  primaryPlan.id,
+                ])
+              }
+            >
+              Clear comparison
+            </button>
+          </div>
+        </section>
 
-                  "Feed kg",
-                  "Water L",
-                  "Bodyweight kg",
-                  "Notes",
+        {pickerOpen && (
+          <section className="flock-picker">
+            <div className="picker-header">
+              <div>
+                <strong>
+                  Select flocks to compare
+                </strong>
+                <span>
+                  Choose up to six permitted
+                  flocks.
+                </span>
+              </div>
 
-                  "Livability %",
-                  "kg/m²",
-                  "FCR",
-                  "Mort Flag",
-                  "Cull Flag",
-                  "AI Review",
-                ].map((heading) => (
-                  <th key={heading}>{heading}</th>
-                ))}
-              </tr>
-            </thead>
+              <button
+                type="button"
+                onClick={() =>
+                  setPickerOpen(false)
+                }
+              >
+                Done
+              </button>
+            </div>
 
-            <tbody>
-              {loading || loadingUser ? (
-                <tr>
-                  <td colSpan={28}>Loading Daily House Card...</td>
-                </tr>
-              ) : rows.length === 0 ? (
-                <tr>
-                  <td colSpan={28}>
-                    No cycle selected. Add demand plan rows first.
-                  </td>
-                </tr>
+            <div className="picker-grid">
+              {plans.map((plan) => {
+                const checked =
+                  selectedIds.includes(
+                    plan.id,
+                  );
+
+                return (
+                  <label
+                    key={plan.id}
+                    className={
+                      checked
+                        ? "picker-row selected"
+                        : "picker-row"
+                    }
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() =>
+                        togglePlan(
+                          plan.id,
+                        )
+                      }
+                    />
+
+                    <span>
+                      <strong>
+                        {plan.farm_name} /{" "}
+                        {plan.shed_name}
+                      </strong>
+                      <small>
+                        {plan.cycle_code} ·{" "}
+                        {displayDate(
+                          plan.placement_date,
+                        )}
+                      </small>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {message && (
+          <p className="compare-message">
+            {message}
+          </p>
+        )}
+
+        <section className="selection-strip">
+          <div>
+            <span>Primary flock</span>
+            <strong>
+              {primaryPlan?.cycle_code ||
+                "—"}
+            </strong>
+            <small>
+              {primaryPlan?.farm_name} /{" "}
+              {primaryPlan?.shed_name}
+            </small>
+          </div>
+
+          <div>
+            <span>Compared flocks</span>
+            <strong>
+              {selectedIds.length}
+            </strong>
+            <small>
+              Maximum six selections
+            </small>
+          </div>
+
+          <div>
+            <span>Latest age</span>
+            <strong>
+              Day{" "}
+              {latestPrimary?.age ?? 0}
+            </strong>
+            <small>
+              Primary flock
+            </small>
+          </div>
+
+          <div>
+            <span>
+              Latest {config.label}
+            </span>
+            <strong>
+              {latestPrimary
+                ? formatMetric(
+                    latestPrimary.value,
+                    metric,
+                  )
+                : "—"}
+            </strong>
+            <small>
+              Primary flock
+            </small>
+          </div>
+        </section>
+
+        {workspaceTab === "graphs" ? (
+          <>
+            <section className="metric-tabs">
+              {(
+                Object.keys(
+                  METRICS,
+                ) as Metric[]
+              ).map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={
+                    metric === key
+                      ? "active"
+                      : ""
+                  }
+                  onClick={() =>
+                    setMetric(key)
+                  }
+                >
+                  {METRICS[key].label}
+                </button>
+              ))}
+            </section>
+
+            <section className="compare-card graph-card">
+              <div className="compare-card-head">
+                <div>
+                  <p className="eyebrow">
+                    Age-aligned comparison
+                  </p>
+                  <h3>
+                    {config.label}
+                  </h3>
+                  <p>
+                    Compare selected flocks
+                    on the same flock-age
+                    axis. Hover or tap a point
+                    for the exact value.
+                  </p>
+                </div>
+
+                <span className="age-pill">
+                  X-axis: age days
+                </span>
+              </div>
+
+              {loading ? (
+                <div className="empty">
+                  Loading performance
+                  data...
+                </div>
+              ) : series.filter(
+                  (item) =>
+                    item.points.length &&
+                    !hiddenIds.has(
+                      item.plan.id,
+                    ),
+                ).length === 0 ? (
+                <div className="empty">
+                  No saved data is
+                  available for this
+                  selection.
+                </div>
               ) : (
-                rows.map((row) => (
-                  <tr key={row.local_key}>
-                    <td>{row.entry_date}</td>
-                    <td>{row.age_days}</td>
+                <>
+                  <ComparisonSvg
+                    series={series.filter(
+                      (item) =>
+                        item.points.length &&
+                        !hiddenIds.has(
+                          item.plan.id,
+                        ),
+                    )}
+                    metric={config}
+                  />
 
-                    <EditableCell
-                      value={row.opening_birds}
-                      type="number"
-                      onChange={(value) =>
-                        updateRow(row.local_key, "opening_birds", value)
-                      }
-                    />
+                  <div className="legend">
+                    {series.map(
+                      (item, index) => (
+                        <button
+                          key={
+                            item.plan.id
+                          }
+                          type="button"
+                          className={
+                            hiddenIds.has(
+                              item.plan.id,
+                            )
+                              ? "hidden"
+                              : ""
+                          }
+                          onClick={() =>
+                            setHiddenIds(
+                              (
+                                current,
+                              ) => {
+                                const next =
+                                  new Set(
+                                    current,
+                                  );
 
-                    <td data-cell="calculated">
-                      {formatNumber(row.mortality_birds)}
-                    </td>
+                                next.has(
+                                  item
+                                    .plan
+                                    .id,
+                                )
+                                  ? next.delete(
+                                      item
+                                        .plan
+                                        .id,
+                                    )
+                                  : next.add(
+                                      item
+                                        .plan
+                                        .id,
+                                    );
 
-                    <td data-cell="calculated">
-                      {formatNumber(row.cull_birds)}
-                    </td>
-
-                    <td data-cell="calculated">
-                      {formatNumber(row.total_bird_loss)}
-                    </td>
-
-                    <td data-cell="calculated">
-                      {formatNumber(row.closing_birds)}
-                    </td>
-
-                    <td data-cell="calculated">
-                      {Number(row.opening_birds || 0) -
-                        Number(row.total_bird_loss || 0) ===
-                      Number(row.closing_birds || 0)
-                        ? "OK"
-                        : "Check"}
-                    </td>
-
-                    <EditableCell
-                      value={row.mortality_front}
-                      type="number"
-                      onChange={(value) =>
-                        updateRow(row.local_key, "mortality_front", value)
-                      }
-                    />
-
-                    <EditableCell
-                      value={row.mortality_middle}
-                      type="number"
-                      onChange={(value) =>
-                        updateRow(row.local_key, "mortality_middle", value)
-                      }
-                    />
-
-                    <EditableCell
-                      value={row.mortality_back}
-                      type="number"
-                      onChange={(value) =>
-                        updateRow(row.local_key, "mortality_back", value)
-                      }
-                    />
-
-                    <EditableCell
-                      value={row.mortality_other}
-                      type="number"
-                      onChange={(value) =>
-                        updateRow(row.local_key, "mortality_other", value)
-                      }
-                    />
-
-                    <td data-cell="calculated">
-                      {formatNumber(row.mortality_pct, 2)}
-                    </td>
-
-                    <EditableCell
-                      value={row.cull_legs}
-                      type="number"
-                      onChange={(value) =>
-                        updateRow(row.local_key, "cull_legs", value)
-                      }
-                    />
-
-                    <EditableCell
-                      value={row.cull_runts}
-                      type="number"
-                      onChange={(value) =>
-                        updateRow(row.local_key, "cull_runts", value)
-                      }
-                    />
-
-                    <EditableCell
-                      value={row.cull_beak}
-                      type="number"
-                      onChange={(value) =>
-                        updateRow(row.local_key, "cull_beak", value)
-                      }
-                    />
-
-                    <EditableCell
-                      value={row.cull_other}
-                      type="number"
-                      onChange={(value) =>
-                        updateRow(row.local_key, "cull_other", value)
-                      }
-                    />
-
-                    <td data-cell="calculated">
-                      {formatNumber(row.cull_pct, 2)}
-                    </td>
-
-                    <EditableCell
-                      value={row.feed_kg}
-                      type="number"
-                      onChange={(value) =>
-                        updateRow(row.local_key, "feed_kg", value)
-                      }
-                    />
-
-                    <EditableCell
-                      value={row.water_litres}
-                      type="number"
-                      onChange={(value) =>
-                        updateRow(row.local_key, "water_litres", value)
-                      }
-                    />
-
-                    <EditableCell
-                      value={row.body_weight_kg}
-                      type="number"
-                      step="0.001"
-                      onChange={(value) =>
-                        updateRow(row.local_key, "body_weight_kg", value)
-                      }
-                    />
-
-                    <EditableCell
-                      value={row.notes}
-                      onChange={(value) =>
-                        updateRow(row.local_key, "notes", value)
-                      }
-                    />
-
-                    <td data-cell="calculated">
-                      {formatNumber(row.livability_pct, 2)}
-                    </td>
-
-                    <td data-cell="calculated">
-                      {formatNumber(row.kg_m2, 2)}
-                    </td>
-
-                    <td data-cell="calculated">
-                      {formatNumber(row.fcr, 2)}
-                    </td>
-
-                    <td
-                      data-cell={row.review_status.includes("Mortality") ? "warning" : "calculated"}
-                    >
-                      {row.review_status.includes("Mortality") ? "Review" : "OK"}
-                    </td>
-
-                    <td
-                      data-cell={row.review_status.includes("Cull") ? "warning" : "calculated"}
-                    >
-                      {row.review_status.includes("Cull") ? "Review" : "OK"}
-                    </td>
-
-                    <td
-                      data-cell={row.review_status === "OK" ? "good" : "warning"}
-                    >
-                      {row.review_status}
-                    </td>
-                  </tr>
-                ))
+                                return next;
+                              },
+                            )
+                          }
+                        >
+                          <i
+                            style={{
+                              background:
+                                COLOURS[
+                                  index %
+                                    COLOURS.length
+                                ],
+                            }}
+                          />
+                          {item.label}
+                        </button>
+                      ),
+                    )}
+                  </div>
+                </>
               )}
-            </tbody>
-      </table>
-          </DailyHouseCard>
+            </section>
 
-          <style jsx global>{`
-            /*
-             * Broiler Daily Data Entry desktop sizing.
-             * Keep the page inside the normal Broiler shell and use the
-             * available screen height for the daily-entry grid.
-             */
-            .broiler-daily-entry {
-              min-height: 100vh;
+            <section className="compare-card compact-register">
+              <div className="compare-card-head">
+                <div>
+                  <p className="eyebrow">
+                    Selected flock register
+                  </p>
+                  <h3>
+                    Comparison summary
+                  </h3>
+                </div>
+
+                <button
+                  type="button"
+                  className="text-action"
+                  onClick={() =>
+                    setWorkspaceTab(
+                      "reports",
+                    )
+                  }
+                >
+                  Open full report →
+                </button>
+              </div>
+
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Farm</th>
+                      <th>Shed</th>
+                      <th>Flock</th>
+                      <th>
+                        Placement
+                      </th>
+                      <th>
+                        Birds Placed
+                      </th>
+                      <th>
+                        Recorded Days
+                      </th>
+                      <th>
+                        Latest{" "}
+                        {config.label}
+                      </th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {series.map(
+                      (item) => {
+                        const latest =
+                          item.points.at(
+                            -1,
+                          );
+
+                        return (
+                          <tr
+                            key={
+                              item.plan.id
+                            }
+                          >
+                            <td>
+                              {
+                                item
+                                  .plan
+                                  .farm_name
+                              }
+                            </td>
+                            <td>
+                              {
+                                item
+                                  .plan
+                                  .shed_name
+                              }
+                            </td>
+                            <td>
+                              {
+                                item
+                                  .plan
+                                  .cycle_code
+                              }
+                            </td>
+                            <td>
+                              {displayDate(
+                                item
+                                  .plan
+                                  .placement_date,
+                              )}
+                            </td>
+                            <td>
+                              {n(
+                                item
+                                  .plan
+                                  .planned_birds,
+                              ).toLocaleString()}
+                            </td>
+                            <td>
+                              {
+                                item
+                                  .points
+                                  .length
+                              }
+                            </td>
+                            <td>
+                              {latest
+                                ? formatMetric(
+                                    latest.value,
+                                    metric,
+                                  )
+                                : "—"}
+                            </td>
+                          </tr>
+                        );
+                      },
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </>
+        ) : (
+          <>
+            <section className="report-toolbar">
+              <div>
+                <p className="eyebrow">
+                  Report view
+                </p>
+                <h3>
+                  Performance reports
+                </h3>
+                <p>
+                  Reports use the same flock
+                  selection as the graph
+                  comparison above.
+                </p>
+              </div>
+
+              <div className="report-tabs">
+                <button
+                  type="button"
+                  className={
+                    reportType ===
+                    "comparison"
+                      ? "active"
+                      : ""
+                  }
+                  onClick={() =>
+                    setReportType(
+                      "comparison",
+                    )
+                  }
+                >
+                  Flock Summary
+                </button>
+
+                <button
+                  type="button"
+                  className={
+                    reportType === "daily"
+                      ? "active"
+                      : ""
+                  }
+                  onClick={() =>
+                    setReportType(
+                      "daily",
+                    )
+                  }
+                >
+                  Daily Detail
+                </button>
+              </div>
+            </section>
+
+            {reportType ===
+            "comparison" ? (
+              <section className="compare-card report-card">
+                <div className="compare-card-head">
+                  <div>
+                    <p className="eyebrow">
+                      Comparative report
+                    </p>
+                    <h3>
+                      Flock Performance
+                      Summary
+                    </h3>
+                    <p>
+                      Latest recorded
+                      performance for each
+                      selected flock.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="table-scroll">
+                  <table className="report-table">
+                    <thead>
+                      <tr>
+                        <th>Farm</th>
+                        <th>Shed</th>
+                        <th>Flock</th>
+                        <th>
+                          Placement
+                        </th>
+                        <th>Age</th>
+                        <th>
+                          Closing Birds
+                        </th>
+                        <th>
+                          Bodyweight
+                        </th>
+                        <th>
+                          Cum Mortality
+                        </th>
+                        <th>Feed</th>
+                        <th>Water</th>
+                        <th>
+                          Est FCR
+                        </th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {comparisonReport.map(
+                        (row) => (
+                          <tr
+                            key={
+                              row.plan.id
+                            }
+                          >
+                            <td>
+                              {
+                                row.plan
+                                  .farm_name
+                              }
+                            </td>
+                            <td>
+                              {
+                                row.plan
+                                  .shed_name
+                              }
+                            </td>
+                            <td>
+                              {
+                                row.plan
+                                  .cycle_code
+                              }
+                            </td>
+                            <td>
+                              {displayDate(
+                                row.plan
+                                  .placement_date,
+                              )}
+                            </td>
+                            <td>
+                              {row.latestAge !=
+                              null
+                                ? `Day ${row.latestAge}`
+                                : "—"}
+                            </td>
+                            <td>
+                              {row.closingBirds !=
+                              null
+                                ? n(
+                                    row.closingBirds,
+                                  ).toLocaleString()
+                                : "—"}
+                            </td>
+                            <td>
+                              {row.values
+                                ? formatMetric(
+                                    row
+                                      .values
+                                      .bodyweight,
+                                    "bodyweight",
+                                  )
+                                : "—"}
+                            </td>
+                            <td>
+                              {row.values
+                                ? formatMetric(
+                                    row
+                                      .values
+                                      .mortality,
+                                    "mortality",
+                                  )
+                                : "—"}
+                            </td>
+                            <td>
+                              {row.values
+                                ? formatMetric(
+                                    row
+                                      .values
+                                      .feed,
+                                    "feed",
+                                  )
+                                : "—"}
+                            </td>
+                            <td>
+                              {row.values
+                                ? formatMetric(
+                                    row
+                                      .values
+                                      .water,
+                                    "water",
+                                  )
+                                : "—"}
+                            </td>
+                            <td>
+                              {row.values
+                                ? formatMetric(
+                                    row
+                                      .values
+                                      .fcr,
+                                    "fcr",
+                                  )
+                                : "—"}
+                            </td>
+                          </tr>
+                        ),
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            ) : (
+              <section className="compare-card report-card">
+                <div className="compare-card-head">
+                  <div>
+                    <p className="eyebrow">
+                      Detailed report
+                    </p>
+                    <h3>
+                      Daily Performance
+                      Detail
+                    </h3>
+                    <p>
+                      Every recorded day
+                      for the selected
+                      flock comparison.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="table-scroll daily-report-scroll">
+                  <table className="report-table">
+                    <thead>
+                      <tr>
+                        <th>Farm</th>
+                        <th>Shed</th>
+                        <th>Flock</th>
+                        <th>Date</th>
+                        <th>Age</th>
+                        <th>
+                          Opening
+                        </th>
+                        <th>Mort</th>
+                        <th>Culls</th>
+                        <th>
+                          Closing
+                        </th>
+                        <th>
+                          Bodyweight
+                        </th>
+                        <th>
+                          Cum Mortality
+                        </th>
+                        <th>Feed</th>
+                        <th>Water</th>
+                        <th>
+                          Est FCR
+                        </th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {dailyReportRows.map(
+                        (
+                          row,
+                          index,
+                        ) => (
+                          <tr
+                            key={`${row.plan.id}-${row.record.id}-${index}`}
+                          >
+                            <td>
+                              {
+                                row.plan
+                                  .farm_name
+                              }
+                            </td>
+                            <td>
+                              {
+                                row.plan
+                                  .shed_name
+                              }
+                            </td>
+                            <td>
+                              {
+                                row.plan
+                                  .cycle_code
+                              }
+                            </td>
+                            <td>
+                              {displayDate(
+                                row.record
+                                  .entry_date,
+                              )}
+                            </td>
+                            <td>
+                              Day{" "}
+                              {n(
+                                row.record
+                                  .age_days,
+                              )}
+                            </td>
+                            <td>
+                              {n(
+                                row.record
+                                  .opening_birds,
+                              ).toLocaleString()}
+                            </td>
+                            <td>
+                              {n(
+                                row.record
+                                  .mortality_birds,
+                              ).toLocaleString()}
+                            </td>
+                            <td>
+                              {n(
+                                row.record
+                                  .cull_birds,
+                              ).toLocaleString()}
+                            </td>
+                            <td>
+                              {n(
+                                row.record
+                                  .closing_birds,
+                              ).toLocaleString()}
+                            </td>
+                            <td>
+                              {formatMetric(
+                                row.values
+                                  .bodyweight,
+                                "bodyweight",
+                              )}
+                            </td>
+                            <td>
+                              {formatMetric(
+                                row.values
+                                  .mortality,
+                                "mortality",
+                              )}
+                            </td>
+                            <td>
+                              {formatMetric(
+                                row.values
+                                  .feed,
+                                "feed",
+                              )}
+                            </td>
+                            <td>
+                              {formatMetric(
+                                row.values
+                                  .water,
+                                "water",
+                              )}
+                            </td>
+                            <td>
+                              {formatMetric(
+                                row.values
+                                  .fcr,
+                                "fcr",
+                              )}
+                            </td>
+                          </tr>
+                        ),
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
+          </>
+        )}
+
+        <style jsx>{`
+          .performance-workspace {
+            min-width: 0;
+          }
+
+          .workspace-switcher {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            margin: 6px 0;
+            padding: 4px;
+            width: 100%;
+            border: 1px solid #d9e6df;
+            border-radius: 11px;
+            background: #f5faf7;
+          }
+
+          .workspace-switcher button {
+            min-width: 82px;
+            min-height: 30px;
+            padding: 0 11px;
+            border: 0;
+            border-radius: 8px;
+            background: transparent;
+            color: #456055;
+            font-size: 11px;
+            font-weight: 900;
+            cursor: pointer;
+          }
+
+          .workspace-switcher button.active {
+            background: #0d6142;
+            color: #fff;
+            box-shadow: 0 4px 10px rgba(18, 79, 55, 0.13);
+          }
+
+          .workspace-switcher span {
+            padding: 0 6px;
+            color: #778980;
+            font-size: 9px;
+            font-weight: 750;
+          }
+
+          .workspace-actions {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+          }
+
+          .workspace-actions button {
+            min-width: auto;
+            min-height: 30px;
+            padding: 0 9px;
+            border: 1px solid #d2dfd8;
+            border-radius: 8px;
+            background: #ffffff;
+            color: #174a33;
+            font-size: 9px;
+            font-weight: 850;
+            cursor: pointer;
+          }
+
+          .compare-toolbar,
+          .compare-card,
+          .flock-picker,
+          .report-toolbar {
+            margin-bottom: 6px;
+            padding: 8px 10px;
+            border: 1px solid #dce7e1;
+            border-radius: 13px;
+            background: #fff;
+          }
+
+          .compare-toolbar {
+            display: flex;
+            align-items: end;
+            gap: 12px;
+            justify-content: space-between;
+          }
+
+          .compare-toolbar label {
+            display: grid;
+            gap: 5px;
+            flex: 1;
+            min-width: 260px;
+            color: #405148;
+            font-size: 11px;
+            font-weight: 850;
+          }
+
+          .compare-toolbar select {
+            min-height: 32px;
+            padding: 0 9px;
+            border: 1px solid #cbd8d1;
+            border-radius: 9px;
+            background: #fff;
+            font-size: 11px;
+          }
+
+          .quick-buttons,
+          .metric-tabs,
+          .legend,
+          .report-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 7px;
+          }
+
+          .quick-buttons button,
+          .metric-tabs button,
+          .picker-header button,
+          .legend button,
+          .report-tabs button,
+          .text-action {
+            min-height: 30px;
+            padding: 0 9px;
+            border: 1px solid #cbd8d1;
+            border-radius: 9px;
+            background: #fff;
+            color: #174a33;
+            font-size: 10px;
+            font-weight: 850;
+            cursor: pointer;
+          }
+
+          .metric-tabs {
+            margin-bottom: 6px;
+          }
+
+          .metric-tabs button.active,
+          .report-tabs button.active {
+            border-color: #0f6b43;
+            background: #0f6b43;
+            color: #fff;
+          }
+
+          .picker-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+          }
+
+          .picker-header div,
+          .picker-row span {
+            display: grid;
+            gap: 2px;
+          }
+
+          .picker-header span,
+          .picker-row small {
+            color: #68776f;
+            font-size: 10px;
+          }
+
+          .picker-grid {
+            display: grid;
+            grid-template-columns: repeat(
+              auto-fit,
+              minmax(245px, 1fr)
+            );
+            gap: 8px;
+          }
+
+          .picker-row {
+            display: flex;
+            gap: 9px;
+            align-items: center;
+            padding: 10px;
+            border: 1px solid #dce7e1;
+            border-radius: 10px;
+          }
+
+          .picker-row.selected {
+            border-color: #0f6b43;
+            background: #eff8f3;
+          }
+
+          .compare-message {
+            padding: 10px 12px;
+            border-radius: 10px;
+            background: #fff3e6;
+            color: #8b4c12;
+            font-size: 10px;
+            font-weight: 800;
+          }
+
+          .selection-strip {
+            display: grid;
+            grid-template-columns: repeat(
+              4,
+              minmax(0, 1fr)
+            );
+            gap: 8px;
+            margin-bottom: 6px;
+          }
+
+          .selection-strip > div {
+            display: grid;
+            gap: 3px;
+            padding: 7px 9px;
+            border: 1px solid #dce7e1;
+            border-radius: 11px;
+            background: #fff;
+          }
+
+          .selection-strip span {
+            color: #66766d;
+            font-size: 8px;
+            font-weight: 900;
+            text-transform: uppercase;
+          }
+
+          .selection-strip strong {
+            overflow: hidden;
+            color: #123f2b;
+            font-size: 17px;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+
+          .selection-strip small {
+            overflow: hidden;
+            color: #68776f;
+            font-size: 9px;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+
+          .compare-card-head,
+          .report-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
+          }
+
+          .compare-card-head {
+            margin-bottom: 8px;
+          }
+
+          .compare-card-head h3,
+          .report-toolbar h3 {
+            margin: 2px 0;
+            color: #123f2b;
+            font-size: 16px;
+          }
+
+          .compare-card-head p,
+          .report-toolbar p {
+            margin: 0;
+            color: #68776f;
+            font-size: 10px;
+          }
+
+          .eyebrow {
+            color: #19744e !important;
+            font-size: 8px !important;
+            font-weight: 950 !important;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+          }
+
+          .age-pill {
+            padding: 7px 10px;
+            border-radius: 999px;
+            background: #edf7f1;
+            color: #0f6b43;
+            font-size: 9px;
+            font-weight: 850;
+            white-space: nowrap;
+          }
+
+          .empty {
+            min-height: 300px;
+            display: grid;
+            place-items: center;
+            color: #718078;
+            font-size: 11px;
+          }
+
+          .legend {
+            margin-top: 8px;
+          }
+
+          .legend button {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            min-height: 30px;
+            border-radius: 999px;
+            font-size: 10px;
+          }
+
+          .legend button.hidden {
+            opacity: 0.4;
+            text-decoration: line-through;
+          }
+
+          .legend i {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+          }
+
+          .text-action {
+            border: 0;
+            background: transparent;
+          }
+
+          .table-scroll {
+            overflow-x: auto;
+          }
+
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+          }
+
+          th,
+          td {
+            padding: 8px 9px;
+            border-bottom: 1px solid #e3ebe6;
+            text-align: left;
+            white-space: nowrap;
+          }
+
+          th {
+            background: #0d4f34;
+            color: #fff;
+            font-size: 9px;
+            font-weight: 850;
+          }
+
+          .compact-register {
+            padding-bottom: 0;
+            overflow: hidden;
+          }
+
+          .report-card {
+            padding-bottom: 0;
+            overflow: hidden;
+          }
+
+          .report-table tbody tr:hover {
+            background: #f7fbf8;
+          }
+
+          .daily-report-scroll {
+            max-height: 520px;
+            overflow: auto;
+          }
+
+          .daily-report-scroll thead th {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+          }
+
+          @media (max-width: 1050px) {
+            .compare-toolbar,
+            .report-toolbar {
+              align-items: stretch;
+              flex-direction: column;
             }
 
-            .broiler-daily-entry .main-panel {
-              min-width: 0;
+            .selection-strip {
+              grid-template-columns: repeat(
+                2,
+                minmax(0, 1fr)
+              );
+            }
+          }
+
+          @media (max-width: 640px) {
+            .selection-strip {
+              grid-template-columns: 1fr;
+            }
+
+            .compare-card-head {
+              flex-direction: column;
+            }
+
+            .workspace-switcher {
               width: 100%;
+              flex-wrap: wrap;
             }
 
-
-            .broiler-daily-entry div:has(> table) > table {
-              width: max-content;
-              min-width: 100%;
+            .workspace-switcher span {
+              display: none;
             }
 
-            .broiler-daily-entry table th,
-            .broiler-daily-entry table td {
-              height: 31px !important;
-              min-height: 31px !important;
-              padding-top: 4px !important;
-              padding-bottom: 4px !important;
-              vertical-align: middle;
+            .workspace-actions {
+              width: 100%;
+              margin-left: 0;
             }
-
-            .broiler-daily-entry table thead th {
-              height: 29px !important;
-              min-height: 29px !important;
-            }
-
-            .broiler-daily-entry table input {
-              min-height: 24px !important;
-              height: 24px !important;
-              padding-top: 2px !important;
-              padding-bottom: 2px !important;
-            }
-
-
-          `}</style>
-        </main>
-      </div>
+          }
+        `}</style>
+      </main>
+    </div>
   );
 }
 
-export default function DailyPerformancePage() {
-  return (
-    <Suspense fallback={null}>
-      <DailyPerformancePageContent />
-    </Suspense>
-  );
-}
-
-function EditableCell({
-  value,
-  onChange,
-  type = "text",
-  step,
+function ComparisonSvg({
+  series,
+  metric,
 }: {
-  value: string | number | "";
-  onChange: (value: string) => void;
-  type?: string;
-  step?: string;
+  series: Array<{
+    plan: DemandPlan;
+    label: string;
+    points: Array<{
+      age: number;
+      date: string;
+      value: number;
+    }>;
+  }>;
+  metric: {
+    label: string;
+    unit: string;
+    decimals: number;
+  };
 }) {
+  // Hover follows the nearest flock age from the cursor X position.
+  // The cursor can be anywhere vertically in the plot; users no longer
+  // need to find and hold the mouse directly over a small marker.
+  const [hoverAge, setHoverAge] = useState<number | null>(null);
+
+  const width = 1200;
+  const height = 285;
+  const left = 75;
+  const right = 25;
+  const top = 18;
+  const bottom = 42;
+
+  const plotWidth = width - left - right;
+  const plotHeight = height - top - bottom;
+
+  const allPoints = series.flatMap((item) => item.points);
+
+  const maxAge = Math.max(
+    1,
+    ...allPoints.map((point) => point.age),
+  );
+
+  const maxValue =
+    Math.max(
+      1,
+      ...allPoints.map((point) => point.value),
+    ) * 1.08;
+
+  const x = (age: number) =>
+    left + (age / maxAge) * plotWidth;
+
+  const y = (value: number) =>
+    top +
+    plotHeight -
+    (value / maxValue) * plotHeight;
+
+  const xTicks = [0, 7, 14, 21, 28, 35, 42, maxAge]
+    .filter(
+      (value, index, values) =>
+        value <= maxAge && values.indexOf(value) === index,
+    )
+    .sort((a, b) => a - b);
+
+  const nearestAge =
+    hoverAge === null || allPoints.length === 0
+      ? null
+      : allPoints.reduce((best, point) =>
+          Math.abs(point.age - hoverAge) < Math.abs(best.age - hoverAge)
+            ? point
+            : best,
+        ).age;
+
+  const hoveredValues =
+    nearestAge === null
+      ? []
+      : series
+          .map((item, seriesIndex) => {
+            const point = item.points.reduce((best, candidate) =>
+              Math.abs(candidate.age - nearestAge) <
+              Math.abs(best.age - nearestAge)
+                ? candidate
+                : best,
+            );
+
+            // Do not show a distant point as though it belongs to the hovered day.
+            if (Math.abs(point.age - nearestAge) > 1) return null;
+
+            return { item, point, seriesIndex };
+          })
+          .filter(
+            (
+              value,
+            ): value is {
+              item: (typeof series)[number];
+              point: (typeof series)[number]["points"][number];
+              seriesIndex: number;
+            } => Boolean(value),
+          );
+
+  const primaryHover = hoveredValues[0] ?? null;
+
+  const handleMove = (event: ReactMouseEvent<SVGRectElement>) => {
+    const svg = event.currentTarget.ownerSVGElement;
+    if (!svg) return;
+
+    const bounds = svg.getBoundingClientRect();
+    const svgX =
+      (event.clientX - bounds.left) * (width / bounds.width);
+    const clamped = Math.max(left, Math.min(left + plotWidth, svgX));
+
+    setHoverAge(((clamped - left) / plotWidth) * maxAge);
+  };
+
+  const tooltipHeight = Math.max(84, 52 + hoveredValues.length * 18);
+  const tooltipX =
+    nearestAge === null
+      ? left
+      : Math.min(x(nearestAge) + 14, width - 330);
+  const tooltipY = primaryHover
+    ? Math.max(
+        top + 8,
+        Math.min(
+          y(primaryHover.point.value) - tooltipHeight / 2,
+          top + plotHeight - tooltipHeight - 8,
+        ),
+      )
+    : top + 8;
+
   return (
-    <td data-cell="editable">
-      <input
-        type={type}
-        step={step}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      />
-    </td>
+    <div className="chart-scroll">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="xMidYMid meet"
+        role="img"
+        aria-label={`${metric.label} comparison by age`}
+        onMouseLeave={() => setHoverAge(null)}
+      >
+        <rect
+          x={left}
+          y={top}
+          width={plotWidth}
+          height={plotHeight}
+          rx="8"
+          fill="#fbfdfc"
+        />
+
+        {Array.from({ length: 6 }, (_, index) =>
+          (maxValue / 5) * index,
+        ).map((tick) => (
+          <g key={tick}>
+            <line
+              x1={left}
+              x2={width - right}
+              y1={y(tick)}
+              y2={y(tick)}
+              stroke="#dfe8e3"
+              strokeDasharray="4 4"
+            />
+            <text
+              x={left - 10}
+              y={y(tick) + 4}
+              textAnchor="end"
+              fill="#66756d"
+              fontSize="12"
+            >
+              {tick.toFixed(metric.decimals)}
+            </text>
+          </g>
+        ))}
+
+        {xTicks.map((tick) => (
+          <g key={tick}>
+            <line
+              x1={x(tick)}
+              x2={x(tick)}
+              y1={top}
+              y2={top + plotHeight}
+              stroke="#edf2ef"
+            />
+            <text
+              x={x(tick)}
+              y={height - 20}
+              textAnchor="middle"
+              fill="#66756d"
+              fontSize="12"
+            >
+              D{tick}
+            </text>
+          </g>
+        ))}
+
+        {series.map((item, seriesIndex) => (
+          <g key={item.plan.id}>
+            <polyline
+              points={item.points
+                .map((point) => `${x(point.age)},${y(point.value)}`)
+                .join(" ")}
+              fill="none"
+              stroke={COLOURS[seriesIndex % COLOURS.length]}
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+
+            {item.points.map((point) => {
+              const active = point.age === nearestAge;
+              return (
+                <circle
+                  key={`${item.plan.id}-${point.age}`}
+                  cx={x(point.age)}
+                  cy={y(point.value)}
+                  r={active ? "5.5" : "3.5"}
+                  fill={COLOURS[seriesIndex % COLOURS.length]}
+                  stroke={active ? "#ffffff" : "none"}
+                  strokeWidth={active ? "2" : "0"}
+                  pointerEvents="none"
+                />
+              );
+            })}
+          </g>
+        ))}
+
+        {/* Full-height interaction layer: hover is based only on X / flock age. */}
+        <rect
+          x={left}
+          y={top}
+          width={plotWidth}
+          height={plotHeight}
+          fill="transparent"
+          style={{ cursor: "crosshair" }}
+          onMouseMove={handleMove}
+          onClick={handleMove}
+        />
+
+        {nearestAge !== null && hoveredValues.length > 0 ? (
+          <g pointerEvents="none">
+            <line
+              x1={x(nearestAge)}
+              x2={x(nearestAge)}
+              y1={top}
+              y2={top + plotHeight}
+              stroke="#718078"
+              strokeDasharray="5 5"
+            />
+
+            <rect
+              x={tooltipX}
+              y={tooltipY}
+              width="315"
+              height={tooltipHeight}
+              rx="10"
+              fill="#103f2d"
+            />
+
+            <text
+              x={tooltipX + 14}
+              y={tooltipY + 22}
+              fill="#fff"
+              fontSize="13"
+              fontWeight="700"
+            >
+              Day {nearestAge} · {primaryHover?.point.date ?? "—"}
+            </text>
+
+            {hoveredValues.map(({ item, point, seriesIndex }, index) => (
+              <g key={`tooltip-${item.plan.id}`}>
+                <circle
+                  cx={tooltipX + 17}
+                  cy={tooltipY + 43 + index * 18}
+                  r="3"
+                  fill={COLOURS[seriesIndex % COLOURS.length]}
+                />
+                <text
+                  x={tooltipX + 28}
+                  y={tooltipY + 47 + index * 18}
+                  fill="#d8eee3"
+                  fontSize="10"
+                >
+                  {item.label}
+                </text>
+                <text
+                  x={tooltipX + 300}
+                  y={tooltipY + 47 + index * 18}
+                  textAnchor="end"
+                  fill="#fff"
+                  fontSize="11"
+                  fontWeight="800"
+                >
+                  {point.value.toFixed(metric.decimals)}
+                  {metric.unit ? ` ${metric.unit}` : ""}
+                </text>
+              </g>
+            ))}
+          </g>
+        ) : null}
+
+        <text
+          x={left + plotWidth / 2}
+          y={height - 2}
+          textAnchor="middle"
+          fill="#53645b"
+          fontSize="13"
+          fontWeight="700"
+        >
+          Age (days)
+        </text>
+      </svg>
+
+      <style jsx>{`
+        .chart-scroll {
+          width: 100%;
+          overflow: hidden;
+        }
+
+        svg {
+          display: block;
+          width: 100%;
+          height: auto;
+          max-width: 100%;
+        }
+
+        @media (max-width: 760px) {
+          .chart-scroll {
+            overflow-x: auto;
+          }
+
+          svg {
+            width: 760px;
+            max-width: none;
+          }
+        }
+      `}</style>
+    </div>
   );
 }
+

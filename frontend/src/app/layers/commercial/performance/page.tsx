@@ -705,29 +705,6 @@ function CommercialLayerPerformanceContent() {
         })}
       </section>
 
-      <section className="metric-strip">
-        {METRICS.map((metric) => (
-          <button
-            key={metric.key}
-            type="button"
-            className={
-              selectedMetrics.includes(metric.key)
-                ? "metric-chip active"
-                : "metric-chip"
-            }
-            onClick={() => toggleMetric(metric.key)}
-          >
-            <span
-              style={{ background: metric.colour }}
-              aria-hidden="true"
-            />
-            {metric.shortLabel}
-          </button>
-        ))}
-
-        <small>Select any metrics</small>
-      </section>
-
       <section className="chart-card">
         <div className="chart-card-head">
           <div className="chart-title-block">
@@ -778,6 +755,7 @@ function CommercialLayerPerformanceContent() {
               rows={filteredRows}
               selectedMetrics={selectedMetrics}
               showDaily={showDaily}
+              onToggleMetric={toggleMetric}
             />
           </>
         )}
@@ -811,6 +789,7 @@ function CommercialLayerPerformanceContent() {
                 rows={filteredRows}
                 selectedMetrics={selectedMetrics}
                 showDaily={showDaily}
+                onToggleMetric={toggleMetric}
                 expanded
               />
             </div>
@@ -896,51 +875,6 @@ function CommercialLayerPerformanceContent() {
           grid-template-columns: repeat(7, minmax(0, 1fr));
           gap: 6px;
           margin: 0;
-        }
-
-        .metric-strip {
-          position: relative;
-          z-index: 2;
-          display: flex;
-          flex-wrap: wrap;
-          align-items: center;
-          gap: 5px;
-          min-height: 30px;
-          margin: 0;
-          overflow: visible;
-        }
-
-        .metric-chip {
-          display: inline-flex;
-          align-items: center;
-          gap: 7px;
-          min-height: 30px;
-          padding: 0 9px;
-          border: 1px solid #d4e1da;
-          border-radius: 999px;
-          background: #ffffff;
-          color: #486157;
-          font-size: 10px;
-          font-weight: 850;
-          cursor: pointer;
-        }
-
-        .metric-chip.active {
-          border-color: #0d6845;
-          background: #eef8f2;
-          color: #0d5c3d;
-          box-shadow: 0 3px 9px rgba(13, 104, 69, 0.09);
-        }
-
-        .metric-chip span {
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-        }
-
-        .metric-strip small {
-          color: #7b8a82;
-          font-size: 9.5px;
         }
 
         .chart-card {
@@ -1168,19 +1102,6 @@ function CommercialLayerPerformanceContent() {
             display: none;
           }
 
-          .metric-strip {
-            gap: 4px;
-          }
-
-          .metric-chip {
-            min-height: 28px;
-            padding: 0 8px;
-            font-size: 9px;
-          }
-
-          .metric-strip small {
-            display: none;
-          }
         }
 
         @media (max-width: 900px) {
@@ -1397,14 +1318,33 @@ function ProfessionalLayerChart({
   rows,
   selectedMetrics,
   showDaily,
+  onToggleMetric,
   expanded = false,
 }: {
   rows: PerformanceRow[];
   selectedMetrics: MetricKey[];
   showDaily: boolean;
+  onToggleMetric: (key: MetricKey) => void;
   expanded?: boolean;
 }) {
   const [hoverX, setHoverX] = useState<number | null>(null);
+
+  // Each secondary metric can be vertically offset for visual comparison.
+  // This never changes the underlying values. Double-clicking its scale resets it.
+  const [axisOffsets, setAxisOffsets] = useState<Record<MetricKey, number>>({
+    production: 0,
+    mortality: 0,
+    eggWeight: 0,
+    feed: 0,
+    water: 0,
+    eggsPerBird: 0,
+    bodyweight: 0,
+  });
+  const [draggingAxis, setDraggingAxis] = useState<{
+    key: MetricKey;
+    startClientY: number;
+    startOffset: number;
+  } | null>(null);
 
   const activeMetrics = METRICS.filter((metric) =>
     selectedMetrics.includes(metric.key),
@@ -1481,13 +1421,14 @@ function ProfessionalLayerChart({
     const range =
       ranges.get(metric.key) ?? { min: 0, max: 1 };
 
-    return (
+    const baseY =
       top +
       plotHeight -
       ((value - range.min) /
         (range.max - range.min)) *
-        plotHeight
-    );
+        plotHeight;
+
+    return baseY + (axisOffsets[metric.key] ?? 0);
   };
 
   const nearestPoint =
@@ -1571,6 +1512,21 @@ function ProfessionalLayerChart({
         ((clamped - left) / plotWidth) *
           (maxX - minX),
     );
+  };
+
+  const handleSvgMove = (event: React.MouseEvent<SVGSVGElement>) => {
+    if (!draggingAxis) return;
+
+    const delta = event.clientY - draggingAxis.startClientY;
+    const limit = plotHeight * 0.32;
+
+    setAxisOffsets((current) => ({
+      ...current,
+      [draggingAxis.key]: Math.max(
+        -limit,
+        Math.min(limit, draggingAxis.startOffset + delta),
+      ),
+    }));
   };
 
   const xTicks = Array.from(
@@ -1725,7 +1681,12 @@ function ProfessionalLayerChart({
         preserveAspectRatio="xMidYMin meet"
         role="img"
         aria-label="Commercial layer actual versus standard performance chart"
-        onMouseLeave={() => setHoverX(null)}
+        onMouseMove={handleSvgMove}
+        onMouseUp={() => setDraggingAxis(null)}
+        onMouseLeave={() => {
+          setHoverX(null);
+          setDraggingAxis(null);
+        }}
       >
         <defs>
           <filter id="tooltip-shadow">
@@ -1872,6 +1833,9 @@ function ProfessionalLayerChart({
               20 +
               metricIndex * 29;
 
+            const offset = axisOffsets[metric.key] ?? 0;
+            const isSecondary = metricIndex > 0;
+
             return (
               <g key={metric.key}>
                 <line
@@ -1892,7 +1856,7 @@ function ProfessionalLayerChart({
                         (1 - ratio);
 
                     const yPos =
-                      top + plotHeight * ratio;
+                      top + plotHeight * ratio + offset;
 
                     return (
                       <g key={ratio}>
@@ -1910,14 +1874,51 @@ function ProfessionalLayerChart({
                           fill={metric.colour}
                           fontSize="7.7"
                         >
-                          {value.toFixed(
-                            metric.decimals,
-                          )}
+                          {value.toFixed(metric.decimals)}
                         </text>
                       </g>
                     );
                   },
                 )}
+
+                {isSecondary ? (
+                  <>
+                    <rect
+                      x={axisX - 5}
+                      y={top}
+                      width="27"
+                      height={plotHeight}
+                      fill="transparent"
+                      style={{ cursor: "ns-resize" }}
+                      onMouseDown={(event) => {
+                        event.stopPropagation();
+                        setDraggingAxis({
+                          key: metric.key,
+                          startClientY: event.clientY,
+                          startOffset: offset,
+                        });
+                      }}
+                      onDoubleClick={(event) => {
+                        event.stopPropagation();
+                        setAxisOffsets((current) => ({
+                          ...current,
+                          [metric.key]: 0,
+                        }));
+                      }}
+                    />
+                    <text
+                      x={axisX + 2}
+                      y={top - 6}
+                      textAnchor="middle"
+                      fill={metric.colour}
+                      fontSize="8"
+                      fontWeight="800"
+                      pointerEvents="none"
+                    >
+                      ↕
+                    </text>
+                  </>
+                ) : null}
               </g>
             );
           },
@@ -2093,25 +2094,33 @@ function ProfessionalLayerChart({
         </text>
       </svg>
 
-      <div className="legend">
-        {activeMetrics.map((metric) => (
-          <div key={metric.key}>
-            <span
-              className="solid"
-              style={{ background: metric.colour }}
-            />
-            {metric.shortLabel} actual
-            <span
-              className="dashed"
-              style={{
-                borderColor: metric.colour,
-              }}
-            />
-            {metric.key === "water"
-              ? "standard unavailable"
-              : `${ISA_ALT_STANDARD_LABEL} standard`}
-          </div>
-        ))}
+      <div className="legend" aria-label="Graph metric controls">
+        {METRICS.map((metric) => {
+          const active = selectedMetrics.includes(metric.key);
+
+          return (
+            <button
+              key={metric.key}
+              type="button"
+              className={active ? "active" : "inactive"}
+              onClick={() => onToggleMetric(metric.key)}
+              title={`${active ? "Hide" : "Show"} ${metric.shortLabel}`}
+            >
+              <span
+                className="solid"
+                style={{ background: metric.colour }}
+              />
+              {metric.shortLabel} actual
+              <span
+                className="dashed"
+                style={{ borderColor: metric.colour }}
+              />
+              {metric.key === "water"
+                ? "standard unavailable"
+                : "standard"}
+            </button>
+          );
+        })}
       </div>
 
       <style jsx>{`
@@ -2278,7 +2287,7 @@ function ProfessionalLayerChart({
           margin-top: 4px;
         }
 
-        .legend div {
+        .legend button {
           display: inline-flex;
           align-items: center;
           gap: 5px;
@@ -2289,6 +2298,17 @@ function ProfessionalLayerChart({
           color: #607269;
           font-size: 9px;
           font-weight: 750;
+          cursor: pointer;
+        }
+
+        .legend button.inactive {
+          opacity: 0.38;
+          filter: grayscale(0.55);
+        }
+
+        .legend button.active {
+          border-color: #c8ddd2;
+          box-shadow: 0 2px 6px rgba(19, 70, 51, 0.05);
         }
 
         .solid {
