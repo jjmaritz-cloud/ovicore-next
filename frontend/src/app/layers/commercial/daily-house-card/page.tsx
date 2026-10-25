@@ -488,6 +488,8 @@ function CommercialLayersDailyHouseCardContent() {
     useState(false);
   const [dirtyKeys, setDirtyKeys] =
     useState<Set<string>>(new Set());
+  // Track individual cells edited this session, not all fields on a dirty row.
+  const [editedCells, setEditedCells] = useState<Set<string>>(new Set());
   const [message, setMessage] =
     useState("");
   // A history API failure must not hide otherwise valid layer flocks.
@@ -580,6 +582,7 @@ function CommercialLayersDailyHouseCardContent() {
         const loadedRecords: PerformanceRecord[] = await performanceResponse.json();
         setRecords(loadedRecords);
         setDirtyKeys(new Set());
+        setEditedCells(new Set());
       } catch (historyError) {
         console.error("Commercial Layers performance history load failed", historyError);
         setRecords([]);
@@ -770,14 +773,18 @@ function CommercialLayersDailyHouseCardContent() {
 
   const entryWarnings = useMemo(() => {
     const warnings = new Map<string, EntryWarning>();
+    // Only surface warnings for newly edited cells; historical outliers already
+    // saved are not new data-entry problems and must not appear again.
     for (const row of rows) {
       for (const field of CHECK_FIELDS) {
+        const key = `${row.local_key}:${field}`;
+        if (!editedCells.has(key)) continue;
         const warning = checkDailyEntry(row, field, rows);
-        if (warning) warnings.set(`${row.local_key}:${field}`, warning);
+        if (warning) warnings.set(key, warning);
       }
     }
     return warnings;
-  }, [rows]);
+  }, [rows, editedCells]);
 
   function updateRow(
     localKey: string,
@@ -820,6 +827,11 @@ function CommercialLayersDailyHouseCardContent() {
         next.add(localKey);
         return next;
       });
+      // Store which specific value was changed, rather than warning on every
+      // existing abnormal number in the same row during Save.
+      if (CHECK_FIELDS.includes(field as CheckField)) {
+        setEditedCells((current) => new Set(current).add(`${localKey}:${field}`));
+      }
 
       return recalculateStockFlow(
         edited,
@@ -946,6 +958,7 @@ function CommercialLayersDailyHouseCardContent() {
       ]);
 
       setDirtyKeys(new Set());
+      setEditedCells(new Set());
       setMessage(
         `${savedRows.length} Daily House Card row${
           savedRows.length === 1 ? "" : "s"
@@ -968,6 +981,7 @@ function CommercialLayersDailyHouseCardContent() {
   function discardChanges() {
     setRecords((current) => [...current]);
     setDirtyKeys(new Set());
+    setEditedCells(new Set());
     setMessage("Unsaved changes discarded.");
   }
 
@@ -993,11 +1007,13 @@ function CommercialLayersDailyHouseCardContent() {
           <select
             aria-label="Select Commercial Layer Flock"
             value={selectedFlockId}
-            onChange={(event) =>
+            onChange={(event) => {
+              // A new flock has its own entry history; never carry edit flags across flocks.
+              setEditedCells(new Set());
               setSelectedFlockId(
                 event.target.value === "" ? "" : Number(event.target.value),
-              )
-            }
+              );
+            }}
           >
             <option value="" disabled>Select a commercial layer flock</option>
             {flocks.map((flock) => (
