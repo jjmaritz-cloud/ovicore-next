@@ -283,6 +283,7 @@ function LayerRearingFlockRegisterContent() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [lastError, setLastError] = useState<string | null>(null);
+  const [selectedFlock, setSelectedFlock] = useState<LayerRearingFlockRow | null>(null);
   const [transferRow, setTransferRow] =
     useState<LayerRearingFlockRow | null>(null);
   const [transferDate, setTransferDate] = useState("");
@@ -458,6 +459,7 @@ function LayerRearingFlockRegisterContent() {
       dirtyRowIds.current.clear();
       setDirtyCount(0);
       setRows(mapped);
+      setSelectedFlock(null);
     } catch (error) {
       console.error(error);
       setLastError(
@@ -935,7 +937,7 @@ function LayerRearingFlockRegisterContent() {
 
   const openTransferModal = useCallback(() => {
     const selected =
-      gridRef.current?.api.getSelectedRows()[0];
+      gridRef.current?.api.getSelectedRows()[0] ?? selectedFlock;
 
     if (!selected) {
       alert("Select a Commercial Rearing flock to transfer.");
@@ -955,16 +957,6 @@ function LayerRearingFlockRegisterContent() {
       return;
     }
 
-    if (
-      !selected.destinationFarmId ||
-      !selected.destinationShedId
-    ) {
-      alert(
-        "Select and save the planned Commercial Layers destination first.",
-      );
-      return;
-    }
-
     setTransferRow(selected);
     setTransferDate(
       selected.plannedTransferDate
@@ -972,10 +964,16 @@ function LayerRearingFlockRegisterContent() {
         : new Date().toISOString().slice(0, 10),
     );
     setTransferBirds(String(selected.currentBirds ?? selected.birdsPlaced ?? 0));
-    setTransferFarmId(selected.destinationFarmId);
-    setTransferShedId(selected.destinationShedId);
+    // Do not trust an old planned destination blindly: only Commercial Layers
+    // farms/sheds are valid receiving sites. The user may choose one in the modal.
+    const validShed = destinationShedOptions.find(
+      (shed) => shed.id === selected.destinationShedId &&
+        shed.farm_id === selected.destinationFarmId,
+    );
+    setTransferFarmId(validShed ? validShed.farm_id : "");
+    setTransferShedId(validShed ? validShed.id : "");
     setTransferNotes("");
-  }, []);
+  }, [selectedFlock, destinationShedOptions]);
 
   const confirmTransfer = useCallback(async () => {
     if (!transferRow) return;
@@ -1024,6 +1022,7 @@ function LayerRearingFlockRegisterContent() {
       setTransferRow(null);
       await fetchRows();
 
+      setSelectedFlock(null);
       alert(
         `${transferRow.flockCode} transferred successfully. ` +
         `Commercial Layer flock ${result.commercial_layer_flock.flock_code} was created.`,
@@ -1307,6 +1306,13 @@ function LayerRearingFlockRegisterContent() {
                   }`
                 : "All rows saved"}
             </span>
+            {selectedFlock ? (
+              <span className="ovicore-pill ovicore-pill-green">
+                Selected: {selectedFlock.flockCode}
+              </span>
+            ) : (
+              <span className="ovicore-pill">Click a flock row to select it</span>
+            )}
 
             {userError || lastError ? (
               <span className="ovicore-pill ovicore-pill-red">
@@ -1418,6 +1424,16 @@ function LayerRearingFlockRegisterContent() {
             stopEditingWhenCellsLoseFocus
             rowSelection="single"
             suppressRowClickSelection={false}
+            onRowClicked={(event) => {
+              // Explicit selection also works when a click lands inside an editable cell.
+              if (event.node.data) {
+                event.node.setSelected(true);
+                setSelectedFlock(event.node.data);
+              }
+            }}
+            onSelectionChanged={(event) => {
+              setSelectedFlock(event.api.getSelectedRows()[0] ?? null);
+            }}
             rowHeight={38}
             headerHeight={38}
             groupHeaderHeight={34}
@@ -1432,6 +1448,55 @@ function LayerRearingFlockRegisterContent() {
           />
         </div>
       </OviCoreTableCard>
+
+      {transferRow && (
+        <div
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !transferring) setTransferRow(null);
+          }}
+          style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(0,25,20,.58)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+        >
+          <div role="dialog" aria-modal="true" aria-labelledby="rearing-transfer-title" style={{ width: "100%", maxWidth: 560, maxHeight: "90vh", overflowY: "auto", background: "#fff", color: "#12352d", borderRadius: 12, padding: 24, boxShadow: "0 20px 70px rgba(0,0,0,.25)" }}>
+            <h2 id="rearing-transfer-title" style={{ margin: "0 0 8px" }}>Transfer rearing flock</h2>
+            <p style={{ margin: "0 0 18px" }}>
+              <strong>{transferRow.flockCode}</strong> — {transferRow.farmName} / {transferRow.shedName}
+            </p>
+            <p style={{ fontSize: 13, margin: "0 0 16px", color: "#4a625b" }}>
+              Confirm the actual movement details. This submits a transfer to Commercial Layers and creates a receiving flock through the existing API.
+            </p>
+            <div style={{ display: "grid", gap: 14 }}>
+              <label style={{ display: "grid", gap: 5 }}>Actual transfer date
+                <input type="date" value={transferDate} onChange={(event) => setTransferDate(event.target.value)} disabled={transferring} style={{ padding: 9, border: "1px solid #b9d0c8", borderRadius: 6 }} />
+              </label>
+              <label style={{ display: "grid", gap: 5 }}>Birds transferred
+                <input type="number" min="1" step="1" value={transferBirds} onChange={(event) => setTransferBirds(event.target.value)} disabled={transferring} style={{ padding: 9, border: "1px solid #b9d0c8", borderRadius: 6 }} />
+              </label>
+              <label style={{ display: "grid", gap: 5 }}>Destination Commercial Layers farm
+                <select value={transferFarmId} disabled={transferring} onChange={(event) => { setTransferFarmId(event.target.value ? Number(event.target.value) : ""); setTransferShedId(""); }} style={{ padding: 9, border: "1px solid #b9d0c8", borderRadius: 6 }}>
+                  <option value="">Select farm</option>
+                  {destinationFarmOptions.map((farm) => <option key={farm.id} value={farm.id}>{farm.name}</option>)}
+                </select>
+              </label>
+              <label style={{ display: "grid", gap: 5 }}>Destination shed
+                <select value={transferShedId} disabled={transferring || !transferFarmId} onChange={(event) => setTransferShedId(event.target.value ? Number(event.target.value) : "")} style={{ padding: 9, border: "1px solid #b9d0c8", borderRadius: 6 }}>
+                  <option value="">Select shed</option>
+                  {destinationShedOptions.filter((shed) => shed.farm_id === transferFarmId).map((shed) => <option key={shed.id} value={shed.id}>{shed.shed_name}</option>)}
+                </select>
+              </label>
+              <label style={{ display: "grid", gap: 5 }}>Transfer notes (optional)
+                <textarea rows={3} value={transferNotes} disabled={transferring} onChange={(event) => setTransferNotes(event.target.value)} style={{ padding: 9, border: "1px solid #b9d0c8", borderRadius: 6 }} />
+              </label>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 22 }}>
+              <button type="button" className="ovicore-btn" onClick={() => setTransferRow(null)} disabled={transferring}>Cancel</button>
+              <button type="button" className="ovicore-btn ovicore-btn-primary" disabled={transferring || !transferDate || !transferFarmId || !transferShedId || !(Number.isInteger(Number(transferBirds)) && Number(transferBirds) > 0)} onClick={confirmTransfer}>
+                {transferring ? "Transferring…" : "Confirm transfer"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </OviCoreShell>
   );
 }
