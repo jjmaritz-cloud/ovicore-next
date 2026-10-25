@@ -7092,6 +7092,193 @@ def list_commercial_layer_performance(
     return output
 
 
+# ---------------------------------------------------------------------
+# Commercial Layers Daily House Card - persistent daily data
+# ---------------------------------------------------------------------
+
+def _layer_daily_response(entry: models.CommercialLayerDailyPerformance) -> dict:
+    # The House Card uses kg for bodyweight and grams for per-bird feed.
+    opening = int(entry.opening_birds or 0)
+    closing = int(entry.closing_birds or 0)
+    eggs = int(entry.total_eggs or 0)
+    feed = float(entry.feed_kg) if entry.feed_kg is not None else None
+    std = float(entry.production_standard_pct) if entry.production_standard_pct is not None else None
+    production = round(eggs * 100 / opening, 2) if opening else None
+    return {
+        "id": entry.id,
+        "company_id": entry.company_id,
+        "flock_id": entry.flock_id,
+        "entry_date": entry.entry_date,
+        "age_days": entry.age_days,
+        "opening_birds": opening,
+        "mortality": int(entry.mortality_birds or 0),
+        "culls": int(entry.cull_birds or 0),
+        "closing_birds": closing,
+        "feed_kg": feed,
+        "water_litres": float(entry.water_litres) if entry.water_litres is not None else None,
+        "feed_per_bird_g": round(feed * 1000 / closing, 1) if feed is not None and closing else None,
+        "bodyweight_kg": float(entry.bodyweight_g) / 1000 if entry.bodyweight_g is not None else None,
+        "total_eggs": eggs,
+        "saleable_eggs": int(entry.saleable_eggs or 0),
+        "seconds": int(entry.seconds or 0),
+        "cracks": int(entry.cracks or 0),
+        "rejects": int(entry.rejects or 0),
+        "production_pct": production,
+        "production_standard_pct": std,
+        "production_variance_pct": round(production - std, 2) if production is not None and std is not None else None,
+        "saleable_pct": round(int(entry.saleable_eggs or 0) * 100 / eggs, 2) if eggs else None,
+        "feed_per_dozen_kg": round(feed / (eggs / 12), 3) if feed is not None and eggs else None,
+        "notes": entry.notes,
+    }
+
+
+def _layer_daily_flock(db: Session, current_user: models.AppUser, flock_id: int, company_id: int | None):
+    resolved = resolve_company_id(current_user, company_id)
+    flock = db.query(models.CommercialLayerFlock).filter(
+        models.CommercialLayerFlock.id == flock_id,
+        models.CommercialLayerFlock.company_id == resolved,
+    ).first()
+    if not flock:
+        raise HTTPException(status_code=404, detail="Commercial Layers flock not found in this company")
+    if not access.user_has_farm_access(db, current_user, flock.farm_id):
+        raise HTTPException(status_code=403, detail="No access to this Commercial Layers farm")
+    return flock
+
+
+def _layer_daily_apply(entry, changes: dict):
+    # Never trust calculated values or company/flock reassignment from the browser.
+    fields = {"entry_date", "age_days", "mortality", "culls", "feed_kg", "water_litres", "bodyweight_kg", "egg_weight_g", "total_eggs", "saleable_eggs", "seconds", "cracks", "rejects", "production_standard_pct", "mortality_standard_pct", "egg_weight_standard_g", "feed_standard_g_bird_day", "eggs_per_bird_standard", "bodyweight_standard_g", "notes"}
+    for name, value in changes.items():
+        if name not in fields:
+            continue
+        target = {"mortality": "mortality_birds", "culls": "cull_birds", "bodyweight_kg": "bodyweight_g"}.get(name, name)
+        if name == "bodyweight_kg":
+            value = round(value * 1000, 2) if value is not None else None
+        setattr(entry, target, value)
+
+
+def _layer_daily_recalculate(db: Session, flock):
+    # Recalculate saved stock positions chronologically, including subsequent days
+    # when an earlier mortality/cull figure is corrected.
+    entries = db.query(models.CommercialLayerDailyPerformance).filter(
+        models.CommercialLayerDailyPerformance.company_id == flock.company_id,
+        models.CommercialLayerDailyPerformance.flock_id == flock.id,
+    ).order_by(models.CommercialLayerDailyPerformance.entry_date, models.CommercialLayerDailyPerformance.id).all()
+    opening = int(flock.birds_housed or 0)
+    for item in entries:
+        mortality = int(item.mortality_birds or 0)
+        culls = int(item.cull_birds or 0)
+        eggs = int(item.total_eggs or 0)
+        grades = [int(getattr(item, field) or 0) for field in ("saleable_eggs", "seconds", "cracks", "rejects")]
+        if min(mortality, culls, eggs, *grades) < 0 or mortality + culls > opening:
+            raise HTTPException(status_code=422, detail=f"Invalid bird/egg counts on {item.entry_date}")
+        if sum(grades) > eggs:
+            raise HTTPException(status_code=422, detail=f"Egg categories exceed total eggs on {item.entry_date}")
+        if item.entry_date < flock.housed_date:
+            raise HTTPException(status_code=422, detail="Entry date is before housing date")
+        item.opening_birds = opening
+        item.closing_birds = opening - mortality - culls
+        opening = item.closing_birds
+
+
+@app.get("/api/layers/commercial/daily-performance")
+def list_commercial_layer_daily_performance(
+    company_id: int | None = None,
+    flock_id: int | None = None,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    resolved = resolve_company_id(current_user, company_id)
+    query = db.query(models.CommercialLayerDailyPerformance).join(
+        models.CommercialLayerFlock,
+        models.CommercialLayerFlock.id == models.CommercialLayerDailyPerformance.flock_id,
+    ).filter(
+        models.CommercialLayerDailyPerformance.company_id == resolved,
+        models.CommercialLayerFlock.company_id == resolved,
+    )
+    if flock_id is not None:
+        _layer_daily_flock(db, current_user, flock_id, resolved)
+        query = query.filter(models.CommercialLayerDailyPerformance.flock_id == flock_id)
+    elif not (current_user.is_global_admin or current_user.is_company_admin):
+        allowed = db.query(models.UserFarmAccess.farm_id).filter(models.UserFarmAccess.user_id == current_user.id)
+        query = query.filter(models.CommercialLayerFlock.farm_id.in_(allowed))
+    entries = query.order_by(models.CommercialLayerDailyPerformance.flock_id, models.CommercialLayerDailyPerformance.entry_date).all()
+    return [_layer_daily_response(item) for item in entries]
+
+
+@app.post("/api/layers/commercial/daily-performance", status_code=201)
+def create_commercial_layer_daily_performance(
+    payload: CommercialLayerDailyPerformanceCreate,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    flock = _layer_daily_flock(db, current_user, payload.flock_id, payload.company_id)
+    if flock.housed_date is None or flock.birds_housed is None:
+        raise HTTPException(status_code=422, detail="Flock housing date and birds housed are required")
+    existing = db.query(models.CommercialLayerDailyPerformance).filter_by(flock_id=flock.id, entry_date=payload.entry_date).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="A daily entry already exists for this flock and date")
+    entry = models.CommercialLayerDailyPerformance(company_id=flock.company_id, flock_id=flock.id, entry_date=payload.entry_date)
+    _layer_daily_apply(entry, payload.model_dump(exclude_unset=True))
+    entry.last_saved_by = current_user.full_name
+    entry.last_saved_at = datetime.utcnow()
+    try:
+        db.add(entry)
+        db.flush()
+        _layer_daily_recalculate(db, flock)
+        db.commit()
+        db.refresh(entry)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Daily entry already exists")
+    except Exception:
+        db.rollback()
+        raise
+    return _layer_daily_response(entry)
+
+
+@app.patch("/api/layers/commercial/daily-performance/{entry_id}")
+def update_commercial_layer_daily_performance(
+    entry_id: int,
+    payload: CommercialLayerDailyPerformancePatch,
+    company_id: int | None = None,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    entry = db.query(models.CommercialLayerDailyPerformance).filter_by(id=entry_id).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Daily entry not found")
+    flock = _layer_daily_flock(db, current_user, entry.flock_id, company_id if company_id is not None else entry.company_id)
+    if entry.company_id != flock.company_id:
+        raise HTTPException(status_code=403, detail="Company mismatch")
+    if flock.housed_date is None or flock.birds_housed is None:
+        raise HTTPException(status_code=422, detail="Flock housing date and birds housed are required")
+    changes = payload.model_dump(exclude_unset=True)
+    new_date = changes.get("entry_date", entry.entry_date)
+    if new_date != entry.entry_date:
+        duplicate = db.query(models.CommercialLayerDailyPerformance).filter(
+            models.CommercialLayerDailyPerformance.flock_id == flock.id,
+            models.CommercialLayerDailyPerformance.entry_date == new_date,
+            models.CommercialLayerDailyPerformance.id != entry.id,
+        ).first()
+        if duplicate:
+            raise HTTPException(status_code=409, detail="An entry already exists for the requested date")
+    _layer_daily_apply(entry, changes)
+    entry.last_saved_by = current_user.full_name
+    entry.last_saved_at = datetime.utcnow()
+    try:
+        _layer_daily_recalculate(db, flock)
+        db.commit()
+        db.refresh(entry)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="An entry already exists for this date")
+    except Exception:
+        db.rollback()
+        raise
+    return _layer_daily_response(entry)
+
+
 @app.post(
     "/api/layers/rearing/flocks/{flock_id}/transfer",
     response_model=LayerRearingTransferResult,
