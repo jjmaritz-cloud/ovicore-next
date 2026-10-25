@@ -428,6 +428,8 @@ function CommercialLayersDailyHouseCardContent() {
     useState<Set<string>>(new Set());
   const [message, setMessage] =
     useState("");
+  // A history API failure must not hide otherwise valid layer flocks.
+  const [historyLoadFailed, setHistoryLoadFailed] = useState(false);
 
   const selectedFlock = useMemo(
     () =>
@@ -456,8 +458,11 @@ function CommercialLayersDailyHouseCardContent() {
 
     setLoading(true);
     setMessage("");
+    setHistoryLoadFailed(false);
 
     try {
+      // Load flock identity independently of performance history. The register
+      // and this dropdown must refer to the same Commercial Layers records.
       const flockResponse = await authenticatedFetch(
         `${API_BASE}/api/layers/commercial/flocks?company_id=${activeCompanyId}`,
         { cache: "no-store" },
@@ -465,58 +470,73 @@ function CommercialLayersDailyHouseCardContent() {
 
       if (!flockResponse.ok) {
         throw new Error(
-          await readApiError(
+          `Flock list (${flockResponse.status}): ${await readApiError(
             flockResponse,
             "Could not load Commercial Layer flocks.",
-          ),
+          )}`,
         );
       }
 
-      const flockData: CommercialLayerFlock[] =
-        await flockResponse.json();
-
-      const activeFlocks = flockData.filter(
-        (flock) =>
-          ["active", "housed"].includes(
-            flock.status.toLowerCase(),
-          ),
+      const flockData: CommercialLayerFlock[] = await flockResponse.json();
+      const activeFlocks = flockData.filter((flock) =>
+        ["active", "housed"].includes(String(flock.status ?? "").trim().toLowerCase()),
       );
 
       setFlocks(activeFlocks);
-
       setSelectedFlockId((current) =>
-        activeFlocks.some(
-          (flock) => flock.id === current,
-        )
+        activeFlocks.some((flock) => flock.id === current)
           ? current
           : activeFlocks[0]?.id ?? "",
       );
 
-      const performanceResponse =
-        await authenticatedFetch(
+      if (activeFlocks.length === 0) {
+        setMessage(
+          flockData.length === 0
+            ? "No Commercial Layers flocks were returned for this company."
+            : `Found ${flockData.length} flock(s), but none have Active or Housed status. Check flock status in the register.`,
+        );
+      }
+
+      // Daily history can be unavailable independently (for example a 404).
+      // Preserve flock selection but prohibit saving until history is loaded;
+      // otherwise a user could unknowingly overwrite/duplicate existing entries.
+      try {
+        const performanceResponse = await authenticatedFetch(
           `${API_BASE}/api/layers/commercial/daily-performance?company_id=${activeCompanyId}`,
           { cache: "no-store" },
         );
 
-      if (!performanceResponse.ok) {
-        throw new Error(
-          await readApiError(
-            performanceResponse,
-            "Could not load Commercial Layers Daily House Card records.",
-          ),
+        if (!performanceResponse.ok) {
+          throw new Error(
+            `Daily performance API (${performanceResponse.status}): ${await readApiError(
+              performanceResponse,
+              "Could not load Commercial Layers Daily House Card records.",
+            )}`,
+          );
+        }
+
+        const loadedRecords: PerformanceRecord[] = await performanceResponse.json();
+        setRecords(loadedRecords);
+        setDirtyKeys(new Set());
+      } catch (historyError) {
+        console.error("Commercial Layers performance history load failed", historyError);
+        setRecords([]);
+        setHistoryLoadFailed(true);
+        setMessage(
+          `${historyError instanceof Error ? historyError.message : "Unable to load daily performance."} ` +
+          "Flocks are available for selection, but editing and saving are disabled until history loads."
         );
       }
-
-      setRecords(await performanceResponse.json());
-      setDirtyKeys(new Set());
     } catch (error) {
-      console.error(error);
+      console.error("Commercial Layers flock load failed", error);
       setFlocks([]);
+      setSelectedFlockId("");
       setRecords([]);
+      setHistoryLoadFailed(true);
       setMessage(
         error instanceof Error
           ? error.message
-          : "Could not load Commercial Layers Daily House Card.",
+          : "Could not load Commercial Layers flocks.",
       );
     } finally {
       setLoading(false);
@@ -689,7 +709,7 @@ function CommercialLayersDailyHouseCardContent() {
     field: keyof DailyRow,
     value: string,
   ) {
-    if (!selectedFlock) return;
+    if (!selectedFlock || historyLoadFailed) return;
 
     setRows((currentRows) => {
       const numericFields: Array<keyof DailyRow> = [
@@ -803,6 +823,10 @@ function CommercialLayersDailyHouseCardContent() {
   }
 
   async function saveAllChanges() {
+    if (historyLoadFailed) {
+      setMessage("Cannot save until daily-performance history loads successfully.");
+      return;
+    }
     const changedRows = rows
       .filter((row) =>
         dirtyKeys.has(row.local_key),
@@ -881,13 +905,15 @@ function CommercialLayersDailyHouseCardContent() {
         selectorLabel="Select Commercial Layer Flock"
         selector={
           <select
+            aria-label="Select Commercial Layer Flock"
             value={selectedFlockId}
             onChange={(event) =>
               setSelectedFlockId(
-                Number(event.target.value),
+                event.target.value === "" ? "" : Number(event.target.value),
               )
             }
           >
+            <option value="" disabled>Select a commercial layer flock</option>
             {flocks.map((flock) => (
               <option
                 key={flock.id}
@@ -907,10 +933,10 @@ function CommercialLayersDailyHouseCardContent() {
         onDiscard={discardChanges}
         onSave={saveAllChanges}
         discardDisabled={
-          dirtyKeys.size === 0 || saving
+          dirtyKeys.size === 0 || saving || historyLoadFailed
         }
         saveDisabled={
-          dirtyKeys.size === 0 || saving
+          dirtyKeys.size === 0 || saving || historyLoadFailed
         }
         saving={saving}
         unsavedCount={dirtyKeys.size}
@@ -1014,6 +1040,7 @@ function CommercialLayersDailyHouseCardContent() {
           },
         ]}
       >
+        <div style={historyLoadFailed ? { pointerEvents: "none", opacity: 0.65 } : undefined}>
         <table>
           <thead>
             <tr>
@@ -1276,6 +1303,7 @@ function CommercialLayersDailyHouseCardContent() {
             )}
           </tbody>
         </table>
+        </div>
         </DailyHouseCard>
       </main>
     </div>
