@@ -385,6 +385,68 @@ function recalculateStockFlow(
   });
 }
 
+/**
+ * Lightweight house-card sense check. Compare like-for-like per-bird measures
+ * against up to five earlier SAVED days for this flock only. Blank entries are
+ * ignored; a suspicious value is never silently changed or blocked.
+ * One historical day detects obvious extra digits only; with three or more
+ * days we use the median and normal metric-specific thresholds.
+ */
+type CheckField = "mortality" | "feed_kg" | "water_litres" | "total_eggs" | "bodyweight_kg";
+type EntryWarning = { message: string; baseline: number };
+const CHECK_FIELDS: CheckField[] = ["mortality", "feed_kg", "water_litres", "total_eggs", "bodyweight_kg"];
+const CHECK_LABELS: Record<CheckField, string> = {
+  mortality: "Mortality", feed_kg: "Feed intake", water_litres: "Water intake",
+  total_eggs: "Egg production", bodyweight_kg: "Bodyweight",
+};
+function checkMeasurement(row: DailyRow, field: CheckField): number | null {
+  const raw = row[field];
+  if (raw === "" || raw === null || raw === undefined) return null;
+  const val = Number(raw);
+  if (!Number.isFinite(val) || val < 0) return null;
+  if (field === "mortality" || field === "bodyweight_kg") return val;
+  // Population-based comparisons remain meaningful as birds are depleted.
+  if (row.opening_birds <= 0) return null;
+  return val / row.opening_birds;
+}
+function checkDailyEntry(row: DailyRow, field: CheckField, allRows: DailyRow[]): EntryWarning | null {
+  const current = checkMeasurement(row, field);
+  if (current === null) return null;
+  const previous = allRows.filter(other =>
+    other.flock_id === row.flock_id && other.age_days < row.age_days && other.record_id !== undefined
+  ).sort((a,b) => b.age_days - a.age_days)
+    .map(other => checkMeasurement(other, field))
+    .filter((n): n is number => n !== null).slice(0,5);
+  if (!previous.length) return null;
+  const sorted = [...previous].sort((a,b) => a-b);
+  const baseline = sorted[Math.floor(sorted.length / 2)];
+  let isUnusual = false;
+  if (field === "mortality") {
+    // Avoid noisy percent changes around 0–2 deaths/day.
+    isUnusual = current >= Math.max(10, baseline + 10, baseline * (previous.length < 3 ? 10 : 3));
+  } else if (baseline > 0) {
+    const fractionalChange = Math.abs(current / baseline - 1);
+    const limit = previous.length < 3 ? 1 :
+      field === "bodyweight_kg" ? 0.20 :
+      field === "feed_kg" ? 0.35 :
+      field === "water_litres" || field === "total_eggs" ? 0.40 : 0.40;
+    isUnusual = fractionalChange > limit;
+  } else {
+    // An occasional zero-egg or zero-feed day may be real, so only flag
+    // an unusually large nonzero number with an established baseline.
+    isUnusual = false;
+  }
+  if (!isUnusual) return null;
+  const unit = field === "bodyweight_kg" ? "kg" : field === "mortality" ? "birds" :
+    field === "feed_kg" ? "kg/bird" : field === "water_litres" ? "L/bird" : "eggs/bird";
+  const displayedBaseline = field === "mortality" ? baseline.toFixed(0) :
+    field === "bodyweight_kg" ? baseline.toFixed(2) : baseline.toFixed(3);
+  return {
+    baseline,
+    message: `${CHECK_LABELS[field]} looks unusual compared with ${previous.length} previous saved day${previous.length === 1 ? "" : "s"} (typical ${displayedBaseline} ${unit}). Please check the value.`,
+  };
+}
+
 function CommercialLayersDailyHouseCardContent() {
   const searchParams = useSearchParams();
 
@@ -687,6 +749,8 @@ function CommercialLayersDailyHouseCardContent() {
     );
 
     const latest = rows[rows.length - 1];
+    // Generated blank future/today rows should never reset latest production KPIs.
+    const latestEggEntry = [...rows].reverse().find(row => row.total_eggs !== "");
 
     return {
       totalMortality,
@@ -696,13 +760,24 @@ function CommercialLayersDailyHouseCardContent() {
         latest?.closing_birds ??
         Number(selectedFlock?.birds_housed ?? 0),
       latestProduction:
-        latest?.production_pct ?? 0,
+        latestEggEntry?.production_pct ?? 0,
       latestSaleablePct:
-        latest?.saleable_pct ?? 0,
+        latestEggEntry?.saleable_pct ?? 0,
       totalEggs,
       totalFeedKg,
     };
   }, [rows, selectedFlock]);
+
+  const entryWarnings = useMemo(() => {
+    const warnings = new Map<string, EntryWarning>();
+    for (const row of rows) {
+      for (const field of CHECK_FIELDS) {
+        const warning = checkDailyEntry(row, field, rows);
+        if (warning) warnings.set(`${row.local_key}:${field}`, warning);
+      }
+    }
+    return warnings;
+  }, [rows]);
 
   function updateRow(
     localKey: string,
@@ -837,6 +912,17 @@ function CommercialLayersDailyHouseCardContent() {
       );
 
     if (!changedRows.length) return;
+
+    const suspicious = changedRows.flatMap(row => CHECK_FIELDS.flatMap(field => {
+      const warning = entryWarnings.get(`${row.local_key}:${field}`);
+      return warning ? [`${row.entry_date} — ${CHECK_LABELS[field]}: ${warning.message}`] : [];
+    }));
+    if (suspicious.length && !window.confirm(
+      `OviCore found ${suspicious.length} unusual entr${suspicious.length === 1 ? "y" : "ies"}:\n\n` +
+      suspicious.slice(0, 8).join("\n") +
+      (suspicious.length > 8 ? "\n(and more)" : "") +
+      "\n\nPress OK to confirm these values and save, or Cancel to correct them."
+    )) return;
 
     setSaving(true);
     setMessage("");
@@ -1064,7 +1150,7 @@ function CommercialLayersDailyHouseCardContent() {
                 "Feed kg",
                 "Water L",
                 "Feed g/Bird",
-                "Bodyweight kg",
+                "Bodyweight (kg)",
                 "Total Eggs",
                 "Saleable Eggs",
                 "Seconds",
@@ -1109,6 +1195,7 @@ function CommercialLayersDailyHouseCardContent() {
 
                   <EditableCell
                     value={row.mortality}
+                    warning={entryWarnings.get(`${row.local_key}:mortality`)?.message}
                     type="number"
                     onChange={(value) =>
                       updateRow(
@@ -1143,6 +1230,7 @@ function CommercialLayersDailyHouseCardContent() {
 
                   <EditableCell
                     value={row.feed_kg}
+                    warning={entryWarnings.get(`${row.local_key}:feed_kg`)?.message}
                     type="number"
                     step="0.01"
                     onChange={(value) =>
@@ -1156,6 +1244,7 @@ function CommercialLayersDailyHouseCardContent() {
 
                   <EditableCell
                     value={row.water_litres}
+                    warning={entryWarnings.get(`${row.local_key}:water_litres`)?.message}
                     type="number"
                     step="0.01"
                     onChange={(value) =>
@@ -1176,6 +1265,7 @@ function CommercialLayersDailyHouseCardContent() {
 
                   <EditableCell
                     value={row.bodyweight_kg}
+                    warning={entryWarnings.get(`${row.local_key}:bodyweight_kg`)?.message}
                     type="number"
                     step="0.001"
                     onChange={(value) =>
@@ -1189,6 +1279,7 @@ function CommercialLayersDailyHouseCardContent() {
 
                   <EditableCell
                     value={row.total_eggs}
+                    warning={entryWarnings.get(`${row.local_key}:total_eggs`)?.message}
                     type="number"
                     onChange={(value) =>
                       updateRow(
@@ -1323,14 +1414,17 @@ function EditableCell({
   onChange,
   type = "text",
   step,
+  warning,
 }: {
   value: string | number | "";
   onChange: (value: string) => void;
   type?: string;
   step?: string;
+  warning?: string;
 }) {
   return (
-    <td data-cell="editable">
+    <td data-cell="editable" title={warning} style={warning ? { boxShadow: "inset 0 0 0 2px #d99a16", backgroundColor: "#fff0be", position: "relative" } : undefined}>
+      {warning ? <span aria-label={warning} title={warning} style={{ position: "absolute", right: 2, top: 0, fontSize: 11, color: "#965d00", pointerEvents: "none" }}>⚠</span> : null}
       <input
         type={type}
         min={type === "number" ? "0" : undefined}
