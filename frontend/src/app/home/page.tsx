@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import OviCoreTour from "@/components/OviCoreTour";
 
 import {
   Bird,
@@ -529,7 +528,6 @@ export default function HomePage() {
         )}
       </section>
 
-      <OviCoreTour />
 
       <style jsx global>{`
 

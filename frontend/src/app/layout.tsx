@@ -1,3 +1,4 @@
+import OviCoreTour from "@/components/OviCoreTour";
 import type { Metadata } from "next";
 import "@ag-grid-community/styles/ag-grid.css";
 import "@ag-grid-community/styles/ag-theme-quartz.css";
@@ -27,7 +28,8 @@ export default function RootLayout({
         <AuthGate>
           <IdleLogout>{children}</IdleLogout>
         </AuthGate>
-      </body>
+        <OviCoreTour />
+        </body>
     </html>
   );
 }

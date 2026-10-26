@@ -99,7 +99,7 @@ function routeWithTour(stepIndex: number) {
 
   const separator = step.route.includes("?") ? "&" : "?";
   const companyParam =
-    companyId && (step.route === "/planning" || step.route === "/broilers")
+    companyId && step.route !== "/home"
       ? `&company_id=${encodeURIComponent(companyId)}`
       : "";
 
@@ -109,6 +109,7 @@ function routeWithTour(stepIndex: number) {
 export default function OviCoreTour() {
   const [stepIndex, setStepIndex] = useState<number | null>(null);
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
+  const [missingTarget, setMissingTarget] = useState(false);
 
   useEffect(() => {
     setStepIndex(getStepFromUrl());
@@ -124,6 +125,8 @@ export default function OviCoreTour() {
 
     let cancelled = false;
     let attempts = 0;
+    setTargetRect(null);
+    setMissingTarget(false);
 
     const locate = () => {
       if (cancelled) return;
@@ -134,10 +137,15 @@ export default function OviCoreTour() {
         attempts += 1;
         if (attempts < 20) {
           window.setTimeout(locate, 150);
+        } else {
+          // Keep Next/Back accessible when a target was renamed or is unavailable.
+          setMissingTarget(true);
+          setTargetRect(null);
         }
         return;
       }
 
+      setMissingTarget(false);
       target.scrollIntoView({
         behavior: "smooth",
         block: "center",
@@ -244,6 +252,11 @@ export default function OviCoreTour() {
         </div>
 
         <p>{step.body}</p>
+        {missingTarget ? (
+          <p className="ovicore-tour-target-note" role="status">
+            This page's highlighted section isn't available in the current view. You can continue the tour with Next or return with Back.
+          </p>
+        ) : null}
 
         <div className="ovicore-tour-progress" aria-label={`Step ${stepIndex + 1} of ${overviewSteps.length}`}>
           {overviewSteps.map((_, index) => (
@@ -372,6 +385,15 @@ export default function OviCoreTour() {
           font-size: 13.5px;
           font-weight: 650;
           line-height: 1.55;
+        }
+
+        .ovicore-tour-target-note {
+          margin: 0 0 12px !important;
+          padding: 8px 10px;
+          border-radius: 9px;
+          background: #fff7e7;
+          color: #805c17 !important;
+          font-size: 12px !important;
         }
 
         .ovicore-tour-close {
