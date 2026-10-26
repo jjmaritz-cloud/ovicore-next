@@ -1359,7 +1359,73 @@ function ProfessionalLayerChart({
   const plotWidth = width - left - right;
   const plotHeight = height - top - bottom;
 
-  const points = rows.map((row) => ({
+  // Weekly mode groups observations into biological age weeks, instead of
+  // plotting every daily record at fractional-week positions.
+  // Flow measurements use the mean of recorded days; cumulative measures
+  // use the latest observation in each week. Missing values stay missing.
+  const displayRows = useMemo(() => {
+    if (showDaily) return rows;
+
+    const byWeek = new Map<number, PerformanceRow[]>();
+    for (const row of rows) {
+      const age = finite(row.age_days) ??
+        (finite(row.age_weeks) !== null ? Number(row.age_weeks) * 7 : null);
+      if (age === null) continue;
+      const week = Math.floor(age / 7);
+      const group = byWeek.get(week) ?? [];
+      group.push(row);
+      byWeek.set(week, group);
+    }
+
+    const average = (
+      group: PerformanceRow[],
+      key: keyof PerformanceRow,
+    ): number | null => {
+      const values = group.map((row) => finite(row[key]));
+      const valid = values.filter((value): value is number => value !== null);
+      return valid.length ? valid.reduce((a, b) => a + b, 0) / valid.length : null;
+    };
+
+    const lastValue = (
+      group: PerformanceRow[],
+      key: keyof PerformanceRow,
+    ): number | null => {
+      for (let i = group.length - 1; i >= 0; i--) {
+        const value = finite(group[i][key]);
+        if (value !== null) return value;
+      }
+      return null;
+    };
+
+    return [...byWeek.entries()].sort(([a], [b]) => a - b).map(([week, group]) => {
+      const sorted = [...group].sort((a, b) =>
+        Number(a.age_days ?? a.age_weeks ?? 0) - Number(b.age_days ?? b.age_weeks ?? 0),
+      );
+      const last = sorted[sorted.length - 1];
+      return {
+        ...last,
+        age_weeks: week,
+        age_days: week * 7,
+        production_pct: average(sorted, "production_pct"),
+        egg_weight_g: average(sorted, "egg_weight_g"),
+        feed_g_bird_day: average(sorted, "feed_g_bird_day"),
+        water_ml_bird_day: average(sorted, "water_ml_bird_day"),
+        water_intake_ml_bird_day: average(sorted, "water_intake_ml_bird_day"),
+        water_l_bird_day: average(sorted, "water_l_bird_day"),
+        bodyweight_g: average(sorted, "bodyweight_g"),
+        cumulative_mortality_pct: lastValue(sorted, "cumulative_mortality_pct"),
+        eggs_per_bird_cumulative: lastValue(sorted, "eggs_per_bird_cumulative"),
+        production_standard_pct: average(sorted, "production_standard_pct"),
+        egg_weight_standard_g: average(sorted, "egg_weight_standard_g"),
+        feed_standard_g_bird_day: average(sorted, "feed_standard_g_bird_day"),
+        bodyweight_standard_g: average(sorted, "bodyweight_standard_g"),
+        mortality_standard_pct: lastValue(sorted, "mortality_standard_pct"),
+        eggs_per_bird_standard: lastValue(sorted, "eggs_per_bird_standard"),
+      };
+    });
+  }, [rows, showDaily]);
+
+  const points = displayRows.map((row) => ({
     row,
     x: showDaily
       ? Number(row.age_days ?? 0)
@@ -1377,8 +1443,8 @@ function ProfessionalLayerChart({
   const standardX = standardPoints.map((point) => point.x);
   const allX = [...actualX, ...standardX];
 
-  const minX = Math.min(...allX);
-  const maxX = Math.max(...allX, minX + 1);
+  const minX = allX.length ? Math.min(...allX) : 17;
+  const maxX = allX.length ? Math.max(...allX, minX + 1) : 100;
 
   const ranges = new Map<
     MetricKey,
@@ -1993,24 +2059,8 @@ function ProfessionalLayerChart({
                 />
               ) : null}
 
-              {points.map(
-                ({ row, x: pointX }) => {
-                  const value =
-                    metric.actual(row);
-
-                  return value === null ? null : (
-                    <circle
-                      key={`${metric.key}-${row.id}`}
-                      cx={x(pointX)}
-                      cy={y(metric, value)}
-                      r="2.8"
-                      fill="#ffffff"
-                      stroke={metric.colour}
-                      strokeWidth="1.8"
-                    />
-                  );
-                },
-              )}
+              {/* Keep the trends clean: only the hovered point is marked.
+                  Rendering a circle for every daily observation was cluttered. */}
             </g>
           );
         })}
