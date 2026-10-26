@@ -49,12 +49,54 @@ function Spark({ values }: { values: (number | null)[] }) {
   </svg>;
 }
 
+// Weekly aggregation: daily rates/measurements are averaged from valid entries;
+// cumulative measures use the last valid observation in each calendar week.
+function weeklyRows(rows: Row[]): Row[] {
+  const buckets = new Map<string, Row[]>();
+  for (const row of rows) {
+    const date = new Date(`${row.entry_date.slice(0, 10)}T12:00:00Z`);
+    if (Number.isNaN(date.getTime())) continue;
+    const weekday = date.getUTCDay();
+    date.setUTCDate(date.getUTCDate() - ((weekday + 6) % 7));
+    const key = date.toISOString().slice(0, 10); // Week commencing Monday
+    const entries = buckets.get(key) ?? [];
+    entries.push(row);
+    buckets.set(key, entries);
+  }
+  return [...buckets.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([weekStart, entries]) => {
+    const sorted = [...entries].sort((a, b) => a.entry_date.localeCompare(b.entry_date));
+    const average = (fn: (r: Row) => number | null | undefined) => {
+      const values = sorted.map(fn).filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+      return values.length ? values.reduce((total, v) => total + v, 0) / values.length : null;
+    };
+    const last = (fn: (r: Row) => number | null | undefined) => {
+      for (let i = sorted.length - 1; i >= 0; i--) {
+        const v = fn(sorted[i]);
+        if (typeof v === "number" && Number.isFinite(v)) return v;
+      }
+      return null;
+    };
+    return {
+      entry_date: weekStart,
+      production_pct: average(r => r.production_pct),
+      cumulative_mortality_pct: last(r => r.cumulative_mortality_pct),
+      egg_weight_g: average(r => r.egg_weight_g),
+      feed_g_bird_day: average(r => r.feed_g_bird_day),
+      water_ml_bird_day: average(r => r.water_ml_bird_day ?? r.water_intake_ml_bird_day),
+      eggs_per_bird_cumulative: last(r => r.eggs_per_bird_cumulative),
+      bodyweight_g: last(r => r.bodyweight_g),
+    };
+  });
+}
+
 function PerformanceGraph({ rows, selected, onToggle, flockName }: {
   rows: Row[]; selected: Key[]; onToggle: (key: Key) => void; flockName: string;
 }) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
-  const [range, setRange] = useState<"all" | "90" | "30">("all");
-  const shownRows = useMemo(() => range === "all" ? rows : rows.slice(-Number(range)), [rows, range]);
+  const [interval, setInterval] = useState<"weekly" | "daily">("weekly");
+  const [range, setRange] = useState<"all" | "13" | "4">("all");
+  const graphRows = useMemo(() => interval === "weekly" ? weeklyRows(rows) : rows, [rows, interval]);
+  const shownRows = useMemo(() => range === "all" ? graphRows : graphRows.slice(-(Number(range) * (interval === "daily" ? 7 : 1))), [graphRows, range, interval]);
   const metrics = defs.filter(d => selected.includes(d.key));
   const W = 1000, H = 420, L = 56, R = 20, T = 18, B = 55;
   const pw = W - L - R, ph = H - T - B;
@@ -76,17 +118,22 @@ function PerformanceGraph({ rows, selected, onToggle, flockName }: {
     const px = (clientX - bounds.left) / bounds.width * W;
     setHoverIndex(Math.max(0, Math.min(shownRows.length - 1, Math.round((px - L) / pw * Math.max(shownRows.length - 1, 1)))));
   }
-  const labelDate = (raw: string) => { const t = new Date(raw); return Number.isNaN(t.getTime()) ? raw : t.toLocaleDateString("en-AU", { day: "numeric", month: "short" }); };
+  const labelDate = (raw: string) => { const t = new Date(`${raw.slice(0,10)}T12:00:00Z`); return Number.isNaN(t.getTime()) ? raw : t.toLocaleDateString("en-AU", { day: "numeric", month: "short", timeZone: "UTC" }); };
   return <section className={chartStyles.chartPanel} aria-label="Interactive layer performance graph">
     <div className={chartStyles.chartHead}>
-      <div><div className={chartStyles.chartEyebrow}>FLOCK PERFORMANCE</div><h2>Performance trends</h2><p>{flockName || "Select a flock"} · Actual daily records</p></div>
-      <select aria-label="Chart date range" value={range} onChange={e => { setRange(e.target.value as "all" | "90" | "30"); setHoverIndex(null); }}>
-        <option value="all">All records</option><option value="90">Last 90</option><option value="30">Last 30</option>
-      </select>
+      <div><div className={chartStyles.chartEyebrow}>FLOCK PERFORMANCE</div><h2>Performance trends</h2><p>{flockName || "Select a flock"} · {interval === "weekly" ? "Weekly summaries" : "Daily records"}</p></div>
+      <div className={chartStyles.chartControls}>
+        <select aria-label="Chart interval" value={interval} onChange={e => { setInterval(e.target.value as "weekly" | "daily"); setHoverIndex(null); }}>
+          <option value="weekly">Weekly (default)</option><option value="daily">Daily</option>
+        </select>
+        <select aria-label="Chart date range" value={range} onChange={e => { setRange(e.target.value as "all" | "13" | "4"); setHoverIndex(null); }}>
+          <option value="all">All history</option><option value="13">Last 13 weeks</option><option value="4">Last 4 weeks</option>
+        </select>
+      </div>
     </div>
     <div className={chartStyles.plotWrap}>
       {shownRows.length < 2 || metrics.length === 0 ? <div className={chartStyles.empty}>Select at least one metric and two records to view trends.</div> : <>
-        <svg className={chartStyles.plot} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label="Performance trends by entry date" onPointerMove={e => inspect(e.clientX, e.currentTarget)} onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); inspect(e.clientX, e.currentTarget); }}>
+        <svg className={chartStyles.plot} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label="Performance trends by week or entry date" onPointerMove={e => inspect(e.clientX, e.currentTarget)} onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); inspect(e.clientX, e.currentTarget); }}>
           <rect x={L} y={T} width={pw} height={ph} fill="#f8fbfa" rx="7" />
           {[0, .25, .5, .75, 1].map(t => <g key={t}><line x1={L} x2={W - R} y1={T + ph * t} y2={T + ph * t} stroke="#dfe9e5" strokeDasharray="5 5" /><text x={L - 12} y={T + ph * t + 5} textAnchor="end" fontSize="13" fill="#71847d">{Math.round((1-t)*100)}%</text></g>)}
           {shownRows.map((r, i) => (i === 0 || i === shownRows.length - 1 || i % Math.max(1, Math.ceil(shownRows.length / 7)) === 0) && <g key={i}><line x1={x(i)} x2={x(i)} y1={T} y2={T + ph} stroke="#edf2ef" /><text x={x(i)} y={H - 24} textAnchor="middle" fontSize="13" fill="#71847d">{labelDate(r.entry_date)}</text></g>)}
@@ -97,13 +144,13 @@ function PerformanceGraph({ rows, selected, onToggle, flockName }: {
             return <g key={def.key}>{segments.filter(s=>s.length>1).map((s,i)=><polyline key={i} points={s.join(" ")} stroke={def.color} strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />)}</g>;
           })}
           {active !== null && <g><line x1={x(active)} x2={x(active)} y1={T} y2={T + ph} stroke="#163c31" strokeDasharray="4 5" strokeWidth="1.5" />{bounds.map(({def,min,max})=>{const v=def.value(shownRows[active]);return numeric(v)?<circle key={def.key} cx={x(active)} cy={y(v,min,max)} r="5.5" fill={def.color} stroke="white" strokeWidth="2" />:null;})}</g>}
-          <text x={W/2} y={H-3} textAnchor="middle" fontSize="14" fill="#56766a">Entry date · each metric independently scaled</text>
+          <text x={W/2} y={H-3} textAnchor="middle" fontSize="14" fill="#56766a">{interval === "weekly" ? "Week commencing Monday" : "Entry date"} · each metric independently scaled</text>
         </svg>
-        {active !== null && <div className={chartStyles.inspector}><strong>{labelDate(shownRows[active].entry_date)}</strong><div>{metrics.map(d => {const v=d.value(shownRows[active]);return <span key={d.key}><i style={{background:d.color}} />{d.label}: <b>{numeric(v)?v.toLocaleString("en-AU",{maximumFractionDigits:2}):"—"} {d.unit}</b></span>;})}</div></div>}
+        {active !== null && <div className={chartStyles.inspector}><strong>{interval === "weekly" ? "Week commencing " : ""}{labelDate(shownRows[active].entry_date)}</strong><div>{metrics.map(d => {const v=d.value(shownRows[active]);return <span key={d.key}><i style={{background:d.color}} />{d.label}: <b>{numeric(v)?v.toLocaleString("en-AU",{maximumFractionDigits:2}):"—"} {d.unit}</b></span>;})}</div></div>}
       </>}
     </div>
     <div className={chartStyles.legend} aria-label="Toggle chart metrics">{defs.map(d => <button key={d.key} type="button" aria-pressed={selected.includes(d.key)} onClick={() => onToggle(d.key)} className={selected.includes(d.key) ? chartStyles.legendOn : chartStyles.legendOff}><span style={{background:d.color}} />{d.label}</button>)}</div>
-    <p className={chartStyles.scaleNote}>Each series is independently scaled from its actual minimum to maximum (0–100% of its displayed range). Tap or drag to inspect original values. Breed-standard lines require standard data from the API.</p>
+    <p className={chartStyles.scaleNote}>Weekly view averages production, feed, water and egg weight; cumulative mortality, eggs per bird and bodyweight use the last observation of the week. Each line is independently scaled; the vertical percentage scale is not an absolute measure. Tap or drag for actual values. Breed standards require API data.</p>
   </section>;
 }
 
