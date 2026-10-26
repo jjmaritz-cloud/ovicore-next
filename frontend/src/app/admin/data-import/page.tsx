@@ -189,6 +189,40 @@ export default function DataImportPage() {
     setMessage("");
   }
 
+  async function downloadDailyTemplate() {
+    if (productionModule === "commercial_layers" && !companyId) {
+      setMessage("Select a company to generate its Commercial Layers flock workbook.");
+      return;
+    }
+    setWorking(true);
+    setMessage("");
+    try {
+      const query = productionModule === "commercial_layers" ? `?company_id=${companyId}` : "";
+      const response = await fetch(`${API_BASE}/api/admin/daily-data-template/${productionModule}${query}`, {
+        credentials: "include", cache: "no-store",
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.detail || `Workbook download failed (${response.status}).`);
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = productionModule === "commercial_layers"
+        ? `OviCore_Commercial_Layers_${companyId}_Daily_History.xlsx`
+        : `OviCore_${productionModule}_Daily_Data.xlsx`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to download workbook.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
   async function submitFile(file: File, commit: boolean) {
     const formData = new FormData();
     formData.append("company_id", companyId);
@@ -386,18 +420,20 @@ export default function DataImportPage() {
 							)}
 
 							{importMode === "daily" && availableModules.length > 0 && (
-								<a
-									className="ovicore-btn ovicore-btn-primary"
-									href={`${API_BASE}/api/admin/daily-data-template/${productionModule}`}
-								>
+								<button
+                                    type="button"
+                                    className="ovicore-btn ovicore-btn-primary"
+                                    disabled={working || (productionModule === "commercial_layers" && !companyId)}
+                                    onClick={() => void downloadDailyTemplate()}
+                                >
 									Download{" "}
 									{
 										MODULE_OPTIONS.find(
 											(item) => item.value === productionModule,
 										)?.label
 									}{" "}
-									Template
-								</a>
+                                    {productionModule === "commercial_layers" ? " Flock Workbook" : " Template"}
+                                </button>
 							)}
 
 							<span

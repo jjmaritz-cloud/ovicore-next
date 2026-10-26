@@ -5,7 +5,8 @@ from typing import Any
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook, load_workbook
-from openpyxl.styles import Font, PatternFill
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 from sqlalchemy.orm import Session
 
 from app import models
@@ -82,7 +83,8 @@ MODULES: dict[str, dict[str, Any]] = {
         "start_date": "hatch_date",
         "opening": "birds_housed",
         "fields": [
-            "Mortality Birds", "Cull Birds", "Total Eggs", "Egg Weight g",
+            "Mortality Birds", "Cull Birds", "Total Eggs", "Saleable Eggs",
+            "Seconds", "Cracks", "Rejects", "Egg Weight g",
             "Feed kg", "Water L", "Bodyweight g", "Production Standard %",
             "Mortality Standard %", "Egg Weight Standard g", "Feed Standard g/bird/day",
             "Eggs per Bird Standard", "Bodyweight Standard g", "Notes",
@@ -123,17 +125,58 @@ def _number(value: Any, name: str, row: int, errors: list[str], integer: bool = 
         return None
 
 
-def _records(workbook) -> list[tuple[int, dict[str, Any]]]:
-    if "Daily Data" not in workbook.sheetnames:
+# Column names matching the Commercial Layers Daily House Card. Derived cells
+# are deliberately ignored by the importer; the server recalculates bird flow.
+LAYER_SHEET_HEADERS = [
+    "Entry Date", "Age Days", "Age Weeks", "Opening Birds", "Mortality Birds",
+    "Cull Birds", "Total Loss", "Closing Birds", "Bird Balance", "Feed kg",
+    "Water L", "Feed g/Bird", "Bodyweight (kg)", "Total Eggs", "Saleable Eggs",
+    "Seconds", "Cracks", "Rejects", "Production %", "Production Standard %",
+    "Variance %", "Saleable %", "Feed kg/Dozen", "Notes",
+]
+LAYER_INPUT_FIELDS = {
+    "Mortality Birds", "Cull Birds", "Feed kg", "Water L", "Bodyweight (kg)",
+    "Total Eggs", "Saleable Eggs", "Seconds", "Cracks", "Rejects",
+    "Production Standard %", "Notes",
+}
+
+
+def _records(workbook, module: str = "") -> list[tuple[int, dict[str, Any]]]:
+    # Keep legacy Daily Data imports working for every production module.
+    if "Daily Data" in workbook.sheetnames:
+        sheet = workbook["Daily Data"]
+        headers = [_text(cell.value) for cell in next(sheet.iter_rows(min_row=1, max_row=1))]
+        rows = []
+        for row_number, cells in enumerate(sheet.iter_rows(min_row=2), start=2):
+            values = [cell.value for cell in cells]
+            if not any(value is not None and _text(value) for value in values):
+                continue
+            rows.append((row_number, {headers[i]: values[i] if i < len(values) else None for i in range(len(headers)) if headers[i]}))
+        return rows
+
+    if module != "commercial_layers":
         return []
-    sheet = workbook["Daily Data"]
-    headers = [_text(cell.value) for cell in next(sheet.iter_rows(min_row=1, max_row=1))]
     rows = []
-    for row_number, cells in enumerate(sheet.iter_rows(min_row=2), start=2):
-        values = [cell.value for cell in cells]
-        if not any(value is not None and _text(value) for value in values):
+    for sheet in workbook.worksheets:
+        if sheet.title.lower() in {"instructions", "read me"}:
             continue
-        rows.append((row_number, {headers[i]: values[i] if i < len(values) else None for i in range(len(headers)) if headers[i]}))
+        # Company-specific sheet identity is stored explicitly, not inferred
+        # only from Excel's truncated 31-character worksheet title.
+        flock_code = _text(sheet["B4"].value)
+        if not flock_code:
+            continue
+        headers = [_text(cell.value) for cell in sheet[11]]
+        if headers[:3] != LAYER_SHEET_HEADERS[:3]:
+            continue
+        for row_number, cells in enumerate(sheet.iter_rows(min_row=12), start=12):
+            values = [cell.value for cell in cells]
+            row = {header: values[i] if i < len(values) else None for i, header in enumerate(headers) if header}
+            # A prefilled date/formula is not an import record until at least
+            # one daily input is entered by the user.
+            if not any(row.get(key) is not None and _text(row.get(key)) for key in LAYER_INPUT_FIELDS):
+                continue
+            row["Flock Code"] = flock_code
+            rows.append((row_number, row))
     return rows
 
 
@@ -162,11 +205,126 @@ def _resolve_company(db: Session, user, company_id: int):
     return company
 
 
+def _commercial_layers_workbook(db: Session, company_id: int):
+    flocks = (db.query(models.CommercialLayerFlock)
+              .filter(models.CommercialLayerFlock.company_id == company_id)
+              .order_by(models.CommercialLayerFlock.flock_code.asc()).all())
+    if not flocks:
+        raise HTTPException(status_code=404, detail="No Commercial Layers flocks exist for the selected company")
+    wb = Workbook()
+    instructions = wb.active
+    instructions.title = "Instructions"
+    instructions.append(["OviCore | Commercial Layers Daily History Import"])
+    for message in [
+        "One worksheet per registered laying flock; do not rename or change its Flock Code (B4).",
+        "Housing Date is the first daily entry; Hatch Date determines biological age.",
+        "Enter data into yellow columns only. Leave missing values blank; do not fill missing days with zeros.",
+        "The calculated columns are for review only and are recalculated by OviCore after import.",
+        "Blank daily rows are ignored. Validate the workbook in Admin > Data Import before confirming.",
+        "When updating existing entries, empty imported cells leave those existing values unchanged.",
+        "If Hatch Date or Housing Date is wrong, fix the flock master register and download again.",
+    ]:
+        instructions.append([message])
+    instructions.column_dimensions["A"].width = 115
+    instructions["A1"].font = Font(size=16, bold=True, color="075444")
+
+    names = {"Instructions"}
+    from datetime import timedelta
+    for flock in flocks:
+        name = "".join("_" if ch in "[]:*?/\\" else ch for ch in (flock.flock_code or str(flock.id)))[:31] or f"Flock{flock.id}"
+        base = name
+        index = 2
+        while name.lower() in {n.lower() for n in names}:
+            suffix = f"-{index}"
+            name = base[:31-len(suffix)] + suffix
+            index += 1
+        names.add(name)
+        ws = wb.create_sheet(name)
+        farm = db.get(models.BroilerFarm, flock.farm_id)
+        shed = db.get(models.BroilerShed, flock.shed_id)
+        ws.merge_cells("A1:X2")
+        ws["A1"] = "OVICORE  |  COMMERCIAL LAYERS DAILY HOUSE CARD"
+        ws["A1"].fill = PatternFill("solid", fgColor="075444")
+        ws["A1"].font = Font(size=14, bold=True, color="FFFFFF")
+        ws["A1"].alignment = Alignment(vertical="center")
+        for row, label, value in [
+            (4, "Flock Code", flock.flock_code),
+            (5, "Farm", farm.farm_name if farm else ""),
+            (6, "Shed", shed.shed_name if shed else ""),
+            (7, "Hatch Date", flock.hatch_date),
+            (8, "Housing Date", flock.housed_date),
+            (9, "Birds Housed", flock.birds_housed),
+        ]:
+            ws.cell(row, 1, label)
+            ws.cell(row, 2, value)
+            ws.cell(row, 1).font = Font(color="075444", bold=True)
+            ws.cell(row, 2).font = Font(color="075444", bold=True)
+            if row in (7, 8):
+                ws.cell(row, 2).number_format = "dd-mm-yyyy"
+        ws["D4"] = "Yellow = entry  |  Green = calculated  |  Blank = skip"
+        ws["D4"].font = Font(italic=True, color="486C60")
+        for i, header in enumerate(LAYER_SHEET_HEADERS, start=1):
+            cell = ws.cell(11, i, header)
+            cell.fill = PatternFill("solid", fgColor="075444")
+            cell.font = Font(color="FFFFFF", bold=True, size=10)
+            cell.alignment = Alignment(wrap_text=True, horizontal="center")
+            ws.column_dimensions[get_column_letter(i)].width = 17 if header != "Notes" else 36
+        ws.column_dimensions["A"].width = 17
+        ws.column_dimensions["I"].width = 17
+        ws.row_dimensions[11].height = 34
+        ws.freeze_panes = "D12"
+        ws.auto_filter.ref = f"A11:X11"
+        # Historical records: first date is the actual housing/transfer date.
+        # Use a 1-year grid (or entire history if the flock is older) with
+        # editable blanks; users can add more rows as necessary.
+        start = flock.housed_date or date.today()
+        end = max(date.today(), start + timedelta(days=365))
+        days = min((end-start).days + 1, 2500)
+        for i in range(days):
+            r = 12+i
+            current = start + timedelta(days=i)
+            ws.cell(r, 1, current).number_format = "dd-mm-yyyy"
+            if flock.hatch_date:
+                ws.cell(r, 2, max((current-flock.hatch_date).days, 0))
+                ws.cell(r, 3, f"=B{r}/7").number_format = "0.00"
+            ws.cell(r, 4, (flock.birds_housed or 0) if i == 0 else f"=H{r-1}")
+            ws.cell(r, 7, f"=SUM(E{r}:F{r})")
+            ws.cell(r, 8, f"=MAX(0,D{r}-G{r})")
+            ws.cell(r, 9, f'=IF(D{r}-G{r}=H{r},"OK","Check")')
+            ws.cell(r, 12, f'=IFERROR(IF(J{r}="","",J{r}*1000/H{r}),"")')
+            ws.cell(r, 19, f'=IFERROR(IF(N{r}="","",N{r}/D{r}*100),"")')
+            ws.cell(r, 21, f'=IF(OR(S{r}="",T{r}=""),"",S{r}-T{r})')
+            ws.cell(r, 22, f'=IFERROR(IF(O{r}="","",O{r}/N{r}*100),"")')
+            ws.cell(r, 23, f'=IFERROR(IF(OR(J{r}="",N{r}=""),"",J{r}/(N{r}/12)),"")')
+            for col, header in enumerate(LAYER_SHEET_HEADERS, start=1):
+                cell = ws.cell(r, col)
+                cell.fill = PatternFill("solid", fgColor="FFF1BD" if header in LAYER_INPUT_FIELDS else "E9F5EE")
+                cell.alignment = Alignment(horizontal="center" if col != 24 else "left")
+                if col in (3, 19, 21, 22, 23):
+                    cell.number_format = "0.00"
+    return wb
+
+
 @router.get("/daily-data-template/{module}")
-def download_daily_template(module: str):
+def download_daily_template(
+    module: str, company_id: int | None = None,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     config = MODULES.get(module)
     if not config:
         raise HTTPException(status_code=404, detail="Unknown production module")
+    if module == "commercial_layers":
+        if company_id is None:
+            raise HTTPException(status_code=400, detail="Select a company before downloading its flock workbook")
+        company = _resolve_company(db, current_user, company_id)
+        if not _module_enabled(company, module):
+            raise HTTPException(status_code=400, detail="Commercial Layers is not enabled for this company")
+        wb = _commercial_layers_workbook(db, company_id)
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+        return StreamingResponse(output, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": f'attachment; filename="OviCore_Commercial_Layers_Company_{company_id}_Daily_History.xlsx"'})
     wb = Workbook()
     ws = wb.active
     ws.title = "Daily Data"
@@ -229,16 +387,47 @@ def _set_breeder(entry, row, row_number, errors, production: bool):
 
 
 def _set_layers(entry, row, row_number, errors):
-    for attr, header in {"mortality_birds":"Mortality Birds", "cull_birds":"Cull Birds", "total_eggs":"Total Eggs"}.items():
-        setattr(entry, attr, _number(row.get(header), header, row_number, errors, True) or 0)
-    for attr, header in {
-        "egg_weight_g":"Egg Weight g", "feed_kg":"Feed kg", "water_litres":"Water L", "bodyweight_g":"Bodyweight g",
-        "production_standard_pct":"Production Standard %", "mortality_standard_pct":"Mortality Standard %",
-        "egg_weight_standard_g":"Egg Weight Standard g", "feed_standard_g_bird_day":"Feed Standard g/bird/day",
-        "eggs_per_bird_standard":"Eggs per Bird Standard", "bodyweight_standard_g":"Bodyweight Standard g",
-    }.items():
-        setattr(entry, attr, _number(row.get(header), header, row_number, errors))
-    entry.notes = _text(row.get("Notes"))
+    # Only populated imported cells may overwrite saved history. A new record
+    # uses zero defaults for egg counts and mortality; blank optional metrics
+    # remain null. This is essential for safe incremental uploads.
+    mappings = {
+        "mortality_birds": ("Mortality Birds", True),
+        "cull_birds": ("Cull Birds", True),
+        "total_eggs": ("Total Eggs", True),
+        "saleable_eggs": ("Saleable Eggs", True),
+        "seconds": ("Seconds", True),
+        "cracks": ("Cracks", True),
+        "rejects": ("Rejects", True),
+        "egg_weight_g": ("Egg Weight g", False),
+        "feed_kg": ("Feed kg", False),
+        "water_litres": ("Water L", False),
+        "bodyweight_g": ("Bodyweight g", False),
+        "production_standard_pct": ("Production Standard %", False),
+        "mortality_standard_pct": ("Mortality Standard %", False),
+        "egg_weight_standard_g": ("Egg Weight Standard g", False),
+        "feed_standard_g_bird_day": ("Feed Standard g/bird/day", False),
+        "eggs_per_bird_standard": ("Eggs per Bird Standard", False),
+        "bodyweight_standard_g": ("Bodyweight Standard g", False),
+    }
+    for attr, (header, integer) in mappings.items():
+        if row.get(header) is None or _text(row.get(header)) == "":
+            continue
+        number = _number(row[header], header, row_number, errors, integer)
+        if number is not None:
+            if number < 0 or (integer and number != float(row[header])):
+                errors.append(f"Row {row_number}: {header} must be a nonnegative whole number" if integer else f"Row {row_number}: {header} cannot be negative")
+            else:
+                setattr(entry, attr, number)
+    # Spreadsheet follows the Daily House Card (kg); DB stores grams.
+    if row.get("Bodyweight (kg)") is not None and _text(row.get("Bodyweight (kg)")):
+        kg = _number(row["Bodyweight (kg)"], "Bodyweight (kg)", row_number, errors)
+        if kg is not None:
+            if kg < 0:
+                errors.append(f"Row {row_number}: Bodyweight (kg) cannot be negative")
+            else:
+                entry.bodyweight_g = kg * 1000
+    if row.get("Notes") is not None and _text(row["Notes"]):
+        entry.notes = _text(row["Notes"])
 
 
 def _recalculate_sequence(db: Session, module: str, flock, user_name: str):
@@ -289,11 +478,11 @@ async def import_daily_data(
         excel = load_workbook(BytesIO(await workbook.read()), data_only=True, read_only=True)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Could not read workbook: {exc}")
-    records = _records(excel)
+    records = _records(excel, module)
     errors: list[str] = []
     warnings: list[str] = []
     if not records:
-        errors.append("The Daily Data sheet is missing or contains no data rows.")
+        errors.append("No populated daily input rows found. For Commercial Layers, enter values on a flock worksheet; other modules use Daily Data.")
     flock_model = config["flock_model"]
     daily_model = config["daily_model"]
     flock_rows = db.query(flock_model).filter(flock_model.company_id == company_id).all()
@@ -322,8 +511,13 @@ async def import_daily_data(
         start_date = getattr(flock, config["start_date"], None)
         if age_days is None and start_date:
             age_days = (entry_date - start_date).days
-        if start_date and entry_date < start_date:
-            errors.append(f"Row {row_number}: Entry Date is before the flock start/hatch date.")
+        earliest = (flock.housed_date if module == "commercial_layers" else start_date)
+        if earliest and entry_date < earliest:
+            errors.append(f"Row {row_number}: Entry Date is before the flock housing/start date.")
+        if module == "commercial_layers":
+            # Validate the same fields in preview and commit, before writing.
+            validation_row = type("PreviewRow", (), {})()
+            _set_layers(validation_row, row, row_number, errors)
         existing = existing_by_key.get(key)
         counts["create" if existing is None else "update" if allow_updates else "unchanged"] += 1
         parsed.append((row_number, row, flock, entry_date, age_days, existing))
