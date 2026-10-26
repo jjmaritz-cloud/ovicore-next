@@ -6,6 +6,35 @@ import { usePathname, useRouter } from "next/navigation";
 const AUTH_CHECK_TIMEOUT_MS = 8000;
 const ACTIVITY_HEARTBEAT_MS = 5 * 60 * 1000;
 
+const MOBILE_USER_CACHE_KEY = "ovicore_mobile_cached_user";
+
+type MobileRememberedSession = {
+  user?: unknown;
+  expires_at?: string;
+};
+
+function hasValidRememberedMobileSession() {
+  if (typeof window === "undefined") return false;
+
+  try {
+    const raw = window.localStorage.getItem(MOBILE_USER_CACHE_KEY);
+    if (!raw) return false;
+
+    const session = JSON.parse(raw) as MobileRememberedSession;
+    const expiresAt = Date.parse(session.expires_at ?? "");
+
+    if (!session.user || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+      window.localStorage.removeItem(MOBILE_USER_CACHE_KEY);
+      return false;
+    }
+
+    return true;
+  } catch {
+    window.localStorage.removeItem(MOBILE_USER_CACHE_KEY);
+    return false;
+  }
+}
+
 function moduleFromPath(pathname: string) {
   const firstSegment = pathname.split("/").filter(Boolean)[0] ?? "home";
 
@@ -62,6 +91,26 @@ export default function AuthGate({
       // Only show the session-check screen for the initial protected load.
       setAuthorised(false);
 
+      const isMobileRoute = pathname === "/mobile" || pathname.startsWith("/mobile/");
+
+      // Mobile is intentionally offline-capable. If this device has a valid
+      // remembered 14-day session, do not block startup just because there is
+      // no network connection. The mobile workspace will use its cached data
+      // and sync again when connectivity returns.
+      if (
+        isMobileRoute &&
+        !navigator.onLine &&
+        hasValidRememberedMobileSession()
+      ) {
+        if (!cancelled) {
+          setAuthorised(true);
+          setSessionChecked(true);
+        }
+
+        window.clearTimeout(timeoutId);
+        return;
+      }
+
       try {
         const response = await fetch("/api/auth/me", {
           credentials: "include",
@@ -79,6 +128,17 @@ export default function AuthGate({
         }
       } catch {
         if (cancelled) return;
+
+        const isMobileRoute = pathname === "/mobile" || pathname.startsWith("/mobile/");
+
+        // navigator.onLine is not perfectly reliable on every Android device.
+        // If the API check itself fails, a still-valid remembered mobile
+        // session is enough to continue into the offline-capable workspace.
+        if (isMobileRoute && hasValidRememberedMobileSession()) {
+          setAuthorised(true);
+          setSessionChecked(true);
+          return;
+        }
 
         const query = window.location.search;
         const nextPath = `${pathname}${query}`;
