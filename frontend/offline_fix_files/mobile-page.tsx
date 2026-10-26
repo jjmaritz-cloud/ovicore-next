@@ -1,0 +1,5786 @@
+"use client";
+
+import Image from "next/image";
+import Link from "next/link";
+import {
+  FormEvent,
+  PointerEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
+import {
+  MobileDraft,
+  deleteDraft,
+  getDrafts,
+  putDraft,
+  updateDraft,
+} from "../../lib/mobileHouseSheetDb";
+
+import styles from "./mobile.module.css";
+
+const API_BASE = "";
+const API_REQUEST_TIMEOUT_MS = 15000;
+
+const MOBILE_USER_CACHE_KEY =
+  "ovicore_mobile_cached_user";
+const MOBILE_DATA_CACHE_KEY =
+  "ovicore_mobile_broiler_cache_v1";
+const MOBILE_STANDARDS_CACHE_KEY =
+  "ovicore_mobile_performance_standards_v1";
+
+const MOBILE_SELECTED_PLAN_KEY =
+  "ovicore_mobile_selected_plan_id";
+const MOBILE_SELECTED_MODULE_KEY =
+  "ovicore_mobile_selected_module";
+
+const MOBILE_REMEMBER_DAYS = 14;
+const MOBILE_KEEP_SIGNED_IN_KEY =
+  "ovicore_mobile_keep_signed_in";
+
+type MobileRememberedSession = {
+  user: CurrentUser;
+  authenticated_at: string;
+  expires_at: string;
+};
+
+function clearRememberedMobileAuth() {
+  if (typeof window === "undefined") return;
+
+  window.localStorage.removeItem(MOBILE_USER_CACHE_KEY);
+  window.localStorage.removeItem(MOBILE_SELECTED_PLAN_KEY);
+  window.localStorage.removeItem("ovicore_selected_company_id");
+  window.localStorage.removeItem("ovicore_selected_farm_id");
+  window.localStorage.removeItem("ovicore_selected_shed_id");
+  window.localStorage.removeItem("ovicore_selected_flock_id");
+  window.localStorage.removeItem("ovicore_remembered_email");
+  window.sessionStorage.clear();
+}
+
+function rememberMobileUser(user: CurrentUser) {
+  if (typeof window === "undefined") return;
+
+  const keepSignedIn =
+    window.localStorage.getItem(MOBILE_KEEP_SIGNED_IN_KEY) !== "false";
+
+  if (!keepSignedIn) {
+    window.localStorage.removeItem(MOBILE_USER_CACHE_KEY);
+    return;
+  }
+
+  const authenticatedAt = new Date();
+  const expiresAt = new Date(authenticatedAt);
+  expiresAt.setDate(expiresAt.getDate() + MOBILE_REMEMBER_DAYS);
+
+  const session: MobileRememberedSession = {
+    user,
+    authenticated_at: authenticatedAt.toISOString(),
+    expires_at: expiresAt.toISOString(),
+  };
+
+  window.localStorage.setItem(
+    MOBILE_USER_CACHE_KEY,
+    JSON.stringify(session),
+  );
+}
+
+function redirectToMobileLogin() {
+  // Keep cached farm data and IndexedDB drafts. Only the remembered
+  // identity is cleared, so unsynced production entries are never lost.
+  clearRememberedMobileAuth();
+  window.location.replace("/login?next=%2Fmobile");
+}
+
+function endMobileSession() {
+  clearRememberedMobileAuth();
+
+  // Redirect immediately. The server logout finishes in the background.
+  void fetch(`${API_BASE}/api/auth/logout`, {
+    method: "POST",
+    credentials: "include",
+    cache: "no-store",
+    keepalive: true,
+  }).catch(() => {
+    // Remembered authentication is already cleared, so offline logout works.
+  });
+
+  window.location.replace("/login?next=%2Fmobile");
+}
+
+type CurrentUser = {
+  id: number;
+  full_name: string;
+  email: string;
+  company_id: number | null;
+  company_name?: string | null;
+  is_global_admin: boolean;
+  is_company_admin: boolean;
+};
+
+type CompanyOption = {
+  id: number;
+  name?: string;
+  company_name?: string;
+  enable_broilers?: boolean;
+  enable_breeders?: boolean;
+};
+
+type MobileModule = "broilers" | "breeders";
+
+type DemandPlan = {
+  id: number;
+  company_id?: number;
+  farm_name?: string;
+  shed_name?: string;
+  cycle_code?: string;
+  placement_date?: string;
+  processing_date?: string;
+  planned_birds?: number;
+  breed?: string | null;
+  breed_code?: string | null;
+};
+
+type PerformanceRecord = {
+  id: number;
+  placement_plan_id: number;
+  entry_date: string;
+  age_days?: number | null;
+  opening_birds?: number | null;
+  mortality_front?: number | null;
+  mortality_middle?: number | null;
+  mortality_back?: number | null;
+  mortality_other?: number | null;
+  mortality_birds?: number | null;
+  cull_legs?: number | null;
+  cull_runts?: number | null;
+  cull_beak?: number | null;
+  cull_other?: number | null;
+  cull_birds?: number | null;
+  closing_birds?: number | null;
+  feed_kg?: number | null;
+  water_litres?: number | null;
+  body_weight_kg?: number | null;
+  avg_weight_kg?: number | null;
+  body_weight_standard_kg?: number | null;
+  target_body_weight_kg?: number | null;
+  notes?: string | null;
+  last_saved_at?: string | null;
+};
+
+type MobileTab = "home" | "entry" | "capture" | "insights" | "more";
+type EntryStage = "select" | "form" | "saved";
+
+type EntryForm = {
+  placement_plan_id: number | "";
+  entry_date: string;
+  opening_birds: string;
+  mortality_front: string;
+  mortality_middle: string;
+  mortality_back: string;
+  mortality_other: string;
+  cull_legs: string;
+  cull_runts: string;
+  cull_beak: string;
+  cull_other: string;
+  feed_kg: string;
+  water_litres: string;
+  body_weight_kg: string;
+  notes: string;
+};
+
+type SavedSummary = {
+  farm: string;
+  shed: string;
+  cycle: string;
+  ageDays: number;
+  entryDate: string;
+  opening: number | null;
+  mortality: number;
+  culls: number;
+  closing: number | null;
+  feed: number | null;
+  water: number | null;
+  weight: number | null;
+};
+
+
+type PaperCaptureSource = {
+  template_id: string;
+  opening_birds_am?: number | null;
+  opening_birds_pm?: number | null;
+
+  mortality_front_am?: number | null;
+  mortality_front_pm?: number | null;
+  mortality_middle_am?: number | null;
+  mortality_middle_pm?: number | null;
+  mortality_back_am?: number | null;
+  mortality_back_pm?: number | null;
+  mortality_other_am?: number | null;
+  mortality_other_pm?: number | null;
+
+  cull_legs_am?: number | null;
+  cull_legs_pm?: number | null;
+  cull_runts_am?: number | null;
+  cull_runts_pm?: number | null;
+  cull_beak_am?: number | null;
+  cull_beak_pm?: number | null;
+  cull_other_am?: number | null;
+  cull_other_pm?: number | null;
+
+  feed_kg_am?: number | null;
+  feed_kg_pm?: number | null;
+  water_litres_am?: number | null;
+  water_litres_pm?: number | null;
+  body_weight_kg_am?: number | null;
+  body_weight_kg_pm?: number | null;
+
+  observations?: string | null;
+  actions_taken?: string | null;
+  confidence: Record<string, number>;
+};
+
+type PaperCaptureReview = {
+  opening_birds: number | null;
+  mortality_front: number;
+  mortality_middle: number;
+  mortality_back: number;
+  mortality_other: number;
+  cull_legs: number;
+  cull_runts: number;
+  cull_beak: number;
+  cull_other: number;
+  feed_kg: number | null;
+  water_litres: number | null;
+  body_weight_kg: number | null;
+  notes: string | null;
+};
+
+type PaperCaptureResult = {
+  id: number;
+  company_id: number;
+  placement_plan_id: number;
+  template_id: string;
+  entry_date: string;
+  farm_name?: string | null;
+  shed_name?: string | null;
+  cycle_code?: string | null;
+  age_days?: number | null;
+  status: string;
+  overall_confidence?: number | null;
+  source: PaperCaptureSource;
+  proposed: PaperCaptureReview;
+  warnings: string[];
+};
+
+type MobileDataCache = {
+  company_id: number;
+  cached_at: string;
+  plans: DemandPlan[];
+  records: PerformanceRecord[];
+};
+
+
+type PerformanceStandardRow = {
+  id: number;
+  company_id: number | null;
+  standard_code: string;
+  standard_name: string;
+  standard_type: "Breed" | "Company";
+  module: string;
+  species: string;
+  breed?: string | null;
+  phase?: string | null;
+  age_day?: number | null;
+  age_week?: number | null;
+  body_weight_g?: number | null;
+  active: boolean;
+};
+
+type MobileStandardsCache = {
+  cached_at: string;
+  rows: PerformanceStandardRow[];
+};
+
+
+type ExceptionSeverity = "critical" | "warning" | "incomplete" | "normal";
+
+type ShedException = {
+  severity: ExceptionSeverity;
+  label: string;
+  detail: string;
+  metric: "mortality" | "weight" | "water" | "reporting";
+};
+
+type ShedOverview = {
+  plan: DemandPlan;
+  records: PerformanceRecord[];
+  latest?: PerformanceRecord;
+  today?: PerformanceRecord;
+  previous?: PerformanceRecord;
+  birdCount: number;
+  weight: number | null;
+  mortalityRate: number;
+  waterFeedRatio: number | null;
+  exceptions: ShedException[];
+  severity: ExceptionSeverity;
+};
+
+type FarmOverview = {
+  farmName: string;
+  sheds: ShedOverview[];
+  totalBirds: number;
+  reported: number;
+  critical: number;
+  warning: number;
+  incomplete: number;
+  severity: ExceptionSeverity;
+};
+
+const severityRank: Record<ExceptionSeverity, number> = {
+  critical: 0,
+  warning: 1,
+  incomplete: 2,
+  normal: 3,
+};
+
+function recordMortality(record?: PerformanceRecord) {
+  if (!record) return 0;
+  return (
+    numberOrZero(record.mortality_birds) ||
+    numberOrZero(record.mortality_front) +
+      numberOrZero(record.mortality_middle) +
+      numberOrZero(record.mortality_back) +
+      numberOrZero(record.mortality_other)
+  );
+}
+
+function buildShedOverview(
+  plan: DemandPlan,
+  records: PerformanceRecord[],
+  today: string,
+): ShedOverview {
+  const planRecords = records
+    .filter((record) => record.placement_plan_id === plan.id)
+    .sort((a, b) => b.entry_date.localeCompare(a.entry_date));
+
+  const todayRecord = planRecords.find(
+    (record) => record.entry_date === today,
+  );
+  const latest = todayRecord ?? planRecords[0];
+  const previous = planRecords.find(
+    (record) => latest && record.entry_date < latest.entry_date,
+  );
+
+  const opening = numberOrZero(todayRecord?.opening_birds);
+  const mortality = recordMortality(todayRecord);
+  const mortalityRate =
+    opening > 0 ? (mortality / opening) * 100 : 0;
+
+  const weight =
+    latest?.body_weight_kg ?? latest?.avg_weight_kg ?? null;
+  const previousWeight =
+    previous?.body_weight_kg ?? previous?.avg_weight_kg ?? null;
+  const weightChange =
+    weight !== null && previousWeight !== null && previousWeight > 0
+      ? ((weight - previousWeight) / previousWeight) * 100
+      : null;
+
+  const feed = numberOrZero(todayRecord?.feed_kg);
+  const water = numberOrZero(todayRecord?.water_litres);
+  const waterFeedRatio =
+    feed > 0 && water > 0 ? water / feed : null;
+
+  const exceptions: ShedException[] = [];
+
+  if (!todayRecord) {
+    exceptions.push({
+      severity: "incomplete",
+      label: "Daily entry missing",
+      detail: "No house sheet has been received today.",
+      metric: "reporting",
+    });
+  }
+
+  if (mortalityRate >= 0.5) {
+    exceptions.push({
+      severity: "critical",
+      label: "High mortality",
+      detail: `${mortalityRate.toFixed(2)}% today`,
+      metric: "mortality",
+    });
+  } else if (mortalityRate >= 0.25) {
+    exceptions.push({
+      severity: "warning",
+      label: "Mortality rising",
+      detail: `${mortalityRate.toFixed(2)}% today`,
+      metric: "mortality",
+    });
+  }
+
+  if (weightChange !== null && weightChange <= -5) {
+    exceptions.push({
+      severity: weightChange <= -10 ? "critical" : "warning",
+      label: "Bodyweight has dropped",
+      detail: `${Math.abs(weightChange).toFixed(1)}% below the previous entry`,
+      metric: "weight",
+    });
+  }
+
+  if (
+    waterFeedRatio !== null &&
+    (waterFeedRatio < 1.4 || waterFeedRatio > 2.5)
+  ) {
+    exceptions.push({
+      severity: "warning",
+      label: "Water/feed ratio outside range",
+      detail: `${waterFeedRatio.toFixed(2)} L/kg`,
+      metric: "water",
+    });
+  }
+
+  const severity = exceptions.reduce<ExceptionSeverity>(
+    (current, item) =>
+      severityRank[item.severity] < severityRank[current]
+        ? item.severity
+        : current,
+    "normal",
+  );
+
+  return {
+    plan,
+    records: planRecords,
+    latest,
+    today: todayRecord,
+    previous,
+    birdCount: numberOrZero(
+      latest?.closing_birds ?? plan.planned_birds,
+    ),
+    weight,
+    mortalityRate,
+    waterFeedRatio,
+    exceptions,
+    severity,
+  };
+}
+
+function buildFarmOverviews(
+  plans: DemandPlan[],
+  records: PerformanceRecord[],
+): FarmOverview[] {
+  const today = new Date().toISOString().slice(0, 10);
+  const sheds = plans.map((plan) =>
+    buildShedOverview(plan, records, today),
+  );
+  const grouped = new Map<string, ShedOverview[]>();
+
+  for (const shed of sheds) {
+    const farmName = shed.plan.farm_name?.trim() || "Unassigned farm";
+    grouped.set(farmName, [...(grouped.get(farmName) ?? []), shed]);
+  }
+
+  return [...grouped.entries()]
+    .map(([farmName, farmSheds]) => {
+      const critical = farmSheds.filter(
+        (shed) => shed.severity === "critical",
+      ).length;
+      const warning = farmSheds.filter(
+        (shed) => shed.severity === "warning",
+      ).length;
+      const incomplete = farmSheds.filter(
+        (shed) => shed.severity === "incomplete",
+      ).length;
+      const severity: ExceptionSeverity = critical
+        ? "critical"
+        : warning
+          ? "warning"
+          : incomplete
+            ? "incomplete"
+            : "normal";
+
+      return {
+        farmName,
+        sheds: [...farmSheds].sort(
+          (a, b) =>
+            severityRank[a.severity] - severityRank[b.severity] ||
+            (a.plan.shed_name ?? "").localeCompare(
+              b.plan.shed_name ?? "",
+            ),
+        ),
+        totalBirds: farmSheds.reduce(
+          (sum, shed) => sum + shed.birdCount,
+          0,
+        ),
+        reported: farmSheds.filter((shed) => Boolean(shed.today)).length,
+        critical,
+        warning,
+        incomplete,
+        severity,
+      };
+    })
+    .sort(
+      (a, b) =>
+        severityRank[a.severity] - severityRank[b.severity] ||
+        a.farmName.localeCompare(b.farmName),
+    );
+}
+
+const blankForm = (): EntryForm => ({
+  placement_plan_id: "",
+  entry_date: new Date().toISOString().slice(0, 10),
+  opening_birds: "",
+  mortality_front: "",
+  mortality_middle: "",
+  mortality_back: "",
+  mortality_other: "",
+  cull_legs: "",
+  cull_runts: "",
+  cull_beak: "",
+  cull_other: "",
+  feed_kg: "",
+  water_litres: "",
+  body_weight_kg: "",
+  notes: "",
+});
+
+function valueToInput(
+  value: number | string | null | undefined,
+): string {
+  return value === null || value === undefined
+    ? ""
+    : String(value);
+}
+
+function buildEntryFormForDate(
+  planId: number | "",
+  entryDate: string,
+  record?: PerformanceRecord,
+): EntryForm {
+  return {
+    placement_plan_id: planId,
+    entry_date: entryDate,
+    opening_birds: valueToInput(
+      record?.opening_birds,
+    ),
+    mortality_front: valueToInput(
+      record?.mortality_front,
+    ),
+    mortality_middle: valueToInput(
+      record?.mortality_middle,
+    ),
+    mortality_back: valueToInput(
+      record?.mortality_back,
+    ),
+    mortality_other: valueToInput(
+      record?.mortality_other,
+    ),
+    cull_legs: valueToInput(record?.cull_legs),
+    cull_runts: valueToInput(record?.cull_runts),
+    cull_beak: valueToInput(record?.cull_beak),
+    cull_other: valueToInput(record?.cull_other),
+    feed_kg: valueToInput(record?.feed_kg),
+    water_litres: valueToInput(
+      record?.water_litres,
+    ),
+    body_weight_kg: valueToInput(
+      record?.body_weight_kg ??
+        record?.avg_weight_kg,
+    ),
+    notes: record?.notes ?? "",
+  };
+}
+
+function valuesMatch(
+  mobileValue: string,
+  serverValue: number | string | null | undefined,
+): boolean {
+  if (mobileValue.trim() === "") {
+    return serverValue === null ||
+      serverValue === undefined ||
+      serverValue === "";
+  }
+
+  if (
+    typeof serverValue === "number" ||
+    (
+      typeof serverValue === "string" &&
+      serverValue.trim() !== "" &&
+      Number.isFinite(Number(serverValue))
+    )
+  ) {
+    return Number(mobileValue) === Number(serverValue);
+  }
+
+  return mobileValue.trim() === String(serverValue ?? "").trim();
+}
+
+function hasMeaningfulServerValue(
+  value: number | string | null | undefined,
+): boolean {
+  if (
+    value === null ||
+    value === undefined ||
+    value === ""
+  ) {
+    return false;
+  }
+
+  if (
+    typeof value === "number" &&
+    value === 0
+  ) {
+    return false;
+  }
+
+  if (
+    typeof value === "string" &&
+    value.trim() !== "" &&
+    Number(value) === 0
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+
+function toNumber(value: string) {
+  if (value.trim() === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function numberOrZero(value?: number | null) {
+  return Number(value || 0);
+}
+
+function draftToPerformanceRecord(
+  draft: MobileDraft,
+): PerformanceRecord {
+  return {
+    id: draft.server_record_id ?? -1,
+    placement_plan_id:
+      draft.payload.placement_plan_id,
+    entry_date: draft.payload.entry_date,
+    age_days: draft.payload.age_days,
+    opening_birds: draft.payload.opening_birds,
+    mortality_front:
+      draft.payload.mortality_front,
+    mortality_middle:
+      draft.payload.mortality_middle,
+    mortality_back:
+      draft.payload.mortality_back,
+    mortality_other:
+      draft.payload.mortality_other,
+    mortality_birds:
+      draft.payload.mortality_birds,
+    cull_legs: draft.payload.cull_legs,
+    cull_runts: draft.payload.cull_runts,
+    cull_beak: draft.payload.cull_beak,
+    cull_other: draft.payload.cull_other,
+    cull_birds: draft.payload.cull_birds,
+    closing_birds: draft.payload.closing_birds,
+    feed_kg: draft.payload.feed_kg,
+    water_litres: draft.payload.water_litres,
+    body_weight_kg:
+      draft.payload.body_weight_kg,
+    avg_weight_kg: draft.payload.avg_weight_kg,
+    notes: draft.payload.notes,
+    last_saved_at: draft.saved_at,
+  };
+}
+
+function mergeDraftsIntoRecords(
+  serverRecords: PerformanceRecord[],
+  drafts: MobileDraft[],
+  companyId: number,
+): PerformanceRecord[] {
+  const merged = [...serverRecords];
+
+  for (const draft of drafts) {
+    if (draft.company_id !== companyId) continue;
+
+    const localRecord =
+      draftToPerformanceRecord(draft);
+
+    const index = merged.findIndex(
+      (record) =>
+        record.placement_plan_id ===
+          localRecord.placement_plan_id &&
+        record.entry_date === localRecord.entry_date,
+    );
+
+    if (index >= 0) {
+      merged[index] = {
+        ...merged[index],
+        ...localRecord,
+        id: merged[index].id,
+      };
+    } else {
+      merged.push(localRecord);
+    }
+  }
+
+  return merged;
+}
+
+function calculateAgeDays(
+  placementDate?: string,
+  entryDate?: string,
+) {
+  if (!placementDate || !entryDate) return 0;
+
+  const placement = new Date(`${placementDate}T00:00:00`);
+  const entry = new Date(`${entryDate}T00:00:00`);
+
+  if (
+    Number.isNaN(placement.getTime()) ||
+    Number.isNaN(entry.getTime())
+  ) {
+    return 0;
+  }
+
+  return Math.max(
+    0,
+    Math.round(
+      (entry.getTime() - placement.getTime()) / 86400000,
+    ),
+  );
+}
+
+function ageLabel(
+  plan: DemandPlan,
+  entryDate = new Date().toISOString().slice(0, 10),
+) {
+  return `Age ${calculateAgeDays(plan.placement_date, entryDate)} days`;
+}
+
+function recordWeight(record?: PerformanceRecord) {
+  return record?.body_weight_kg ?? record?.avg_weight_kg ?? null;
+}
+
+function recordStandardWeight(record?: PerformanceRecord) {
+  return record?.body_weight_standard_kg ??
+    record?.target_body_weight_kg ??
+    null;
+}
+
+function formatNumber(value: number | null | undefined) {
+  if (value === null || value === undefined) return "—";
+  return Math.round(value).toLocaleString();
+}
+
+function formatDecimal(
+  value: number | null | undefined,
+  digits = 2,
+) {
+  if (value === null || value === undefined) return "—";
+  return Number(value).toFixed(digits);
+}
+
+function formatDate(value: string) {
+  const date = new Date(`${value}T00:00:00`);
+
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleDateString("en-AU", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function readCachedUser(): CurrentUser | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = window.localStorage.getItem(MOBILE_USER_CACHE_KEY);
+    if (!raw) return null;
+
+    const session = JSON.parse(raw) as Partial<MobileRememberedSession>;
+    const expiresAt = Date.parse(session.expires_at ?? "");
+
+    if (!session.user || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+      window.localStorage.removeItem(MOBILE_USER_CACHE_KEY);
+      return null;
+    }
+
+    return session.user;
+  } catch {
+    window.localStorage.removeItem(MOBILE_USER_CACHE_KEY);
+    return null;
+  }
+}
+
+function readMobileDataCache(
+  companyId: number,
+): MobileDataCache | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = window.localStorage.getItem(
+      MOBILE_DATA_CACHE_KEY,
+    );
+
+    if (!raw) return null;
+
+    const cache = JSON.parse(raw) as MobileDataCache;
+
+    return cache.company_id === companyId
+      ? cache
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function applyPlanSelection(
+  plansData: DemandPlan[],
+  setForm: (
+    updater: (current: EntryForm) => EntryForm,
+  ) => void,
+) {
+  setForm((current) => ({
+    ...current,
+    placement_plan_id:
+      current.placement_plan_id ||
+      (plansData.length ? plansData[0].id : ""),
+  }));
+}
+
+function readStandardsCache(): PerformanceStandardRow[] {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const raw = window.localStorage.getItem(
+      MOBILE_STANDARDS_CACHE_KEY,
+    );
+
+    if (!raw) return [];
+
+    const cache = JSON.parse(raw) as MobileStandardsCache;
+    return Array.isArray(cache.rows) ? cache.rows : [];
+  } catch {
+    return [];
+  }
+}
+
+function cacheStandards(rows: PerformanceStandardRow[]) {
+  if (typeof window === "undefined") return;
+
+  const cache: MobileStandardsCache = {
+    cached_at: new Date().toISOString(),
+    rows,
+  };
+
+  window.localStorage.setItem(
+    MOBILE_STANDARDS_CACHE_KEY,
+    JSON.stringify(cache),
+  );
+}
+
+function standardWeightForAge(
+  rows: PerformanceStandardRow[],
+  ageDays: number,
+): number | null {
+  const usableRows = rows.filter(
+    (row) =>
+      row.active &&
+      row.body_weight_g !== null &&
+      row.body_weight_g !== undefined &&
+      Number.isFinite(Number(row.body_weight_g)),
+  );
+
+  if (usableRows.length === 0) return null;
+
+  const dailyRows = usableRows
+    .filter(
+      (row) =>
+        row.age_day !== null &&
+        row.age_day !== undefined &&
+        Number.isFinite(Number(row.age_day)),
+    )
+    .sort(
+      (a, b) =>
+        Number(a.age_day) - Number(b.age_day),
+    );
+
+  if (dailyRows.length > 0) {
+    const exact = dailyRows.find(
+      (row) => Number(row.age_day) === ageDays,
+    );
+
+    if (exact) {
+      return Number(exact.body_weight_g) / 1000;
+    }
+
+    const lower =
+      [...dailyRows]
+        .reverse()
+        .find(
+          (row) => Number(row.age_day) <= ageDays,
+        ) ?? dailyRows[0];
+    const upper =
+      dailyRows.find(
+        (row) => Number(row.age_day) >= ageDays,
+      ) ?? dailyRows[dailyRows.length - 1];
+
+    const lowerDay = Number(lower.age_day);
+    const upperDay = Number(upper.age_day);
+    const lowerWeight = Number(lower.body_weight_g);
+    const upperWeight = Number(upper.body_weight_g);
+
+    if (lowerDay === upperDay) {
+      return lowerWeight / 1000;
+    }
+
+    const proportion =
+      (ageDays - lowerDay) / (upperDay - lowerDay);
+
+    return (
+      lowerWeight +
+      (upperWeight - lowerWeight) *
+        Math.min(1, Math.max(0, proportion))
+    ) / 1000;
+  }
+
+  // Weekly standards remain supported for layer and rearing modules.
+  const weeklyRows = usableRows
+    .filter(
+      (row) =>
+        row.age_week !== null &&
+        row.age_week !== undefined &&
+        Number.isFinite(Number(row.age_week)),
+    )
+    .sort(
+      (a, b) =>
+        Number(a.age_week) - Number(b.age_week),
+    );
+
+  if (weeklyRows.length === 0) return null;
+
+  const ageWeeks = Math.max(0, ageDays / 7);
+  const lower =
+    [...weeklyRows]
+      .reverse()
+      .find(
+        (row) => Number(row.age_week) <= ageWeeks,
+      ) ?? weeklyRows[0];
+  const upper =
+    weeklyRows.find(
+      (row) => Number(row.age_week) >= ageWeeks,
+    ) ?? weeklyRows[weeklyRows.length - 1];
+
+  const lowerWeek = Number(lower.age_week);
+  const upperWeek = Number(upper.age_week);
+  const lowerWeight = Number(lower.body_weight_g);
+  const upperWeight = Number(upper.body_weight_g);
+
+  if (lowerWeek === upperWeek) {
+    return lowerWeight / 1000;
+  }
+
+  const proportion =
+    (ageWeeks - lowerWeek) /
+    (upperWeek - lowerWeek);
+
+  return (
+    lowerWeight +
+    (upperWeight - lowerWeight) *
+      Math.min(1, Math.max(0, proportion))
+  ) / 1000;
+}
+
+async function authenticatedFetch(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(
+    () => controller.abort(),
+    API_REQUEST_TIMEOUT_MS,
+  );
+
+  try {
+    const response = await fetch(input, {
+      ...init,
+      credentials: "include",
+      cache: "no-store",
+      signal: controller.signal,
+    });
+
+    if (response.status === 401) {
+      redirectToMobileLogin();
+
+      throw new Error(
+        "Your login session has expired.",
+      );
+    }
+
+    return response;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error(
+        "OviCore is taking too long to respond. Showing the last synced data.",
+      );
+    }
+
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+export default function MobileBroilerApp() {
+  const [tab, setTab] = useState<MobileTab>("home");
+  const [homeResetKey, setHomeResetKey] = useState(0);
+  const [entryStage, setEntryStage] =
+    useState<EntryStage>("select");
+  const [plans, setPlans] = useState<DemandPlan[]>([]);
+  const [records, setRecords] =
+    useState<PerformanceRecord[]>([]);
+  const [form, setForm] = useState<EntryForm>(blankForm);
+  const [online, setOnline] = useState(true);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [mobileDrafts, setMobileDrafts] =
+    useState<MobileDraft[]>([]);
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [dataRefreshing, setDataRefreshing] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [currentUser, setCurrentUser] =
+    useState<CurrentUser | null>(null);
+  const [savedSummary, setSavedSummary] =
+    useState<SavedSummary | null>(null);
+  const [companies, setCompanies] =
+    useState<CompanyOption[]>([]);
+  const [loadingCompanies, setLoadingCompanies] =
+    useState(false);
+  const [selectedCompanyId, setSelectedCompanyId] =
+    useState<number | null>(() => {
+      if (typeof window === "undefined") {
+        return null;
+      }
+
+      const stored = Number(
+        window.localStorage.getItem(
+          "ovicore_selected_company_id",
+        ),
+      );
+
+      return Number.isInteger(stored) && stored > 0
+        ? stored
+        : null;
+    });
+
+  const [availableModules, setAvailableModules] =
+    useState<MobileModule[]>([]);
+  const [selectedModule, setSelectedModule] =
+    useState<MobileModule | null>(() => {
+      if (typeof window === "undefined") return null;
+
+      const stored = window.localStorage.getItem(
+        MOBILE_SELECTED_MODULE_KEY,
+      );
+
+      return stored === "broilers" || stored === "breeders"
+        ? stored
+        : null;
+    });
+  const [loadingModules, setLoadingModules] = useState(false);
+
+  const loadedEntryKeyRef = useRef<string>("");
+  const wasOnlineRef = useRef<boolean>(true);
+	
+  const sessionEndingRef = useRef<boolean>(false);
+
+  const companyId = useMemo(() => {
+    if (!currentUser) return null;
+
+    if (!currentUser.is_global_admin) {
+      return currentUser.company_id;
+    }
+
+    return selectedCompanyId;
+  }, [currentUser, selectedCompanyId]);
+
+  const selectedPlan = useMemo(
+    () =>
+      plans.find(
+        (plan) =>
+          plan.id === Number(form.placement_plan_id),
+      ),
+    [plans, form.placement_plan_id],
+  );
+
+  const selectedAge = useMemo(
+    () =>
+      calculateAgeDays(
+        selectedPlan?.placement_date,
+        form.entry_date,
+      ),
+    [selectedPlan?.placement_date, form.entry_date],
+  );
+
+  const existingServerRecord = useMemo(
+    () =>
+      records.find(
+        (record) =>
+          record.placement_plan_id ===
+            Number(form.placement_plan_id) &&
+          record.entry_date === form.entry_date,
+      ),
+    [
+      records,
+      form.placement_plan_id,
+      form.entry_date,
+    ],
+  );
+
+  useEffect(() => {
+    if (!form.placement_plan_id || !form.entry_date) {
+      return;
+    }
+
+    const entryKey =
+      `${form.placement_plan_id}-${form.entry_date}`;
+
+    if (loadedEntryKeyRef.current === entryKey) {
+      return;
+    }
+
+    const record = records.find(
+      (item) =>
+        item.placement_plan_id ===
+          Number(form.placement_plan_id) &&
+        item.entry_date === form.entry_date,
+    );
+
+    loadedEntryKeyRef.current = entryKey;
+
+    setForm(
+      buildEntryFormForDate(
+        form.placement_plan_id,
+        form.entry_date,
+        record,
+      ),
+    );
+  }, [
+    form.placement_plan_id,
+    form.entry_date,
+    records,
+  ]);
+
+  const loadPendingCount = useCallback(async () => {
+    const drafts = await getDrafts();
+    setMobileDrafts(drafts);
+    setPendingCount(drafts.length);
+  }, []);
+
+  const loadCurrentUser = useCallback(async () => {
+    const cachedUser = readCachedUser();
+
+    // Open immediately from the valid device session. Online validation and
+    // renewal happen quietly below without blocking daily entry.
+    if (cachedUser) {
+      setCurrentUser(cachedUser);
+    }
+
+    if (!navigator.onLine) {
+      if (cachedUser) {
+        setMessage(
+          "Offline mode: using your remembered OviCore login. Entries will sync when signal returns.",
+        );
+        return cachedUser;
+      }
+
+      setLoading(false);
+      setMessage(
+        "This device has no valid offline login. Connect to the internet and sign in once to enable offline access.",
+      );
+      return null;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE}/api/auth/me`, {
+        credentials: "include",
+        cache: "no-store",
+      });
+
+      if (response.status === 401) {
+        redirectToMobileLogin();
+        return null;
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          `Could not validate your OviCore login (${response.status}).`,
+        );
+      }
+
+      const user: CurrentUser = await response.json();
+      setCurrentUser(user);
+      rememberMobileUser(user);
+      return user;
+    } catch (error) {
+      if (cachedUser) {
+        setCurrentUser(cachedUser);
+        setMessage(
+          "Connection unavailable: continuing with your remembered OviCore login.",
+        );
+        return cachedUser;
+      }
+
+      setLoading(false);
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not load your OviCore login.",
+      );
+      return null;
+    }
+  }, []);
+
+  const loadCompanies = useCallback(async () => {
+    if (!currentUser?.is_global_admin) {
+      return;
+    }
+
+    setLoadingCompanies(true);
+
+    try {
+      const response = await authenticatedFetch(
+        `${API_BASE}/api/access/companies`,
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          `Could not load companies (${response.status}).`,
+        );
+      }
+
+      const companyData: CompanyOption[] =
+        await response.json();
+
+      const operatingCompanies = companyData.filter(
+        (company) =>
+          company.enable_broilers !== false ||
+          company.enable_breeders === true,
+      );
+
+      setCompanies(operatingCompanies);
+
+      if (
+        selectedCompanyId &&
+        !operatingCompanies.some(
+          (company) =>
+            company.id === selectedCompanyId,
+        )
+      ) {
+        setSelectedCompanyId(null);
+        window.localStorage.removeItem(
+          "ovicore_selected_company_id",
+        );
+      }
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not load companies.",
+      );
+    } finally {
+      setLoadingCompanies(false);
+    }
+  }, [currentUser, selectedCompanyId]);
+
+  const loadModules = useCallback(async () => {
+    if (!currentUser) return;
+
+    setLoadingModules(true);
+
+    try {
+      let modules: MobileModule[] = [];
+
+      if (currentUser.is_global_admin) {
+        const selectedCompany = companies.find(
+          (company) => company.id === companyId,
+        );
+
+        if (selectedCompany?.enable_broilers !== false) {
+          modules.push("broilers");
+        }
+
+        if (selectedCompany?.enable_breeders === true) {
+          modules.push("breeders");
+        }
+      } else {
+        const response = await authenticatedFetch(
+          `${API_BASE}/api/access/my-modules`,
+        );
+
+        if (!response.ok) {
+          throw new Error(
+            `Could not load mobile module access (${response.status}).`,
+          );
+        }
+
+        const data: string[] = await response.json();
+
+        modules = data.filter(
+          (module): module is MobileModule =>
+            module === "broilers" || module === "breeders",
+        );
+      }
+
+      setAvailableModules(modules);
+
+      if (
+        selectedModule &&
+        !modules.includes(selectedModule)
+      ) {
+        setSelectedModule(null);
+        window.localStorage.removeItem(
+          MOBILE_SELECTED_MODULE_KEY,
+        );
+      }
+
+      if (!selectedModule && modules.length === 1) {
+        setSelectedModule(modules[0]);
+        window.localStorage.setItem(
+          MOBILE_SELECTED_MODULE_KEY,
+          modules[0],
+        );
+      }
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not load module access.",
+      );
+    } finally {
+      setLoadingModules(false);
+    }
+  }, [
+    companies,
+    companyId,
+    currentUser,
+    selectedModule,
+  ]);
+
+  const loadData = useCallback(async () => {
+    if (!currentUser || selectedModule !== "broilers") {
+      setLoading(false);
+      return;
+    }
+
+    if (!companyId) {
+      setLoading(false);
+      setMessage(
+        currentUser.is_global_admin
+          ? "Select a company before opening the mobile workspace."
+          : "Your user account is not assigned to a company.",
+      );
+      return;
+    }
+
+    const cache = readMobileDataCache(companyId);
+    let localDrafts: MobileDraft[] = [];
+
+    try {
+      localDrafts = await getDrafts();
+    } catch {
+      localDrafts = [];
+    }
+
+    // Cached-first startup: show the last successful farm position immediately,
+    // then refresh quietly in the background.
+    if (cache) {
+      const cachedRecords = mergeDraftsIntoRecords(
+        cache.records,
+        localDrafts,
+        companyId,
+      );
+
+      setPlans(cache.plans);
+      setRecords(cachedRecords);
+      applyPlanSelection(cache.plans, setForm);
+      setLoading(false);
+      setDataRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
+    setMessage("");
+
+    if (!navigator.onLine) {
+      setDataRefreshing(false);
+
+      if (cache) {
+        setMessage(
+          "Offline mode: using the last synced farm, shed and cycle data.",
+        );
+      } else {
+        setMessage(
+          "No cached farm data is available yet. Connect once to complete the first sync.",
+        );
+      }
+
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const [plansResponse, recordsResponse] =
+        await Promise.all([
+          authenticatedFetch(
+            `${API_BASE}/api/broilers/demand-plans?company_id=${companyId}`,
+          ),
+          authenticatedFetch(
+            `${API_BASE}/api/broilers/performance?company_id=${companyId}`,
+          ),
+        ]);
+
+      if (!plansResponse.ok) {
+        throw new Error(
+          `Could not load broiler cycles (${plansResponse.status}).`,
+        );
+      }
+
+      const plansData: DemandPlan[] =
+        await plansResponse.json();
+      const recordsData: PerformanceRecord[] =
+        recordsResponse.ok
+          ? await recordsResponse.json()
+          : [];
+
+      const mergedRecords = mergeDraftsIntoRecords(
+        recordsData,
+        localDrafts,
+        companyId,
+      );
+
+      setPlans(plansData);
+      setRecords(mergedRecords);
+      applyPlanSelection(plansData, setForm);
+
+      const nextCache: MobileDataCache = {
+        company_id: companyId,
+        cached_at: new Date().toISOString(),
+        plans: plansData,
+        records: mergedRecords,
+      };
+
+      window.localStorage.setItem(
+        MOBILE_DATA_CACHE_KEY,
+        JSON.stringify(nextCache),
+      );
+    } catch (error) {
+      if (!cache) {
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : "Could not load mobile data.",
+        );
+      }
+    } finally {
+      setLoading(false);
+      setDataRefreshing(false);
+    }
+  }, [companyId, currentUser, selectedModule]);
+
+  const checkApiConnection = useCallback(async () => {
+    if (!navigator.onLine) {
+      setOnline(false);
+      return false;
+    }
+
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/auth/me`,
+        {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        },
+      );
+
+      const reachable =
+        response.ok || response.status === 401;
+
+      setOnline(reachable);
+      return reachable;
+    } catch {
+      setOnline(false);
+      return false;
+    }
+  }, []);
+
+  const syncDrafts = useCallback(async () => {
+    if (!online || syncing) return;
+
+    setSyncing(true);
+    setMessage("");
+
+    let synced = 0;
+    let conflicts = 0;
+    let failed = 0;
+
+    try {
+      const drafts = await getDrafts();
+
+      for (const draft of drafts.sort((a, b) =>
+        a.saved_at.localeCompare(b.saved_at),
+      )) {
+        if (draft.status === "conflict") {
+          conflicts += 1;
+          continue;
+        }
+
+        await updateDraft(draft.local_id, {
+          status: "syncing",
+          last_error: null,
+          attempt_count: draft.attempt_count + 1,
+        });
+
+        try {
+          const existingResponse =
+            await authenticatedFetch(
+              `${API_BASE}/api/broilers/performance` +
+                `?company_id=${draft.company_id}` +
+                `&placement_plan_id=${draft.payload.placement_plan_id}`,
+            );
+
+          if (!existingResponse.ok) {
+            throw new Error(
+              `Could not check existing records (${existingResponse.status}).`,
+            );
+          }
+
+          const existing: PerformanceRecord[] =
+            await existingResponse.json();
+
+          const match = existing.find(
+            (record) =>
+              record.placement_plan_id ===
+                draft.payload.placement_plan_id &&
+              record.entry_date ===
+                draft.payload.entry_date,
+          );
+
+          const serverChanged =
+            Boolean(match) &&
+            (
+              !draft.server_updated_at ||
+              !match?.last_saved_at ||
+              draft.server_updated_at !==
+                match.last_saved_at
+            );
+
+          if (serverChanged && match) {
+            await updateDraft(draft.local_id, {
+              status: "conflict",
+              server_record_id: match.id,
+              server_updated_at:
+                match.last_saved_at ?? null,
+              last_error:
+                "This house sheet was changed in OviCore after the mobile entry was opened.",
+            });
+            conflicts += 1;
+            continue;
+          }
+
+          const url = match
+            ? `${API_BASE}/api/broilers/performance/${match.id}`
+            : `${API_BASE}/api/broilers/performance`;
+
+          const requestBody = match
+            ? Object.fromEntries(
+                draft.changed_fields
+                  .filter(
+                    (field) =>
+                      field in draft.payload,
+                  )
+                  .map((field) => [
+                    field,
+                    draft.payload[
+                      field as keyof typeof draft.payload
+                    ],
+                  ]),
+              )
+            : draft.payload;
+
+          if (
+            match &&
+            Object.keys(requestBody).length === 0
+          ) {
+            await deleteDraft(draft.local_id);
+            synced += 1;
+            continue;
+          }
+
+          const headers: Record<string, string> = {
+            "Content-Type": "application/json",
+            "X-OviCore-Mobile-Sync": "true",
+          };
+
+          if (match?.last_saved_at) {
+            headers[
+              "X-OviCore-Expected-Last-Saved-At"
+            ] = draft.server_updated_at ?? "";
+          }
+
+          const response = await authenticatedFetch(url, {
+            method: match ? "PATCH" : "POST",
+            headers,
+            body: JSON.stringify(requestBody),
+          });
+
+          if (response.status === 409) {
+            const detail = await response.text();
+
+            await updateDraft(draft.local_id, {
+              status: "conflict",
+              server_record_id:
+                match?.id ?? null,
+              server_updated_at:
+                match?.last_saved_at ?? null,
+              last_error: detail,
+            });
+
+            conflicts += 1;
+            continue;
+          }
+
+          if (!response.ok) {
+            const detail = await response.text();
+            throw new Error(
+              `Sync failed (${response.status}): ${detail}`,
+            );
+          }
+
+          await deleteDraft(draft.local_id);
+          synced += 1;
+        } catch (error) {
+          await updateDraft(draft.local_id, {
+            status: "failed",
+            last_error:
+              error instanceof Error
+                ? error.message
+                : "Could not sync this entry.",
+          });
+          failed += 1;
+        }
+      }
+
+      await loadPendingCount();
+
+      if (synced > 0) {
+        await loadData();
+      }
+
+      const resultParts: string[] = [];
+
+      if (synced > 0) resultParts.push(`${synced} synced`);
+      if (conflicts > 0) {
+        resultParts.push(
+          `${conflicts} conflict${
+            conflicts === 1 ? "" : "s"
+          }`,
+        );
+      }
+      if (failed > 0) resultParts.push(`${failed} failed`);
+
+      if (resultParts.length > 0) {
+        setMessage(resultParts.join(" · "));
+      }
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not sync mobile entries.",
+      );
+    } finally {
+      setSyncing(false);
+    }
+  }, [loadData, loadPendingCount, online, syncing]);
+
+  useEffect(() => {
+    const handleOnline = () => {
+      void checkApiConnection();
+    };
+
+    const handleOffline = () => {
+      setOnline(false);
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void checkApiConnection();
+      }
+    };
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    document.addEventListener(
+      "visibilitychange",
+      handleVisibility,
+    );
+
+    if ("serviceWorker" in navigator) {
+      void navigator.serviceWorker.register("/sw.js");
+    }
+
+    void checkApiConnection();
+    void loadPendingCount();
+    void loadCurrentUser();
+
+    const connectionTimer = window.setInterval(() => {
+      void checkApiConnection();
+    }, 15000);
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+      document.removeEventListener(
+        "visibilitychange",
+        handleVisibility,
+      );
+      window.clearInterval(connectionTimer);
+    };
+  }, [
+    checkApiConnection,
+    loadCurrentUser,
+    loadPendingCount,
+  ]);
+
+  useEffect(() => {
+    if (currentUser?.is_global_admin) {
+      void loadCompanies();
+    }
+  }, [currentUser, loadCompanies]);
+
+  useEffect(() => {
+    if (currentUser && companyId) {
+      void loadModules();
+    }
+  }, [companyId, currentUser, loadModules]);
+
+  useEffect(() => {
+    if (currentUser && selectedModule === "broilers") {
+      void loadData();
+    }
+  }, [companyId, currentUser, loadData, selectedModule]);
+
+  useEffect(() => {
+    const cameBackOnline =
+      online && !wasOnlineRef.current;
+
+    wasOnlineRef.current = online;
+
+    if (cameBackOnline && pendingCount > 0) {
+      void syncDrafts();
+    }
+  }, [online, pendingCount, syncDrafts]);
+
+  const managerInsights = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const activePlanIds = new Set(
+      plans.map((plan) => plan.id),
+    );
+
+    const todayRecords = records.filter(
+      (record) =>
+        activePlanIds.has(record.placement_plan_id) &&
+        record.entry_date === today,
+    );
+
+    const reportedPlanIds = new Set(
+      todayRecords.map(
+        (record) => record.placement_plan_id,
+      ),
+    );
+
+    const missing = plans.filter(
+      (plan) => !reportedPlanIds.has(plan.id),
+    );
+
+    const mortalityWatch = todayRecords
+      .map((record) => {
+        const mortality =
+          numberOrZero(record.mortality_front) +
+          numberOrZero(record.mortality_middle) +
+          numberOrZero(record.mortality_back) +
+          numberOrZero(record.mortality_other);
+        const opening = numberOrZero(record.opening_birds);
+
+        return {
+          record,
+          mortality,
+          rate:
+            opening > 0
+              ? (mortality / opening) * 100
+              : 0,
+        };
+      })
+      .filter((item) => item.rate >= 0.5)
+      .sort((a, b) => b.rate - a.rate);
+
+    const waterWatch = todayRecords.filter((record) => {
+      const feed = numberOrZero(record.feed_kg);
+      const water = numberOrZero(record.water_litres);
+
+      if (feed <= 0 || water <= 0) return false;
+
+      const ratio = water / feed;
+      return ratio < 1.4 || ratio > 2.5;
+    });
+
+    const totalBirds = todayRecords.reduce(
+      (sum, record) =>
+        sum + numberOrZero(record.closing_birds),
+      0,
+    );
+
+    const weightedWeightNumerator =
+      todayRecords.reduce(
+        (sum, record) =>
+          sum +
+          numberOrZero(record.avg_weight_kg) *
+            numberOrZero(record.closing_birds),
+        0,
+      );
+
+    const liveWeight =
+      totalBirds > 0
+        ? weightedWeightNumerator / totalBirds
+        : null;
+
+    const totalOpening = todayRecords.reduce(
+      (sum, record) =>
+        sum + numberOrZero(record.opening_birds),
+      0,
+    );
+
+    const totalMortality = todayRecords.reduce(
+      (sum, record) =>
+        sum + numberOrZero(record.mortality_birds),
+      0,
+    );
+
+    const mortalityRate =
+      totalOpening > 0
+        ? (totalMortality / totalOpening) * 100
+        : 0;
+
+    return {
+      missing,
+      mortalityWatch,
+      waterWatch,
+      todayRecords,
+      totalBirds,
+      liveWeight,
+      mortalityRate,
+    };
+  }, [plans, records]);
+
+  const syncIssueSummary = useMemo(
+    () => ({
+      pending: mobileDrafts.filter(
+        (draft) => draft.status === "pending",
+      ).length,
+      conflicts: mobileDrafts.filter(
+        (draft) => draft.status === "conflict",
+      ).length,
+      failed: mobileDrafts.filter(
+        (draft) => draft.status === "failed",
+      ).length,
+    }),
+    [mobileDrafts],
+  );
+
+
+
+  async function saveEntry(event: FormEvent) {
+    event.preventDefault();
+
+    if (!companyId || !selectedPlan || !form.entry_date) {
+      setMessage("Select a cycle and entry date.");
+      return;
+    }
+
+    const mortalityTotal =
+      numberOrZero(toNumber(form.mortality_front)) +
+      numberOrZero(toNumber(form.mortality_middle)) +
+      numberOrZero(toNumber(form.mortality_back)) +
+      numberOrZero(toNumber(form.mortality_other));
+
+    const cullTotal =
+      numberOrZero(toNumber(form.cull_legs)) +
+      numberOrZero(toNumber(form.cull_runts)) +
+      numberOrZero(toNumber(form.cull_beak)) +
+      numberOrZero(toNumber(form.cull_other));
+
+    const opening = toNumber(form.opening_birds);
+    const closing =
+      opening === null
+        ? null
+        : Math.max(
+            0,
+            opening - mortalityTotal - cullTotal,
+          );
+
+    const localId = `${companyId}-${selectedPlan.id}-${form.entry_date}`;
+
+    const existingServerRecord = records.find(
+      (record) =>
+        record.placement_plan_id === selectedPlan.id &&
+        record.entry_date === form.entry_date,
+    );
+
+    const editableFields = [
+      [
+        "opening_birds",
+        form.opening_birds,
+        existingServerRecord?.opening_birds,
+      ],
+      [
+        "mortality_front",
+        form.mortality_front,
+        existingServerRecord?.mortality_front,
+      ],
+      [
+        "mortality_middle",
+        form.mortality_middle,
+        existingServerRecord?.mortality_middle,
+      ],
+      [
+        "mortality_back",
+        form.mortality_back,
+        existingServerRecord?.mortality_back,
+      ],
+      [
+        "mortality_other",
+        form.mortality_other,
+        existingServerRecord?.mortality_other,
+      ],
+      [
+        "cull_legs",
+        form.cull_legs,
+        existingServerRecord?.cull_legs,
+      ],
+      [
+        "cull_runts",
+        form.cull_runts,
+        existingServerRecord?.cull_runts,
+      ],
+      [
+        "cull_beak",
+        form.cull_beak,
+        existingServerRecord?.cull_beak,
+      ],
+      [
+        "cull_other",
+        form.cull_other,
+        existingServerRecord?.cull_other,
+      ],
+      [
+        "feed_kg",
+        form.feed_kg,
+        existingServerRecord?.feed_kg,
+      ],
+      [
+        "water_litres",
+        form.water_litres,
+        existingServerRecord?.water_litres,
+      ],
+      [
+        "body_weight_kg",
+        form.body_weight_kg,
+        existingServerRecord?.body_weight_kg ??
+          existingServerRecord?.avg_weight_kg,
+      ],
+      [
+        "notes",
+        form.notes,
+        existingServerRecord?.notes,
+      ],
+    ] as const;
+
+    const protectedFields = existingServerRecord
+      ? editableFields
+          .filter(
+            ([, mobileValue, serverValue]) =>
+              mobileValue.trim() !== "" &&
+              hasMeaningfulServerValue(
+                serverValue,
+              ) &&
+              !valuesMatch(
+                mobileValue,
+                serverValue,
+              ),
+          )
+          .map(([field]) => field)
+      : [];
+
+    if (protectedFields.length > 0) {
+      setMessage(
+        "This date already contains data in OviCore. " +
+          "The mobile app will not overwrite existing " +
+          `fields: ${protectedFields.join(", ")}.`,
+      );
+      return;
+    }
+
+    const changedFields = editableFields
+      .filter(
+        ([, mobileValue, serverValue]) =>
+          mobileValue.trim() !== "" &&
+          !valuesMatch(
+            mobileValue,
+            serverValue,
+          ),
+      )
+      .map(([field]) => field);
+
+    const draft: MobileDraft = {
+      local_id: localId,
+      company_id: companyId,
+      saved_at: new Date().toISOString(),
+      status: "pending",
+      server_record_id:
+        existingServerRecord?.id ?? null,
+      server_updated_at:
+        existingServerRecord?.last_saved_at ?? null,
+      last_error: null,
+      attempt_count: 0,
+      changed_fields: changedFields,
+      payload: {
+        placement_plan_id: selectedPlan.id,
+        entry_date: form.entry_date,
+        age_days: calculateAgeDays(
+          selectedPlan.placement_date,
+          form.entry_date,
+        ),
+        opening_birds: opening,
+        mortality_front: toNumber(
+          form.mortality_front,
+        ),
+        mortality_middle: toNumber(
+          form.mortality_middle,
+        ),
+        mortality_back: toNumber(
+          form.mortality_back,
+        ),
+        mortality_other: toNumber(
+          form.mortality_other,
+        ),
+        mortality_birds: mortalityTotal,
+        cull_legs: toNumber(form.cull_legs),
+        cull_runts: toNumber(form.cull_runts),
+        cull_beak: toNumber(form.cull_beak),
+        cull_other: toNumber(form.cull_other),
+        cull_birds: cullTotal,
+        closing_birds: closing,
+        feed_kg: toNumber(form.feed_kg),
+        water_litres: toNumber(form.water_litres),
+        body_weight_kg: toNumber(
+          form.body_weight_kg,
+        ),
+        avg_weight_kg: toNumber(
+          form.body_weight_kg,
+        ),
+        notes: form.notes.trim() || null,
+        last_saved_by: "Mobile app",
+      },
+    };
+
+    await putDraft(draft);
+
+    setRecords((current) =>
+      mergeDraftsIntoRecords(
+        current,
+        [draft],
+        companyId,
+      ),
+    );
+
+    await loadPendingCount();
+
+    setSavedSummary({
+      farm: selectedPlan.farm_name ?? "Farm",
+      shed: selectedPlan.shed_name ?? "Shed",
+      cycle: selectedPlan.cycle_code ?? "Cycle",
+      ageDays: calculateAgeDays(selectedPlan.placement_date, form.entry_date),
+      entryDate: form.entry_date,
+      opening,
+      mortality: mortalityTotal,
+      culls: cullTotal,
+      closing,
+      feed: toNumber(form.feed_kg),
+      water: toNumber(form.water_litres),
+      weight: toNumber(form.body_weight_kg),
+    });
+
+    setMessage(
+      online
+        ? "Entry saved on this phone. Syncing with OviCore…"
+        : "Entry saved on this phone. It will sync when signal returns.",
+    );
+
+    setEntryStage("saved");
+
+    if (online) {
+      await syncDrafts();
+    }
+  }
+
+  async function retryMobileDraft(draft: MobileDraft) {
+    await updateDraft(draft.local_id, {
+      status: "pending",
+      last_error: null,
+    });
+
+    await loadPendingCount();
+
+    if (online) {
+      await syncDrafts();
+    } else {
+      setMessage(
+        "Entry will retry when connection returns.",
+      );
+    }
+  }
+
+  async function keepServerVersion(draft: MobileDraft) {
+    await deleteDraft(draft.local_id);
+    await loadPendingCount();
+    await loadData();
+    setMessage(
+      "The OviCore server version was kept.",
+    );
+  }
+
+  async function keepMobileVersion(draft: MobileDraft) {
+    await updateDraft(draft.local_id, {
+      status: "pending",
+      last_error: null,
+    });
+
+    await loadPendingCount();
+
+    if (online) {
+      await syncDrafts();
+    } else {
+      setMessage(
+        "The mobile version will sync when connection returns.",
+      );
+    }
+  }
+
+  async function discardMobileDraft(
+    draft: MobileDraft,
+  ) {
+    await deleteDraft(draft.local_id);
+    await loadPendingCount();
+    setMessage("The mobile entry was discarded.");
+  }
+
+  async function logout() {
+    if (sessionEndingRef.current) return;
+
+    if (pendingCount > 0) {
+      const shouldLogout = window.confirm(
+        `You have ${pendingCount} unsynced mobile entr${
+          pendingCount === 1 ? "y" : "ies"
+        }. They will remain safely stored on this device, but you will need to sign in again before they can sync. Log out anyway?`,
+      );
+
+      if (!shouldLogout) return;
+    }
+
+    sessionEndingRef.current = true;
+    endMobileSession();
+  }
+
+  function selectCompany(companyIdValue: number) {
+    setSelectedCompanyId(companyIdValue);
+    window.localStorage.setItem(
+      "ovicore_selected_company_id",
+      String(companyIdValue),
+    );
+    setPlans([]);
+    setRecords([]);
+    setSelectedModule(null);
+    setAvailableModules([]);
+    window.localStorage.removeItem(
+      MOBILE_SELECTED_MODULE_KEY,
+    );
+    setMessage("");
+    setLoading(true);
+    setTab("home");
+  }
+
+  function selectModule(module: MobileModule) {
+    setSelectedModule(module);
+    window.localStorage.setItem(
+      MOBILE_SELECTED_MODULE_KEY,
+      module,
+    );
+    setPlans([]);
+    setRecords([]);
+    setMessage("");
+    setLoading(module === "broilers");
+    setTab("home");
+  }
+
+  function changeModule() {
+    setSelectedModule(null);
+    window.localStorage.removeItem(
+      MOBILE_SELECTED_MODULE_KEY,
+    );
+    setPlans([]);
+    setRecords([]);
+    setMessage("");
+    setTab("home");
+  }
+
+  function openEntryForPlan(planId?: number) {
+    loadedEntryKeyRef.current = "";
+
+    setForm((current) => ({
+      ...current,
+      placement_plan_id:
+        planId ?? current.placement_plan_id,
+    }));
+    setEntryStage(planId ? "form" : "select");
+    setTab("entry");
+  }
+
+  if (currentUser?.is_global_admin && !companyId) {
+    return (
+      <main className={styles.app}>
+        <header className={styles.appHeader}>
+          <div className={styles.brand}>
+            <Image src="/assets/ovicore-icon.png" alt="OviCore" width={42} height={42} priority />
+            <div><strong>OviCore</strong><small>Global Administration</small></div>
+          </div>
+        </header>
+        <section className={styles.screen}>
+          <ScreenTitle eyebrow="GLOBAL ADMIN" title="Select company" detail="Choose the company whose farms, sheds and flocks you want to view." />
+          {message && <div className={styles.message}><span>{message}</span></div>}
+          {loadingCompanies ? (
+            <div className={styles.emptyState}>Loading companies…</div>
+          ) : companies.length === 0 ? (
+            <div className={styles.emptyState}>No mobile-enabled companies are available.</div>
+          ) : (
+            <div className={styles.shedList}>
+              {companies.map((company) => (
+                <button type="button" key={company.id} className={styles.shedCard} onClick={() => selectCompany(company.id)}>
+                  <div className={styles.shedIcon}>◉</div>
+                  <div className={styles.shedMain}>
+                    <strong>{company.name ?? company.company_name ?? `Company ${company.id}`}</strong>
+                    <span>Open company mobile workspace</span>
+                  </div>
+                  <b>›</b>
+                </button>
+              ))}
+            </div>
+          )}
+          <button type="button" className={styles.secondaryButton} onClick={() => void logout()}>Log out</button>
+        </section>
+      </main>
+    );
+  }
+
+  if (currentUser && companyId && !selectedModule) {
+    const selectedCompany = companies.find(
+      (company) => company.id === companyId,
+    );
+    const moduleCompanyName =
+      selectedCompany?.name?.trim() ||
+      selectedCompany?.company_name?.trim() ||
+      currentUser.company_name?.trim() ||
+      "OviCore Operations";
+
+    return (
+      <main className={styles.app}>
+        <header className={styles.appHeader}>
+          <div className={styles.brand}>
+            <Image
+              src="/assets/ovicore-icon.png"
+              alt="OviCore"
+              width={42}
+              height={42}
+              priority
+            />
+            <div>
+              <strong>OviCore</strong>
+              <small>{moduleCompanyName}</small>
+            </div>
+          </div>
+        </header>
+
+        <section className={styles.screen}>
+          <ScreenTitle
+            eyebrow="WORKSPACE"
+            title="Choose a module"
+            detail="Only modules assigned to your user account are shown."
+          />
+
+          {message && (
+            <div className={styles.message}>
+              <span>{message}</span>
+            </div>
+          )}
+
+          {loadingModules ? (
+            <div className={styles.emptyState}>
+              Loading module access…
+            </div>
+          ) : availableModules.length === 0 ? (
+            <div className={styles.emptyState}>
+              No mobile modules are assigned to this user.
+            </div>
+          ) : (
+            <div className={styles.moduleGrid}>
+              {availableModules.includes("broilers") && (
+                <button
+                  type="button"
+                  className={styles.moduleCard}
+                  onClick={() => selectModule("broilers")}
+                >
+                  <span className={styles.moduleIcon}>🐔</span>
+                  <div>
+                    <strong>Broilers</strong>
+                    <small>
+                      Grow-out farms, daily house sheets and performance
+                    </small>
+                  </div>
+                  <b>›</b>
+                </button>
+              )}
+
+              {availableModules.includes("breeders") && (
+                <button
+                  type="button"
+                  className={styles.moduleCard}
+                  onClick={() => selectModule("breeders")}
+                >
+                  <span className={styles.moduleIcon}>🥚</span>
+                  <div>
+                    <strong>Breeders</strong>
+                    <small>
+                      Breeder Rearing and Breeder Production operations
+                    </small>
+                  </div>
+                  <b>›</b>
+                </button>
+              )}
+            </div>
+          )}
+
+          {currentUser.is_global_admin && (
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => {
+                setSelectedCompanyId(null);
+                setAvailableModules([]);
+                window.localStorage.removeItem(
+                  "ovicore_selected_company_id",
+                );
+              }}
+            >
+              Change company
+            </button>
+          )}
+
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={() => void logout()}
+          >
+            Log out
+          </button>
+        </section>
+      </main>
+    );
+  }
+
+  const displayName =
+    currentUser?.full_name?.trim() || "OviCore User";
+  const selectedCompany = companies.find(
+    (company) => company.id === companyId,
+  );
+  const companyName =
+    selectedCompany?.name?.trim() ||
+    selectedCompany?.company_name?.trim() ||
+    currentUser?.company_name?.trim() ||
+    "OviCore Operations";
+
+  if (selectedModule === "breeders") {
+    return (
+      <main className={styles.app}>
+        <header className={styles.appHeader}>
+          <div className={styles.brand}>
+            <Image
+              src="/assets/ovicore-icon.png"
+              alt="OviCore"
+              width={42}
+              height={42}
+              priority
+            />
+            <div>
+              <strong>OviCore</strong>
+              <small>{companyName} · Breeders</small>
+            </div>
+          </div>
+
+          <div className={styles.headerActions}>
+            <button
+              type="button"
+              className={styles.notificationButton}
+              aria-label="Change module"
+              onClick={changeModule}
+            >
+              ⇄
+            </button>
+          </div>
+        </header>
+
+        <section className={`${styles.screen} ${styles.breederScreen}`}>
+          <ScreenTitle
+            eyebrow="BREEDERS"
+            title="Breeder workspace"
+            detail="Select the breeder operation you want to open."
+          />
+
+          <div className={styles.moduleGrid}>
+            <Link
+              href="/mobile/breeders/rearing"
+              className={styles.moduleCard}
+            >
+              <span className={styles.moduleIcon}>🐣</span>
+              <div>
+                <strong>Breeder Rearing</strong>
+                <small>
+                  Flock development, bodyweight, mortality and transfers
+                </small>
+              </div>
+              <b>›</b>
+            </Link>
+
+            <Link
+              href="/mobile/breeders/production"
+              className={styles.moduleCard}
+            >
+              <span className={styles.moduleIcon}>🥚</span>
+              <div>
+                <strong>Breeder Production</strong>
+                <small>
+                  Egg production, fertility, hatchability and flock performance
+                </small>
+              </div>
+              <b>›</b>
+            </Link>
+          </div>
+
+          <button
+            type="button"
+            className={`${styles.secondaryButton} ${styles.compactSecondaryButton}`}
+            onClick={changeModule}
+          >
+            Change module
+          </button>
+        </section>
+      </main>
+    );
+  }
+
+  return (
+    <main className={styles.app}>
+      <header className={styles.appHeader}>
+        <div className={styles.brand}>
+          <Image
+            src="/assets/ovicore-icon.png"
+            alt="OviCore"
+            width={42}
+            height={42}
+            priority
+          />
+          <div>
+            <strong>OviCore</strong>
+            <small>{companyName}</small>
+          </div>
+        </div>
+
+        <div className={styles.headerActions}>
+          {availableModules.length > 1 && (
+            <button
+              type="button"
+              className={styles.notificationButton}
+              aria-label="Change module"
+              onClick={changeModule}
+            >
+              ⇄
+            </button>
+          )}
+          {currentUser?.is_global_admin && (
+            <button
+              type="button"
+              className={styles.notificationButton}
+              aria-label="Change company"
+              onClick={() => {
+                setSelectedCompanyId(null);
+                window.localStorage.removeItem(
+                  "ovicore_selected_company_id",
+                );
+                setPlans([]);
+                setRecords([]);
+                setMessage("");
+              }}
+            >
+              ⇄
+            </button>
+          )}
+          <span
+            className={`${styles.connectionBadge} ${
+              online
+                ? styles.connectionOnline
+                : styles.connectionOffline
+            }`}
+          >
+            <i />
+            {online ? "Online" : "Offline"}
+          </span>
+          <button
+            type="button"
+            className={styles.notificationButton}
+            aria-label="Sync status"
+            onClick={() => setTab("more")}
+          >
+            ◔
+            {pendingCount > 0 && (
+              <b>{pendingCount}</b>
+            )}
+          </button>
+        </div>
+      </header>
+
+      <section className={styles.screen}>
+        {message && (
+          <div className={styles.message}>
+            <span>{message}</span>
+            <button
+              type="button"
+              onClick={() => setMessage("")}
+              aria-label="Dismiss message"
+            >
+              ×
+            </button>
+          </div>
+        )}
+
+        {tab === "home" && (
+          <HomeScreen
+            displayName={displayName}
+            companyName={companyName}
+            loading={loading}
+            dataRefreshing={dataRefreshing}
+            plans={plans}
+            records={records}
+            managerInsights={managerInsights}
+            openEntryForPlan={openEntryForPlan}
+            resetKey={homeResetKey}
+          />
+        )}
+
+        {tab === "entry" && (
+          <>
+            {entryStage === "select" && (
+              <SelectShedScreen
+                plans={plans}
+                records={records}
+                form={form}
+                setForm={setForm}
+                onContinue={() =>
+                  setEntryStage("form")
+                }
+              />
+            )}
+
+            {entryStage === "form" && (
+              <DailyEntryScreen
+                form={form}
+                setForm={setForm}
+                selectedPlan={selectedPlan}
+                selectedAge={selectedAge}
+                existingServerRecord={
+                  existingServerRecord
+                }
+                onBack={() =>
+                  setEntryStage("select")
+                }
+                onSave={saveEntry}
+              />
+            )}
+
+            {entryStage === "saved" &&
+              savedSummary && (
+                <EntrySavedScreen
+                  summary={savedSummary}
+                  pendingCount={pendingCount}
+                  online={online}
+                  onTomorrow={() => {
+                    const next = new Date(
+                      `${savedSummary.entryDate}T00:00:00`,
+                    );
+                    next.setDate(next.getDate() + 1);
+
+                    loadedEntryKeyRef.current = "";
+
+                    setForm((current) => ({
+                      ...blankForm(),
+                      placement_plan_id:
+                        current.placement_plan_id,
+                      entry_date: next
+                        .toISOString()
+                        .slice(0, 10),
+                    }));
+                    setEntryStage("form");
+                  }}
+                  onHome={() => {
+                    setHomeResetKey((current) => current + 1);
+                    setTab("home");
+                  }}
+                />
+              )}
+          </>
+        )}
+
+        {tab === "capture" && (
+          <PaperCaptureScreen
+            companyId={companyId}
+            online={online}
+            onSaved={async () => {
+              await loadData();
+              setHomeResetKey((current) => current + 1);
+            }}
+          />
+        )}
+
+        {tab === "insights" && (
+          <InsightsScreen
+            managerInsights={managerInsights}
+            plans={plans}
+            records={records}
+          />
+        )}
+
+        {tab === "more" && (
+          <MoreScreen
+            displayName={displayName}
+            companyName={companyName}
+            online={online}
+            syncing={syncing}
+            pendingCount={pendingCount}
+            mobileDrafts={mobileDrafts}
+            plans={plans}
+            syncIssueSummary={syncIssueSummary}
+            onSync={() => void syncDrafts()}
+            onRetry={(draft) =>
+              void retryMobileDraft(draft)
+            }
+            onKeepMobile={(draft) =>
+              void keepMobileVersion(draft)
+            }
+            onKeepServer={(draft) =>
+              void keepServerVersion(draft)
+            }
+            onDiscard={(draft) =>
+              void discardMobileDraft(draft)
+            }
+            onLogout={() => void logout()}
+          />
+        )}
+      </section>
+
+      <nav className={styles.bottomNav}>
+        <NavButton
+          active={tab === "home"}
+          label="Home"
+          icon="⌂"
+          onClick={() => {
+            setHomeResetKey((current) => current + 1);
+            setTab("home");
+          }}
+        />
+        <NavButton
+          active={tab === "entry"}
+          label="Daily Entry"
+          icon="＋"
+          onClick={() => {
+            setEntryStage("select");
+            setTab("entry");
+          }}
+        />
+        <NavButton
+          active={tab === "capture"}
+          label="Capture"
+          icon="▣"
+          onClick={() => setTab("capture")}
+        />
+        <NavButton
+          active={tab === "insights"}
+          label="Insights"
+          icon="↗"
+          onClick={() => setTab("insights")}
+        />
+        <NavButton
+          active={tab === "more"}
+          label="More"
+          icon="•••"
+          onClick={() => setTab("more")}
+        />
+      </nav>
+    </main>
+  );
+}
+
+function HomeScreen({
+  displayName,
+  companyName,
+  loading,
+  dataRefreshing,
+  plans,
+  records,
+  managerInsights,
+  openEntryForPlan,
+  resetKey,
+}: {
+  displayName: string;
+  companyName: string;
+  loading: boolean;
+  dataRefreshing: boolean;
+  plans: DemandPlan[];
+  records: PerformanceRecord[];
+  managerInsights: {
+    missing: DemandPlan[];
+    mortalityWatch: {
+      record: PerformanceRecord;
+      mortality: number;
+      rate: number;
+    }[];
+    waterWatch: PerformanceRecord[];
+    todayRecords: PerformanceRecord[];
+    totalBirds: number;
+    liveWeight: number | null;
+    mortalityRate: number;
+  };
+  openEntryForPlan: (planId?: number) => void;
+  resetKey: number;
+}) {
+  const farms = useMemo(
+    () => buildFarmOverviews(plans, records),
+    [plans, records],
+  );
+  const isDivisionalView = farms.length > 1;
+  const [selectedFarmName, setSelectedFarmName] = useState<string | null>(
+    null,
+  );
+  const [selectedShedId, setSelectedShedId] = useState<number | null>(null);
+
+  useEffect(() => {
+    setSelectedFarmName(null);
+    setSelectedShedId(null);
+  }, [resetKey]);
+
+  const selectedFarm = farms.find(
+    (farm) => farm.farmName === selectedFarmName,
+  );
+  const selectedShed = selectedFarm?.sheds.find(
+    (shed) => shed.plan.id === selectedShedId,
+  );
+  if (selectedShed && selectedFarm) {
+    return (
+      <ShedDetailScreen
+        farm={selectedFarm}
+        shed={selectedShed}
+        onBack={() => setSelectedShedId(null)}
+        onOpenEntry={() => openEntryForPlan(selectedShed.plan.id)}
+      />
+    );
+  }
+
+  if (selectedFarm) {
+    return (
+      <FarmDetailScreen
+        farm={selectedFarm}
+        showDivisionBack={isDivisionalView}
+        onBack={() => {
+          setSelectedShedId(null);
+          setSelectedFarmName(null);
+        }}
+        onSelectShed={(planId) => setSelectedShedId(planId)}
+        onOpenEntry={openEntryForPlan}
+      />
+    );
+  }
+
+  const firstName = displayName.split(/\s+/)[0] || "there";
+
+  return (
+    <>
+      <section className={styles.welcomePanel}>
+        <div>
+          <p>Good morning,</p>
+          <h1>{firstName}</h1>
+          <span>{companyName}</span>
+        </div>
+        <button
+          type="button"
+          className={styles.avatarButton}
+          aria-label="User profile"
+        >
+          {displayName
+            .split(" ")
+            .slice(0, 2)
+            .map((part) => part[0])
+            .join("")
+            .toUpperCase()}
+        </button>
+      </section>
+
+      <div className={styles.sectionHeading}>
+        <div>
+          <small>PRIORITY ORDER</small>
+          <h2>Farms</h2>
+        </div>
+      </div>
+
+      <section className={styles.farmList}>
+        {loading && farms.length === 0 ? (
+          <div className={styles.emptyState}>
+            Syncing latest data…
+            <br />
+            <small>Please wait a moment.</small>
+          </div>
+        ) : farms.length === 0 ? (
+          <div className={styles.emptyState}>No active farms found.</div>
+        ) : (
+          <>
+            {dataRefreshing && (
+              <div className={styles.emptyState}>
+                <small>Syncing latest data…</small>
+              </div>
+            )}
+            {farms.map((farm) => (
+              <FarmOverviewCard
+                key={farm.farmName}
+                farm={farm}
+                onClick={() => setSelectedFarmName(farm.farmName)}
+              />
+            ))}
+          </>
+        )}
+      </section>
+
+      <div className={styles.sectionHeading}>
+        <div>
+          <small>DIVISION SNAPSHOT</small>
+          <h2>Overall position</h2>
+        </div>
+      </div>
+
+      <section className={styles.kpiGrid}>
+        <KpiCard
+          icon="🐔"
+          label="Total Birds"
+          value={formatNumber(managerInsights.totalBirds)}
+          detail={`${plans.length} active sheds`}
+        />
+        <KpiCard
+          icon="⚖"
+          label="Live Weight"
+          value={
+            managerInsights.liveWeight === null
+              ? "—"
+              : `${formatDecimal(managerInsights.liveWeight)} kg`
+          }
+          detail="Weighted average"
+        />
+        <KpiCard
+          icon="♡"
+          label="Mortality"
+          value={`${managerInsights.mortalityRate.toFixed(2)}%`}
+          detail="Division today"
+          warning={managerInsights.mortalityWatch.length > 0}
+        />
+        <KpiCard
+          icon="✓"
+          label="Reported"
+          value={`${managerInsights.todayRecords.length}/${plans.length}`}
+          detail="Daily house sheets"
+        />
+      </section>
+    </>
+  );
+}
+
+function FarmOverviewCard({
+  farm,
+  onClick,
+}: {
+  farm: FarmOverview;
+  onClick: () => void;
+}) {
+  const topIssues = farm.sheds
+    .flatMap((shed) =>
+      shed.exceptions.map((exception) => ({ shed, exception })),
+    )
+    .slice(0, 2);
+
+  return (
+    <button
+      type="button"
+      className={`${styles.farmOverviewCard} ${
+        styles[`severity${farm.severity[0].toUpperCase()}${farm.severity.slice(1)}`]
+      }`}
+      onClick={onClick}
+    >
+      <div className={styles.farmCardHeader}>
+        <div>
+          <strong>{farm.farmName}</strong>
+          <span>
+            {farm.sheds.length} active flocks · {formatNumber(farm.totalBirds)} birds
+          </span>
+        </div>
+        <b>›</b>
+      </div>
+
+      <div className={styles.statusPills}>
+        {farm.critical > 0 && <span className={styles.statusCritical}>{farm.critical} critical</span>}
+        {farm.warning > 0 && <span className={styles.statusWarning}>{farm.warning} warning</span>}
+        {farm.incomplete > 0 && <span className={styles.statusIncomplete}>{farm.incomplete} incomplete</span>}
+        {farm.severity === "normal" && <span className={styles.statusNormal}>All sheds within range</span>}
+      </div>
+
+      <div className={styles.farmIssueList}>
+        {topIssues.length === 0 ? (
+          <small>No current anomalies detected.</small>
+        ) : (
+          topIssues.map(({ shed, exception }) => (
+            <small key={`${shed.plan.id}-${exception.metric}`}>
+              <i className={styles[`dot${exception.severity[0].toUpperCase()}${exception.severity.slice(1)}`]} />
+              {shed.plan.shed_name ?? "Shed"} · {ageLabel(shed.plan)}: {exception.label}
+            </small>
+          ))
+        )}
+      </div>
+
+      <div className={styles.reportingLine}>
+        <span>Reporting</span>
+        <strong>{farm.reported}/{farm.sheds.length}</strong>
+      </div>
+    </button>
+  );
+}
+
+function FarmDetailScreen({
+  farm,
+  showDivisionBack,
+  onBack,
+  onSelectShed,
+  onOpenEntry,
+}: {
+  farm: FarmOverview;
+  showDivisionBack: boolean;
+  onBack: () => void;
+  onSelectShed: (planId: number) => void;
+  onOpenEntry: (planId?: number) => void;
+}) {
+  return (
+    <>
+      {showDivisionBack && (
+        <button type="button" className={styles.backButton} onClick={onBack}>
+          ‹ Division overview
+        </button>
+      )}
+
+      <ScreenTitle
+        eyebrow="FARM OVERVIEW"
+        title={farm.farmName}
+        detail={`${new Set(farm.sheds.map((shed) => shed.plan.shed_name ?? "Shed")).size} sheds · ${farm.sheds.length} active flocks · ${formatNumber(farm.totalBirds)} birds · ${farm.reported}/${farm.sheds.length} reported today`}
+      />
+
+      <section className={styles.farmAttentionStrip}>
+        <strong>
+          {farm.severity === "normal"
+            ? "All sheds are within range"
+            : `${farm.critical + farm.warning + farm.incomplete} flocks need review`}
+        </strong>
+        <span>
+          {farm.critical} critical · {farm.warning} warning · {farm.incomplete} incomplete
+        </span>
+      </section>
+
+      <div className={styles.sectionHeading}>
+        <div>
+          <small>FARM FLOCKS</small>
+          <h2>Sheds and active flocks</h2>
+        </div>
+      </div>
+
+      <div className={styles.shedOverviewList}>
+        {farm.sheds.map((shed) => (
+          <button
+            type="button"
+            key={shed.plan.id}
+            className={styles.shedOverviewCard}
+            onClick={() => onSelectShed(shed.plan.id)}
+          >
+            <div className={styles.shedStatusRail} data-severity={shed.severity} />
+            <div className={styles.shedOverviewMain}>
+              <div className={styles.shedOverviewHeader}>
+                <div>
+                  <strong>{shed.plan.shed_name ?? "Shed"}</strong>
+                  <span>
+                    {shed.plan.cycle_code ?? "Active cycle"} · {ageLabel(shed.plan)}
+                  </span>
+                </div>
+                <b>›</b>
+              </div>
+              <div className={styles.shedMetricsRow}>
+                <span>{formatNumber(shed.birdCount)} birds</span>
+                <span>{shed.weight === null ? "No weight" : `${formatDecimal(shed.weight)} kg`}</span>
+                <span>{shed.today ? `${shed.mortalityRate.toFixed(2)}% mort` : "Not reported"}</span>
+              </div>
+              <div className={styles.shedExceptionSummary}>
+                {shed.exceptions.length === 0 ? (
+                  <small>✓ No current anomalies</small>
+                ) : (
+                  shed.exceptions.slice(0, 2).map((exception) => (
+                    <small key={exception.metric}>{exception.label} · {exception.detail}</small>
+                  ))
+                )}
+              </div>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      <button
+        type="button"
+        className={styles.secondaryButton}
+        onClick={() => onOpenEntry(farm.sheds[0]?.plan.id)}
+        disabled={farm.sheds.length === 0}
+      >
+        Open daily entry
+      </button>
+    </>
+  );
+}
+
+function ShedDetailScreen({
+  farm,
+  shed,
+  onBack,
+  onOpenEntry,
+}: {
+  farm: FarmOverview;
+  shed: ShedOverview;
+  onBack: () => void;
+  onOpenEntry: () => void;
+}) {
+  const latestMortality = recordMortality(shed.today);
+  const previousWeight =
+    shed.previous?.body_weight_kg ?? shed.previous?.avg_weight_kg ?? null;
+
+  return (
+    <>
+      <button type="button" className={styles.backButton} onClick={onBack}>
+        ‹ {farm.farmName}
+      </button>
+
+      <ScreenTitle
+        eyebrow="SHED ROOT CAUSE"
+        title={shed.plan.shed_name ?? "Shed"}
+        detail={`${farm.farmName} · ${shed.plan.cycle_code ?? "Active cycle"} · Age ${calculateAgeDays(shed.plan.placement_date, new Date().toISOString().slice(0, 10))} days`}
+      />
+
+      <section className={`${styles.rootCauseHero} ${styles[`severity${shed.severity[0].toUpperCase()}${shed.severity.slice(1)}`]}`}>
+        <small>CURRENT STATUS</small>
+        <strong>
+          {shed.exceptions[0]?.label ?? "No current anomalies detected"}
+        </strong>
+        <span>
+          {shed.exceptions[0]?.detail ?? "Latest available values are within the mobile thresholds."}
+        </span>
+      </section>
+
+      <section className={styles.rootMetricGrid}>
+        <RootMetric label="Birds" value={formatNumber(shed.birdCount)} detail="Latest closing" />
+        <RootMetric label="Mortality" value={shed.today ? `${shed.mortalityRate.toFixed(2)}%` : "—"} detail={shed.today ? `${formatNumber(latestMortality)} birds today` : "Entry missing"} />
+        <RootMetric label="Bodyweight" value={shed.weight === null ? "—" : `${formatDecimal(shed.weight)} kg`} detail={previousWeight === null ? "No previous comparison" : `Previous ${formatDecimal(previousWeight)} kg`} />
+        <RootMetric label="Water / feed" value={shed.waterFeedRatio === null ? "—" : shed.waterFeedRatio.toFixed(2)} detail="Litres per kg feed" />
+      </section>
+
+      <FlockPerformanceCharts shed={shed} />
+
+      <div className={styles.sectionHeading}>
+        <div>
+          <small>EXCEPTION REVIEW</small>
+          <h2>What changed</h2>
+        </div>
+      </div>
+
+      <section className={styles.rootCauseList}>
+        {shed.exceptions.length === 0 ? (
+          <div className={styles.allClear}>
+            <span>✓</span>
+            <div><strong>All clear</strong><small>No exception requires review.</small></div>
+          </div>
+        ) : (
+          shed.exceptions.map((exception) => (
+            <article key={exception.metric}>
+              <i className={styles[`dot${exception.severity[0].toUpperCase()}${exception.severity.slice(1)}`]} />
+              <div><strong>{exception.label}</strong><small>{exception.detail}</small></div>
+            </article>
+          ))
+        )}
+      </section>
+
+      {shed.latest?.notes && (
+        <section className={styles.managerNotesCard}>
+          <small>LATEST FARM COMMENT</small>
+          <p>{shed.latest.notes}</p>
+        </section>
+      )}
+
+      <button type="button" className={styles.primaryButton} onClick={onOpenEntry}>
+        Open this shed&apos;s daily entry
+      </button>
+    </>
+  );
+}
+
+
+type PerformanceMetric =
+  | "bodyweight"
+  | "adg"
+  | "fcr"
+  | "pef"
+  | "mortality"
+  | "cumulativeMortality"
+  | "feed"
+  | "water"
+  | "waterFeed";
+
+type PerformanceRange = 7 | 14 | 30 | "all";
+
+const performanceMetricOptions: {
+  value: PerformanceMetric;
+  label: string;
+}[] = [
+  { value: "bodyweight", label: "Bodyweight" },
+  { value: "adg", label: "Average daily gain" },
+  { value: "fcr", label: "Feed conversion rate" },
+  { value: "pef", label: "Poultry Efficiency Factor" },
+  { value: "mortality", label: "Daily mortality %" },
+  {
+    value: "cumulativeMortality",
+    label: "Cumulative mortality %",
+  },
+  { value: "feed", label: "Daily feed" },
+  { value: "water", label: "Daily water" },
+  { value: "waterFeed", label: "Water / feed" },
+];
+
+function FlockPerformanceCharts({ shed }: { shed: ShedOverview }) {
+  const [metric, setMetric] =
+    useState<PerformanceMetric>("bodyweight");
+  const [range, setRange] =
+    useState<PerformanceRange>(14);
+  const [standardRows, setStandardRows] =
+    useState<PerformanceStandardRow[]>(() =>
+      readStandardsCache(),
+    );
+
+  const orderedHistory = useMemo(
+    () =>
+      [...shed.records].sort((a, b) =>
+        a.entry_date.localeCompare(b.entry_date),
+      ),
+    [shed.records],
+  );
+
+  const availableStandards = useMemo(() => {
+    const grouped = new Map<
+      string,
+      {
+        code: string;
+        name: string;
+        type: "Breed" | "Company";
+        rows: PerformanceStandardRow[];
+      }
+    >();
+
+    for (const row of standardRows) {
+      if (
+        !row.active ||
+        row.module.trim().toLowerCase() !== "broilers" ||
+        row.body_weight_g === null ||
+        row.body_weight_g === undefined
+      ) {
+        continue;
+      }
+
+      const key = `${row.standard_type}:${row.standard_code}`;
+      const existing = grouped.get(key);
+
+      if (existing) {
+        existing.rows.push(row);
+      } else {
+        grouped.set(key, {
+          code: row.standard_code,
+          name: row.standard_name,
+          type: row.standard_type,
+          rows: [row],
+        });
+      }
+    }
+
+    return [...grouped.values()].sort((a, b) => {
+      if (a.type !== b.type) {
+        return a.type === "Breed" ? -1 : 1;
+      }
+
+      return a.name.localeCompare(b.name);
+    });
+  }, [standardRows]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadStandards() {
+      try {
+        const response = await authenticatedFetch(
+          `${API_BASE}/api/standards?include_rows=true`,
+        );
+
+        if (!response.ok) {
+          throw new Error(
+            `Could not load standards (${response.status}).`,
+          );
+        }
+
+        const rows: PerformanceStandardRow[] =
+          await response.json();
+
+        if (cancelled) return;
+
+        setStandardRows(rows);
+        cacheStandards(rows);
+      } catch {
+        if (!cancelled) {
+          setStandardRows(readStandardsCache());
+        }
+      }
+    }
+
+    void loadStandards();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const selectedStandard = useMemo(() => {
+    const flockBreed =
+      shed.plan.breed_code?.trim().toLowerCase() ||
+      shed.plan.breed?.trim().toLowerCase() ||
+      "";
+
+    const breedStandards = availableStandards.filter(
+      (standard) => standard.type === "Breed",
+    );
+
+    if (flockBreed) {
+      const exact = breedStandards.find((standard) => {
+        const code = standard.code.trim().toLowerCase();
+        const name = standard.name.trim().toLowerCase();
+        const rowBreed = standard.rows
+          .map((row) => row.breed?.trim().toLowerCase())
+          .find(Boolean);
+
+        return (
+          code === flockBreed ||
+          name === flockBreed ||
+          rowBreed === flockBreed ||
+          name.includes(flockBreed) ||
+          flockBreed.includes(name)
+        );
+      });
+
+      if (exact) return exact;
+    }
+
+    return breedStandards[0] ?? null;
+  }, [availableStandards, shed.plan.breed, shed.plan.breed_code]);
+
+  const chart = useMemo(() => {
+    let cumulativeMortality = 0;
+    let cumulativeFeed = 0;
+    let previousWeight: number | null = null;
+    let previousWeightAge: number | null = null;
+    const placedBirds =
+      numberOrZero(orderedHistory[0]?.opening_birds) ||
+      numberOrZero(shed.plan.planned_birds);
+
+    const allData = orderedHistory.map((record) => {
+      const age =
+        record.age_days ??
+        calculateAgeDays(
+          shed.plan.placement_date,
+          record.entry_date,
+        );
+      const mortality = recordMortality(record);
+      const opening = numberOrZero(record.opening_birds);
+      const feed = numberOrZero(record.feed_kg);
+      const water = numberOrZero(record.water_litres);
+      const birds =
+        numberOrZero(record.closing_birds) ||
+        numberOrZero(record.opening_birds);
+
+      cumulativeMortality += mortality;
+      cumulativeFeed += feed;
+
+      const currentWeight = recordWeight(record);
+      const liveWeightKg =
+        currentWeight !== null && birds > 0
+          ? currentWeight * birds
+          : null;
+      const cumulativeFcr =
+        liveWeightKg !== null && liveWeightKg > 0 && cumulativeFeed > 0
+          ? cumulativeFeed / liveWeightKg
+          : null;
+      const livability =
+        placedBirds > 0 && birds > 0
+          ? (birds / placedBirds) * 100
+          : null;
+
+      let actual: number | null = null;
+      let standard: number | null = null;
+
+      switch (metric) {
+        case "bodyweight":
+          actual = currentWeight;
+          standard =
+            standardWeightForAge(
+              selectedStandard?.rows ?? [],
+              age,
+            ) ??
+            recordStandardWeight(record);
+          break;
+        case "adg":
+          actual =
+            currentWeight !== null &&
+            previousWeight !== null &&
+            previousWeightAge !== null &&
+            age > previousWeightAge
+              ? ((currentWeight - previousWeight) * 1000) /
+                (age - previousWeightAge)
+              : null;
+          break;
+        case "fcr":
+          actual = cumulativeFcr;
+          break;
+        case "pef":
+          actual =
+            livability !== null &&
+            currentWeight !== null &&
+            cumulativeFcr !== null &&
+            cumulativeFcr > 0 &&
+            age > 0
+              ? (livability * currentWeight * 100) /
+                (age * cumulativeFcr)
+              : null;
+          break;
+        case "mortality":
+          actual =
+            opening > 0 ? (mortality / opening) * 100 : null;
+          break;
+        case "cumulativeMortality":
+          actual =
+            placedBirds > 0
+              ? (cumulativeMortality / placedBirds) * 100
+              : null;
+          break;
+        case "feed":
+          actual =
+            birds > 0 &&
+            record.feed_kg !== null &&
+            record.feed_kg !== undefined
+              ? (feed * 1000) / birds
+              : null;
+          break;
+        case "water":
+          actual =
+            birds > 0 &&
+            record.water_litres !== null &&
+            record.water_litres !== undefined
+              ? (water * 1000) / birds
+              : null;
+          break;
+        case "waterFeed":
+          actual =
+            feed > 0 && water > 0 ? water / feed : null;
+          break;
+      }
+
+      if (currentWeight !== null) {
+        previousWeight = currentWeight;
+        previousWeightAge = age;
+      }
+
+      return {
+        key: record.entry_date,
+        label: `${age}d`,
+        actual,
+        standard,
+      };
+    });
+
+    const data =
+      range === "all" ? allData : allData.slice(-range);
+
+    const config: Record<
+      PerformanceMetric,
+      {
+        title: string;
+        unit: string;
+        decimals: number;
+        empty: string;
+      }
+    > = {
+      bodyweight: {
+        title: "Bodyweight",
+        unit: "kg",
+        decimals: 2,
+        empty: "No bodyweight entries yet.",
+      },
+      adg: {
+        title: "Average daily gain",
+        unit: "g/day",
+        decimals: 1,
+        empty: "At least two bodyweight entries are needed.",
+      },
+      fcr: {
+        title: "Feed conversion rate",
+        unit: "FCR",
+        decimals: 3,
+        empty: "Feed and bodyweight entries are needed to calculate FCR.",
+      },
+      pef: {
+        title: "Poultry Efficiency Factor",
+        unit: "PEF",
+        decimals: 0,
+        empty: "Age, livability, bodyweight and FCR are needed to calculate PEF.",
+      },
+      mortality: {
+        title: "Daily mortality",
+        unit: "%",
+        decimals: 2,
+        empty: "No mortality entries yet.",
+      },
+      cumulativeMortality: {
+        title: "Cumulative mortality",
+        unit: "%",
+        decimals: 2,
+        empty: "No mortality entries yet.",
+      },
+      feed: {
+        title: "Daily feed per bird",
+        unit: "gbd",
+        decimals: 1,
+        empty: "No feed entries yet.",
+      },
+      water: {
+        title: "Daily water per bird",
+        unit: "mL/bird",
+        decimals: 1,
+        empty: "No water entries yet.",
+      },
+      waterFeed: {
+        title: "Water / feed",
+        unit: "L/kg",
+        decimals: 2,
+        empty: "No water-to-feed entries yet.",
+      },
+    };
+
+    return { data, ...config[metric] };
+  }, [
+    metric,
+    orderedHistory,
+    range,
+    selectedStandard,
+    shed.plan,
+  ]);
+
+  return (
+    <section className={styles.performanceWorkspace}>
+      <div className={styles.sectionHeading}>
+        <div>
+          <small>FLOCK PERFORMANCE</small>
+          <h2>Performance graph</h2>
+        </div>
+      </div>
+
+      <UnifiedPerformanceChart
+        title={chart.title}
+        unit={chart.unit}
+        decimals={chart.decimals}
+        emptyMessage={chart.empty}
+        data={chart.data}
+        metric={metric}
+        range={range}
+        onMetricChange={setMetric}
+        onRangeChange={setRange}
+        standardName={selectedStandard?.name ?? null}
+      />
+    </section>
+  );
+}
+
+function UnifiedPerformanceChart({
+  title,
+  unit,
+  decimals,
+  emptyMessage,
+  data,
+  metric,
+  range,
+  onMetricChange,
+  onRangeChange,
+  standardName,
+}: {
+  title: string;
+  unit: string;
+  decimals: number;
+  emptyMessage: string;
+  data: {
+    key: string;
+    label: string;
+    actual: number | null;
+    standard: number | null;
+  }[];
+  metric: PerformanceMetric;
+  range: PerformanceRange;
+  onMetricChange: (value: PerformanceMetric) => void;
+  onRangeChange: (value: PerformanceRange) => void;
+  standardName: string | null;
+}) {
+  const numeric = data.flatMap((item) =>
+    [item.actual, item.standard].filter(
+      (value): value is number =>
+        value !== null && Number.isFinite(value),
+    ),
+  );
+  const rawMax = numeric.length ? Math.max(...numeric) : 1;
+  const rawMin = numeric.length ? Math.min(...numeric) : 0;
+  const padding = Math.max((rawMax - rawMin) * 0.14, 0.05);
+  const min = Math.max(0, rawMin - padding);
+  const max = rawMax + padding;
+  const span = Math.max(0.1, max - min);
+
+  const pointFor = (
+    value: number | null,
+    index: number,
+  ) => {
+    if (value === null) return null;
+    const x =
+      data.length <= 1
+        ? 50
+        : (index / (data.length - 1)) * 100;
+    const y = 88 - ((value - min) / span) * 72;
+    return { x, y };
+  };
+
+  const actualCoordinates = data
+    .map((item, index) => {
+      const point = pointFor(item.actual, index);
+      return point ? { ...point, dataIndex: index } : null;
+    })
+    .filter(
+      (
+        point,
+      ): point is { x: number; y: number; dataIndex: number } =>
+        point !== null,
+    );
+  const standardCoordinates = data
+    .map((item, index) => {
+      const point = pointFor(item.standard, index);
+      return point ? { ...point, dataIndex: index } : null;
+    })
+    .filter(
+      (
+        point,
+      ): point is { x: number; y: number; dataIndex: number } =>
+        point !== null,
+    );
+  const actualPoints = actualCoordinates
+    .map((point) => `${point.x},${point.y}`)
+    .join(" ");
+  const standardPoints = standardCoordinates
+    .map((point) => `${point.x},${point.y}`)
+    .join(" ");
+  const areaPoints =
+    actualCoordinates.length > 0
+      ? `0,92 ${actualPoints} 100,92`
+      : "";
+  const latestIndex = [...data]
+    .map((item, index) => ({ item, index }))
+    .reverse()
+    .find(({ item }) => item.actual !== null)?.index ?? -1;
+  const [selectedIndex, setSelectedIndex] = useState(latestIndex);
+
+  useEffect(() => {
+    setSelectedIndex(latestIndex);
+  }, [latestIndex, metric, range]);
+
+  const selected =
+    selectedIndex >= 0 && data[selectedIndex]?.actual !== null
+      ? data[selectedIndex]
+      : latestIndex >= 0
+        ? data[latestIndex]
+        : undefined;
+  const selectedPoint = actualCoordinates.find(
+    (point) => point.dataIndex === selectedIndex,
+  );
+  const hasStandard = standardCoordinates.length > 0;
+
+  const axisLabelStep =
+    data.length <= 8
+      ? 1
+      : data.length <= 16
+        ? 2
+        : data.length <= 32
+          ? 4
+          : Math.ceil(data.length / 8);
+
+  const selectedValue =
+    selected?.actual === null || selected?.actual === undefined
+      ? "—"
+      : `${formatDecimal(selected.actual, decimals)} ${unit}`;
+
+  const selectedStandardValue =
+    selected?.standard === null || selected?.standard === undefined
+      ? null
+      : `${formatDecimal(selected.standard, decimals)} ${unit}`;
+
+  const selectedVariance =
+    selected?.actual === null ||
+    selected?.actual === undefined ||
+    selected?.standard === null ||
+    selected?.standard === undefined
+      ? null
+      : selected.actual - selected.standard;
+
+  const selectNearestPoint = (
+    event: PointerEvent<SVGSVGElement>,
+  ) => {
+    if (data.length === 0 || actualCoordinates.length === 0) return;
+
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const relativeX = Math.min(
+      Math.max(event.clientX - bounds.left, 0),
+      bounds.width,
+    );
+    const approximateIndex =
+      data.length <= 1
+        ? 0
+        : Math.round((relativeX / bounds.width) * (data.length - 1));
+
+    let nearest = actualCoordinates[0];
+
+    for (const point of actualCoordinates.slice(1)) {
+      if (
+        Math.abs(point.dataIndex - approximateIndex) <
+        Math.abs(nearest.dataIndex - approximateIndex)
+      ) {
+        nearest = point;
+      }
+    }
+
+    setSelectedIndex(nearest.dataIndex);
+  };
+
+  return (
+    <article className={styles.unifiedChartCard}>
+      <div className={styles.chartControlRow}>
+        <label className={styles.metricSelect}>
+          <span>Metric</span>
+          <select
+            value={metric}
+            onChange={(event) =>
+              onMetricChange(
+                event.target.value as PerformanceMetric,
+              )
+            }
+          >
+            {performanceMetricOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div
+          className={styles.rangeButtons}
+          aria-label="Graph date range"
+        >
+          {(
+            [
+              [7, "7D"],
+              [14, "14D"],
+              [30, "30D"],
+              ["all", "All"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              type="button"
+              key={String(value)}
+              className={
+                range === value
+                  ? styles.rangeButtonActive
+                  : ""
+              }
+              onClick={() => onRangeChange(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className={styles.performanceChartHeader}>
+        <div className={styles.chartSelectedSummary}>
+          <small>{title.toUpperCase()}</small>
+          <strong>{selectedValue}</strong>
+          <span>
+            {selected
+              ? `${selected.label} · ${formatDate(selected.key)}`
+              : "No entries"}
+          </span>
+          {selectedStandardValue && (
+            <div className={styles.chartComparisonValues}>
+              <span>
+                <b>Standard</b>
+                {selectedStandardValue}
+              </span>
+              {selectedVariance !== null && (
+                <span>
+                  <b>Variance</b>
+                  {selectedVariance >= 0 ? "+" : ""}
+                  {formatDecimal(selectedVariance, decimals)} {unit}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className={styles.chartLegend}>
+          <span>
+            <i />
+            Actual
+          </span>
+          {hasStandard && (
+            <span className={styles.standardLegend}>
+              <i />
+              {standardName ?? "Standard"}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {actualCoordinates.length === 0 ? (
+        <div className={styles.emptyState}>{emptyMessage}</div>
+      ) : (
+        <div className={styles.unifiedChartPlot}>
+          <svg
+            className={styles.performanceSvg}
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            aria-label={`${title} performance graph. Touch or drag across the graph to inspect a day.`}
+            onPointerDown={(event) => {
+              event.currentTarget.setPointerCapture(event.pointerId);
+              selectNearestPoint(event);
+            }}
+            onPointerMove={(event) => {
+              if (event.buttons > 0 || event.pointerType === "touch") {
+                selectNearestPoint(event);
+              }
+            }}
+          >
+            <line
+              x1="0"
+              y1="92"
+              x2="100"
+              y2="92"
+              className={styles.chartBaseline}
+              vectorEffect="non-scaling-stroke"
+            />
+            {areaPoints && (
+              <polyline
+                points={areaPoints}
+                className={styles.chartArea}
+                stroke="none"
+              />
+            )}
+            {hasStandard && standardPoints && (
+              <polyline
+                points={standardPoints}
+                className={styles.chartStandardLine}
+                fill="none"
+                vectorEffect="non-scaling-stroke"
+              />
+            )}
+            <polyline
+              points={actualPoints}
+              className={styles.chartActualLine}
+              fill="none"
+              vectorEffect="non-scaling-stroke"
+            />
+            {selectedPoint && (
+              <line
+                x1={selectedPoint.x}
+                y1="8"
+                x2={selectedPoint.x}
+                y2="92"
+                className={styles.chartSelectionLine}
+                vectorEffect="non-scaling-stroke"
+              />
+            )}
+            {actualCoordinates.map((point) => (
+              <circle
+                key={`${point.x}-${point.dataIndex}`}
+                cx={point.x}
+                cy={point.y}
+                r={point.dataIndex === selectedIndex ? "2.6" : "1.7"}
+                className={
+                  point.dataIndex === selectedIndex
+                    ? styles.chartPointSelected
+                    : styles.chartPoint
+                }
+                vectorEffect="non-scaling-stroke"
+              />
+            ))}
+          </svg>
+
+          <div
+            className={styles.performanceAxis}
+            style={{
+              gridTemplateColumns: `repeat(${Math.max(data.length, 1)}, minmax(0, 1fr))`,
+            }}
+          >
+            {data.map((item, index) => {
+              const showLabel =
+                index === 0 ||
+                index === data.length - 1 ||
+                index % axisLabelStep === 0;
+
+              return (
+                <span key={item.key}>
+                  {showLabel ? item.label : ""}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <p className={styles.landscapeHint}>
+        Rotate your phone to landscape for a full-screen graph.
+      </p>
+
+      {metric === "bodyweight" && !hasStandard && (
+        <p className={styles.standardUnavailable}>
+          No active Broilers bodyweight standard is available.
+          Import or activate a broiler standard in Admin → Standards.
+        </p>
+      )}
+    </article>
+  );
+}
+
+function RootMetric({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return (
+    <article>
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <small>{detail}</small>
+    </article>
+  );
+}
+
+function SelectShedScreen({
+  plans,
+  records,
+  form,
+  setForm,
+  onContinue,
+}: {
+  plans: DemandPlan[];
+  records: PerformanceRecord[];
+  form: EntryForm;
+  setForm: (
+    updater:
+      | EntryForm
+      | ((current: EntryForm) => EntryForm),
+  ) => void;
+  onContinue: () => void;
+}) {
+  return (
+    <>
+      <ScreenTitle
+        eyebrow="DAILY ENTRY"
+        title="Select shed"
+        detail="Choose the active farm, shed and cycle. Cached selections remain available offline."
+      />
+
+      <label className={styles.appField}>
+        Entry date
+        <input
+          type="date"
+          value={form.entry_date}
+          onChange={(event) =>
+            setForm((current) => ({
+              ...current,
+              entry_date: event.target.value,
+            }))
+          }
+        />
+      </label>
+
+      <div className={styles.shedList}>
+        {plans.map((plan) => {
+          const latest = records
+            .filter(
+              (record) =>
+                record.placement_plan_id === plan.id,
+            )
+            .sort((a, b) =>
+              b.entry_date.localeCompare(a.entry_date),
+            )[0];
+
+          const selected =
+            Number(form.placement_plan_id) === plan.id;
+
+          return (
+            <button
+              type="button"
+              key={plan.id}
+              className={`${styles.shedCard} ${
+                selected ? styles.shedCardSelected : ""
+              }`}
+              onClick={() =>
+                setForm((current) => ({
+                  ...current,
+                  placement_plan_id: plan.id,
+                }))
+              }
+            >
+              <div className={styles.shedIcon}>⌂</div>
+              <div className={styles.shedMain}>
+                <strong>
+                  {plan.farm_name ?? "Farm"} ·{" "}
+                  {plan.shed_name ?? "Shed"}
+                </strong>
+                <span>
+                  {plan.cycle_code ?? "Active cycle"}
+                </span>
+                <small>
+                  {formatNumber(
+                    latest?.closing_birds ??
+                      plan.planned_birds,
+                  )}{" "}
+                  birds · {ageLabel(plan, form.entry_date)}
+                  {latest?.avg_weight_kg
+                    ? ` · ${formatDecimal(
+                        latest.avg_weight_kg,
+                      )} kg`
+                    : ""}
+                </small>
+              </div>
+              <i
+                className={
+                  latest
+                    ? styles.statusGood
+                    : styles.statusPending
+                }
+              />
+              <b>›</b>
+            </button>
+          );
+        })}
+      </div>
+
+      <button
+        type="button"
+        className={styles.primaryButton}
+        onClick={onContinue}
+        disabled={!form.placement_plan_id}
+      >
+        Continue to daily entry
+      </button>
+    </>
+  );
+}
+
+function DailyEntryScreen({
+  form,
+  setForm,
+  selectedPlan,
+  selectedAge,
+  existingServerRecord,
+  onBack,
+  onSave,
+}: {
+  form: EntryForm;
+  setForm: (
+    updater:
+      | EntryForm
+      | ((current: EntryForm) => EntryForm),
+  ) => void;
+  selectedPlan?: DemandPlan;
+  selectedAge: number;
+  existingServerRecord?: PerformanceRecord;
+  onBack: () => void;
+  onSave: (event: FormEvent) => Promise<void>;
+}) {
+  const mortalityTotal =
+    numberOrZero(toNumber(form.mortality_front)) +
+    numberOrZero(toNumber(form.mortality_middle)) +
+    numberOrZero(toNumber(form.mortality_back)) +
+    numberOrZero(toNumber(form.mortality_other));
+
+  const cullTotal =
+    numberOrZero(toNumber(form.cull_legs)) +
+    numberOrZero(toNumber(form.cull_runts)) +
+    numberOrZero(toNumber(form.cull_beak)) +
+    numberOrZero(toNumber(form.cull_other));
+
+  const opening = toNumber(form.opening_birds);
+  const closing =
+    opening === null
+      ? null
+      : Math.max(0, opening - mortalityTotal - cullTotal);
+
+  const isLocked = (
+    value: number | string | null | undefined,
+  ) => hasMeaningfulServerValue(value);
+
+  return (
+    <form
+      className={styles.entryScreen}
+      onSubmit={onSave}
+    >
+      <div className={styles.entryTopbar}>
+        <button type="button" onClick={onBack}>
+          ‹ Back
+        </button>
+        <strong>Daily Entry</strong>
+        <button type="submit">Save</button>
+      </div>
+
+      <section className={styles.selectedShedBanner}>
+        <div className={styles.shedIcon}>⌂</div>
+        <div>
+          <strong>
+            {selectedPlan?.farm_name ?? "Farm"} ·{" "}
+            {selectedPlan?.shed_name ?? "Shed"}
+          </strong>
+          <span>
+            Age {selectedAge} days ·{" "}
+            {selectedPlan?.cycle_code ?? "Active cycle"}
+          </span>
+        </div>
+        <button type="button" onClick={onBack}>
+          Change
+        </button>
+      </section>
+
+      <div className={styles.formSectionHeading}>
+        <small>BIRD NUMBERS</small>
+      </div>
+
+      <div className={styles.formCard}>
+        <NumberRow
+          label="Opening birds"
+          value={form.opening_birds}
+          disabled={isLocked(
+            existingServerRecord?.opening_birds,
+          )}
+          onChange={(value) =>
+            setForm((current) => ({
+              ...current,
+              opening_birds: value,
+            }))
+          }
+        />
+
+        <div className={styles.formSplitRow}>
+          <span>Mortality</span>
+          <strong>{mortalityTotal}</strong>
+        </div>
+
+        <div className={styles.compactGrid}>
+          <NumberBox
+            label="Front"
+            value={form.mortality_front}
+            disabled={isLocked(
+              existingServerRecord?.mortality_front,
+            )}
+            onChange={(value) =>
+              setForm((current) => ({
+                ...current,
+                mortality_front: value,
+              }))
+            }
+          />
+          <NumberBox
+            label="Middle"
+            value={form.mortality_middle}
+            disabled={isLocked(
+              existingServerRecord?.mortality_middle,
+            )}
+            onChange={(value) =>
+              setForm((current) => ({
+                ...current,
+                mortality_middle: value,
+              }))
+            }
+          />
+          <NumberBox
+            label="Back"
+            value={form.mortality_back}
+            disabled={isLocked(
+              existingServerRecord?.mortality_back,
+            )}
+            onChange={(value) =>
+              setForm((current) => ({
+                ...current,
+                mortality_back: value,
+              }))
+            }
+          />
+          <NumberBox
+            label="Other"
+            value={form.mortality_other}
+            disabled={isLocked(
+              existingServerRecord?.mortality_other,
+            )}
+            onChange={(value) =>
+              setForm((current) => ({
+                ...current,
+                mortality_other: value,
+              }))
+            }
+          />
+        </div>
+
+        <div className={styles.formSplitRow}>
+          <span>Culls</span>
+          <strong>{cullTotal}</strong>
+        </div>
+
+        <div className={styles.compactGrid}>
+          <NumberBox
+            label="Legs"
+            value={form.cull_legs}
+            disabled={isLocked(
+              existingServerRecord?.cull_legs,
+            )}
+            onChange={(value) =>
+              setForm((current) => ({
+                ...current,
+                cull_legs: value,
+              }))
+            }
+          />
+          <NumberBox
+            label="Runts"
+            value={form.cull_runts}
+            disabled={isLocked(
+              existingServerRecord?.cull_runts,
+            )}
+            onChange={(value) =>
+              setForm((current) => ({
+                ...current,
+                cull_runts: value,
+              }))
+            }
+          />
+          <NumberBox
+            label="Beak"
+            value={form.cull_beak}
+            disabled={isLocked(
+              existingServerRecord?.cull_beak,
+            )}
+            onChange={(value) =>
+              setForm((current) => ({
+                ...current,
+                cull_beak: value,
+              }))
+            }
+          />
+          <NumberBox
+            label="Other"
+            value={form.cull_other}
+            disabled={isLocked(
+              existingServerRecord?.cull_other,
+            )}
+            onChange={(value) =>
+              setForm((current) => ({
+                ...current,
+                cull_other: value,
+              }))
+            }
+          />
+        </div>
+
+        <div className={styles.autoRow}>
+          <span>Closing birds</span>
+          <strong>{formatNumber(closing)}</strong>
+          <small>Calculated automatically</small>
+        </div>
+      </div>
+
+      <div className={styles.formSectionHeading}>
+        <small>PERFORMANCE</small>
+      </div>
+
+      <div className={styles.formCard}>
+        <NumberRow
+          label="Feed"
+          suffix="kg"
+          decimal
+          value={form.feed_kg}
+          disabled={isLocked(
+            existingServerRecord?.feed_kg,
+          )}
+          onChange={(value) =>
+            setForm((current) => ({
+              ...current,
+              feed_kg: value,
+            }))
+          }
+        />
+        <NumberRow
+          label="Water"
+          suffix="L"
+          decimal
+          value={form.water_litres}
+          disabled={isLocked(
+            existingServerRecord?.water_litres,
+          )}
+          onChange={(value) =>
+            setForm((current) => ({
+              ...current,
+              water_litres: value,
+            }))
+          }
+        />
+        <NumberRow
+          label="Average weight"
+          suffix="kg"
+          decimal
+          value={form.body_weight_kg}
+          disabled={isLocked(
+            existingServerRecord?.body_weight_kg ??
+              existingServerRecord?.avg_weight_kg,
+          )}
+          onChange={(value) =>
+            setForm((current) => ({
+              ...current,
+              body_weight_kg: value,
+            }))
+          }
+        />
+      </div>
+
+      <label className={styles.commentsCard}>
+        <span>Comments</span>
+        <textarea
+          rows={4}
+          placeholder="Add litter, bird or equipment notes…"
+          value={form.notes}
+          disabled={isLocked(
+            existingServerRecord?.notes,
+          )}
+          onChange={(event) =>
+            setForm((current) => ({
+              ...current,
+              notes: event.target.value,
+            }))
+          }
+        />
+      </label>
+
+      <button
+        type="submit"
+        className={styles.saveButton}
+      >
+        Save house sheet
+      </button>
+    </form>
+  );
+}
+
+function EntrySavedScreen({
+  summary,
+  pendingCount,
+  online,
+  onTomorrow,
+  onHome,
+}: {
+  summary: SavedSummary;
+  pendingCount: number;
+  online: boolean;
+  onTomorrow: () => void;
+  onHome: () => void;
+}) {
+  return (
+    <>
+      <div className={styles.savedHero}>
+        <div className={styles.successIcon}>✓</div>
+        <small>
+          {online
+            ? pendingCount > 0
+              ? "SAVED — SYNC IN PROGRESS"
+              : "SYNCED WITH OVICORE"
+            : "SAVED OFFLINE"}
+        </small>
+        <h1>Entry saved</h1>
+        <p>
+          Today&apos;s house sheet has been stored
+          successfully.
+        </p>
+      </div>
+
+      <section className={styles.summaryCard}>
+        <div className={styles.summaryHeader}>
+          <div>
+            <strong>
+              {summary.farm} · {summary.shed}
+            </strong>
+            <span>{summary.cycle} · Age {summary.ageDays} days</span>
+          </div>
+          <b>{formatDate(summary.entryDate)}</b>
+        </div>
+
+        <div className={styles.summaryGrid}>
+          <SummaryMetric
+            label="Opening"
+            value={formatNumber(summary.opening)}
+          />
+          <SummaryMetric
+            label="Mortality"
+            value={formatNumber(summary.mortality)}
+          />
+          <SummaryMetric
+            label="Culls"
+            value={formatNumber(summary.culls)}
+          />
+          <SummaryMetric
+            label="Closing"
+            value={formatNumber(summary.closing)}
+          />
+          <SummaryMetric
+            label="Feed"
+            value={
+              summary.feed === null
+                ? "—"
+                : `${formatNumber(summary.feed)} kg`
+            }
+          />
+          <SummaryMetric
+            label="Water"
+            value={
+              summary.water === null
+                ? "—"
+                : `${formatNumber(summary.water)} L`
+            }
+          />
+        </div>
+
+        <div className={styles.weightSummary}>
+          <span>Average weight</span>
+          <strong>
+            {summary.weight === null
+              ? "—"
+              : `${formatDecimal(summary.weight)} kg`}
+          </strong>
+        </div>
+      </section>
+
+      <button
+        type="button"
+        className={styles.primaryButton}
+        onClick={onTomorrow}
+      >
+        Add tomorrow&apos;s entry
+      </button>
+
+      <button
+        type="button"
+        className={styles.secondaryButton}
+        onClick={onHome}
+      >
+        Return home
+      </button>
+    </>
+  );
+}
+
+
+function PaperCaptureScreen({
+  companyId,
+  online,
+  onSaved,
+}: {
+  companyId: number | null;
+  online: boolean;
+  onSaved: () => Promise<void>;
+}) {
+  const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [capture, setCapture] =
+    useState<PaperCaptureResult | null>(null);
+  const [review, setReview] =
+    useState<PaperCaptureReview | null>(null);
+  const [analysing, setAnalysing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [captureMessage, setCaptureMessage] = useState("");
+  const [saved, setSaved] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraStarting, setCameraStarting] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+
+  function stopCamera() {
+    cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+    cameraStreamRef.current = null;
+    setCameraOpen(false);
+    setCameraStarting(false);
+  }
+
+  async function openCamera() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCaptureMessage(
+        "This browser does not allow direct camera access. Use Choose existing photo instead.",
+      );
+      return;
+    }
+
+    setCameraStarting(true);
+    setCaptureMessage("");
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
+        audio: false,
+      });
+
+      cameraStreamRef.current = stream;
+      setCameraOpen(true);
+
+      let attempts = 0;
+
+      const attachStream = () => {
+        attempts += 1;
+
+        const video = videoRef.current;
+
+        if (!video) {
+          if (attempts < 20) {
+            window.requestAnimationFrame(attachStream);
+          }
+          return;
+        }
+
+        if (video.srcObject !== stream) {
+          video.srcObject = stream;
+        }
+
+        video.muted = true;
+        video.playsInline = true;
+
+        void video.play().catch(() => {
+          if (attempts < 20) {
+            window.requestAnimationFrame(attachStream);
+          }
+        });
+      };
+
+      window.requestAnimationFrame(attachStream);
+    } catch (error) {
+      console.error(error);
+      setCaptureMessage(
+        "OviCore could not open the camera. Check that camera permission is allowed for this site.",
+      );
+      stopCamera();
+    } finally {
+      setCameraStarting(false);
+    }
+  }
+
+  async function captureCameraPhoto() {
+    const video = videoRef.current;
+
+    if (!video || video.videoWidth <= 0 || video.videoHeight <= 0) {
+      setCaptureMessage("The camera is not ready yet. Try again in a moment.");
+      return;
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    const context = canvas.getContext("2d");
+
+    if (!context) {
+      setCaptureMessage("Could not capture the camera image.");
+      return;
+    }
+
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          setCaptureMessage("Could not create the captured image.");
+          return;
+        }
+
+        const capturedFile = new File(
+          [blob],
+          `ovicore-paper-capture-${Date.now()}.jpg`,
+          { type: "image/jpeg" },
+        );
+
+        selectCaptureFile(capturedFile);
+        stopCamera();
+      },
+      "image/jpeg",
+      0.92,
+    );
+  }
+
+  function selectCaptureFile(nextFile: File | null) {
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+    }
+
+    setFile(nextFile);
+    setPreviewUrl(
+      nextFile ? URL.createObjectURL(nextFile) : "",
+    );
+    setCapture(null);
+    setReview(null);
+    setCaptureMessage("");
+    setSaved(false);
+  }
+
+  async function analysePaperSheet() {
+    if (!file || !companyId) return;
+
+    if (!online) {
+      setCaptureMessage(
+        "Paper Capture needs an internet connection to read handwriting. You can take the photo now and analyse it when the device is online.",
+      );
+      return;
+    }
+
+    setAnalysing(true);
+    setCaptureMessage("");
+    setCapture(null);
+    setReview(null);
+    setSaved(false);
+
+    try {
+      const formData = new FormData();
+      formData.set("company_id", String(companyId));
+      formData.set("image", file);
+
+      const response = await authenticatedFetch(
+        `${API_BASE}/api/paper-capture/broilers/extract`,
+        {
+          method: "POST",
+          body: formData,
+        },
+      );
+
+      if (!response.ok) {
+        const detail = await response.text();
+        throw new Error(
+          `Could not read the sheet (${response.status}). ${detail}`,
+        );
+      }
+
+      const result: PaperCaptureResult =
+        await response.json();
+
+      setCapture(result);
+      setReview(result.proposed);
+    } catch (error) {
+      setCaptureMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not analyse the completed sheet.",
+      );
+    } finally {
+      setAnalysing(false);
+    }
+  }
+
+  function updatePaperReview(
+    field: keyof PaperCaptureReview,
+    value: string,
+  ) {
+    setReview((current) => {
+      if (!current) return current;
+
+      if (field === "notes") {
+        return {
+          ...current,
+          notes: value,
+        };
+      }
+
+      const nullable =
+        field === "opening_birds" ||
+        field === "feed_kg" ||
+        field === "water_litres" ||
+        field === "body_weight_kg";
+
+      return {
+        ...current,
+        [field]:
+          value.trim() === "" && nullable
+            ? null
+            : Number(value || 0),
+      };
+    });
+  }
+
+  async function approvePaperCapture() {
+    if (!capture || !review || !online) return;
+
+    setSaving(true);
+    setCaptureMessage("");
+
+    try {
+      const response = await authenticatedFetch(
+        `${API_BASE}/api/paper-capture/broilers/${capture.id}/approve`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            reviewed: review,
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        const detail = await response.text();
+        throw new Error(
+          `Could not save the sheet (${response.status}). ${detail}`,
+        );
+      }
+
+      setSaved(true);
+      setCaptureMessage(
+        "Paper sheet approved and saved to Broiler Daily Data Entry.",
+      );
+      await onSaved();
+    } catch (error) {
+      setCaptureMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not save the reviewed sheet.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const sourceRows = capture
+    ? [
+        ["Opening Birds", "opening_birds_am", "opening_birds_pm"],
+        ["Mortality – Front", "mortality_front_am", "mortality_front_pm"],
+        ["Mortality – Middle", "mortality_middle_am", "mortality_middle_pm"],
+        ["Mortality – Back", "mortality_back_am", "mortality_back_pm"],
+        ["Mortality – Other", "mortality_other_am", "mortality_other_pm"],
+        ["Culls – Legs", "cull_legs_am", "cull_legs_pm"],
+        ["Culls – Runts", "cull_runts_am", "cull_runts_pm"],
+        ["Culls – Beak", "cull_beak_am", "cull_beak_pm"],
+        ["Culls – Other", "cull_other_am", "cull_other_pm"],
+        ["Feed kg", "feed_kg_am", "feed_kg_pm"],
+        ["Water L", "water_litres_am", "water_litres_pm"],
+        ["Bodyweight kg", "body_weight_kg_am", "body_weight_kg_pm"],
+      ] as const
+    : [];
+
+  return (
+    <>
+      <ScreenTitle
+        eyebrow="PAPER CAPTURE"
+        title="Capture completed sheet"
+        detail="Take a clear photo of the entire Broiler Daily Sheet. OviCore reads the handwriting and asks you to review it before saving."
+      />
+
+      {!online && (
+        <div className={styles.captureOfflineNotice}>
+          <strong>Offline</strong>
+          <span>
+            You can take the photo, but AI analysis and saving require a connection.
+          </span>
+        </div>
+      )}
+
+      {captureMessage && (
+        <div
+          className={`${styles.message} ${
+            saved ? styles.captureSuccessMessage : ""
+          }`}
+        >
+          <span>{captureMessage}</span>
+          <button
+            type="button"
+            onClick={() => setCaptureMessage("")}
+            aria-label="Dismiss message"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      <section className={styles.captureMobileCard}>
+        <div className={styles.captureStepHeader}>
+          <span>1</span>
+          <div>
+            <strong>Photograph the completed sheet</strong>
+            <small>
+              Keep the full page and top-right template ID visible.
+            </small>
+          </div>
+        </div>
+
+        {previewUrl ? (
+          <div className={styles.capturePhotoSummary}>
+            <img
+              src={previewUrl}
+              alt="Completed Broiler Daily Sheet thumbnail"
+            />
+            <div>
+              <strong>Photo captured</strong>
+              <small>
+                Ready to analyse. Retake it if the full page is not visible.
+              </small>
+            </div>
+          </div>
+        ) : (
+          <div className={styles.captureCameraArea}>
+            <div>
+              <span className={styles.captureCameraIcon}>◎</span>
+              <strong>No photo captured yet</strong>
+              <small>
+                Open the camera and photograph the entire A4 sheet.
+              </small>
+            </div>
+          </div>
+        )}
+
+        <div className={styles.captureCameraButtons}>
+          <button
+            type="button"
+            className={styles.captureCameraButton}
+            onClick={() => void openCamera()}
+            disabled={cameraStarting || analysing}
+          >
+            {cameraStarting ? "Opening camera…" : "Take photo"}
+          </button>
+
+          <label className={styles.captureGalleryButton}>
+            Choose existing photo
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={(event) =>
+                selectCaptureFile(
+                  event.target.files?.[0] ?? null,
+                )
+              }
+            />
+          </label>
+        </div>
+
+        {file && (
+          <div className={styles.capturePrimaryActions}>
+            <button
+              type="button"
+              className={styles.captureRetakeButton}
+              onClick={() => selectCaptureFile(null)}
+              disabled={analysing}
+            >
+              Retake photo
+            </button>
+
+            <button
+              type="button"
+              className={styles.captureAnalysePrimaryButton}
+              disabled={
+                !companyId ||
+                analysing ||
+                !online
+              }
+              onClick={() => void analysePaperSheet()}
+            >
+              {analysing ? "Reading handwriting…" : "Analyse sheet"}
+            </button>
+          </div>
+        )}
+      </section>
+
+      {capture && review && (
+        <>
+          <section className={styles.captureMobileCard}>
+            <div className={styles.captureStepHeader}>
+              <span>2</span>
+              <div>
+                <strong>Detected sheet</strong>
+                <small>
+                  Confirm OviCore has matched the correct flock and date.
+                </small>
+              </div>
+            </div>
+
+            <div className={styles.captureDetectedGrid}>
+              <div>
+                <span>Farm</span>
+                <strong>{capture.farm_name || "—"}</strong>
+              </div>
+              <div>
+                <span>Shed</span>
+                <strong>{capture.shed_name || "—"}</strong>
+              </div>
+              <div>
+                <span>Flock / Batch</span>
+                <strong>{capture.cycle_code || "—"}</strong>
+              </div>
+              <div>
+                <span>Date</span>
+                <strong>{formatDate(capture.entry_date)}</strong>
+              </div>
+              <div>
+                <span>Age</span>
+                <strong>
+                  {capture.age_days === null ||
+                  capture.age_days === undefined
+                    ? "—"
+                    : `${capture.age_days} days`}
+                </strong>
+              </div>
+              <div>
+                <span>AI confidence</span>
+                <strong>
+                  {capture.overall_confidence === null ||
+                  capture.overall_confidence === undefined
+                    ? "—"
+                    : `${Math.round(capture.overall_confidence * 100)}%`}
+                </strong>
+              </div>
+            </div>
+
+            {capture.warnings.length > 0 && (
+              <div className={styles.captureWarnings}>
+                {capture.warnings.map((warning) => (
+                  <p key={warning}>⚠ {warning}</p>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className={styles.captureMobileCard}>
+            <div className={styles.captureStepHeader}>
+              <span>3</span>
+              <div>
+                <strong>AM / PM readings</strong>
+                <small>
+                  Low-confidence values should be checked against the photo.
+                </small>
+              </div>
+            </div>
+
+            <div className={styles.captureSourceList}>
+              {sourceRows.map(([label, amField, pmField]) => {
+                const amConfidence =
+                  capture.source.confidence[amField];
+                const pmConfidence =
+                  capture.source.confidence[pmField];
+
+                return (
+                  <div
+                    className={styles.captureSourceRow}
+                    key={label}
+                  >
+                    <strong>{label}</strong>
+                    <div>
+                      <span>AM</span>
+                      <b>{paperSourceValue(capture.source[amField])}</b>
+                      <small
+                        data-low={
+                          amConfidence !== undefined &&
+                          amConfidence < 0.8
+                        }
+                      >
+                        {paperConfidence(amConfidence)}
+                      </small>
+                    </div>
+                    <div>
+                      <span>PM</span>
+                      <b>{paperSourceValue(capture.source[pmField])}</b>
+                      <small
+                        data-low={
+                          pmConfidence !== undefined &&
+                          pmConfidence < 0.8
+                        }
+                      >
+                        {paperConfidence(pmConfidence)}
+                      </small>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className={styles.captureMobileCard}>
+            <div className={styles.captureStepHeader}>
+              <span>4</span>
+              <div>
+                <strong>Review final Daily Entry</strong>
+                <small>
+                  Edit anything the AI misread, then approve.
+                </small>
+              </div>
+            </div>
+
+            <div className={styles.captureReviewGrid}>
+              <PaperReviewField
+                label="Opening birds"
+                value={review.opening_birds}
+                onChange={(value) =>
+                  updatePaperReview("opening_birds", value)
+                }
+              />
+              <PaperReviewField
+                label="Mortality – Front"
+                value={review.mortality_front}
+                onChange={(value) =>
+                  updatePaperReview("mortality_front", value)
+                }
+              />
+              <PaperReviewField
+                label="Mortality – Middle"
+                value={review.mortality_middle}
+                onChange={(value) =>
+                  updatePaperReview("mortality_middle", value)
+                }
+              />
+              <PaperReviewField
+                label="Mortality – Back"
+                value={review.mortality_back}
+                onChange={(value) =>
+                  updatePaperReview("mortality_back", value)
+                }
+              />
+              <PaperReviewField
+                label="Mortality – Other"
+                value={review.mortality_other}
+                onChange={(value) =>
+                  updatePaperReview("mortality_other", value)
+                }
+              />
+              <PaperReviewField
+                label="Culls – Legs"
+                value={review.cull_legs}
+                onChange={(value) =>
+                  updatePaperReview("cull_legs", value)
+                }
+              />
+              <PaperReviewField
+                label="Culls – Runts"
+                value={review.cull_runts}
+                onChange={(value) =>
+                  updatePaperReview("cull_runts", value)
+                }
+              />
+              <PaperReviewField
+                label="Culls – Beak"
+                value={review.cull_beak}
+                onChange={(value) =>
+                  updatePaperReview("cull_beak", value)
+                }
+              />
+              <PaperReviewField
+                label="Culls – Other"
+                value={review.cull_other}
+                onChange={(value) =>
+                  updatePaperReview("cull_other", value)
+                }
+              />
+              <PaperReviewField
+                label="Feed kg"
+                value={review.feed_kg}
+                step="0.01"
+                onChange={(value) =>
+                  updatePaperReview("feed_kg", value)
+                }
+              />
+              <PaperReviewField
+                label="Water L"
+                value={review.water_litres}
+                step="0.01"
+                onChange={(value) =>
+                  updatePaperReview("water_litres", value)
+                }
+              />
+              <PaperReviewField
+                label="Bodyweight kg"
+                value={review.body_weight_kg}
+                step="0.001"
+                onChange={(value) =>
+                  updatePaperReview("body_weight_kg", value)
+                }
+              />
+
+              <label className={styles.captureNotesField}>
+                <span>Notes</span>
+                <textarea
+                  rows={4}
+                  value={review.notes ?? ""}
+                  onChange={(event) =>
+                    updatePaperReview(
+                      "notes",
+                      event.target.value,
+                    )
+                  }
+                />
+              </label>
+            </div>
+
+            <button
+              type="button"
+              className={styles.captureApproveButton}
+              disabled={saving || saved || !online}
+              onClick={() => void approvePaperCapture()}
+            >
+              {saved
+                ? "Saved to Daily Data Entry"
+                : saving
+                  ? "Saving…"
+                  : "Approve & Save"}
+            </button>
+          </section>
+        </>
+      )}
+
+      {cameraOpen && (
+        <div className={styles.captureCameraOverlay}>
+          <div className={styles.captureCameraTopbar}>
+            <button
+              type="button"
+              onClick={stopCamera}
+            >
+              Cancel
+            </button>
+            <strong>Photograph daily sheet</strong>
+            <span />
+          </div>
+
+          <div className={styles.captureCameraViewport}>
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              controls={false}
+              disablePictureInPicture
+              controlsList="nodownload nofullscreen noremoteplayback"
+              onLoadedMetadata={(event) => {
+                void event.currentTarget.play().catch(() => undefined);
+              }}
+              onCanPlay={(event) => {
+                void event.currentTarget.play().catch(() => undefined);
+              }}
+            />
+            <div className={styles.capturePageGuide}>
+              <span>Keep the entire A4 page inside the frame</span>
+            </div>
+          </div>
+
+          <div className={styles.captureShutterBar}>
+            <button
+              type="button"
+              className={styles.captureShutter}
+              aria-label="Take photo"
+              onClick={() => void captureCameraPhoto()}
+            >
+              <span />
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function PaperReviewField({
+  label,
+  value,
+  step = "1",
+  onChange,
+}: {
+  label: string;
+  value: number | null;
+  step?: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className={styles.captureReviewField}>
+      <span>{label}</span>
+      <input
+        type="number"
+        min="0"
+        step={step}
+        inputMode={step === "1" ? "numeric" : "decimal"}
+        value={value ?? ""}
+        onChange={(event) =>
+          onChange(event.target.value)
+        }
+      />
+    </label>
+  );
+}
+
+function paperSourceValue(
+  value: number | string | null | undefined,
+) {
+  if (
+    value === null ||
+    value === undefined ||
+    value === ""
+  ) {
+    return "—";
+  }
+
+  return String(value);
+}
+
+function paperConfidence(
+  value: number | null | undefined,
+) {
+  if (value === null || value === undefined) {
+    return "—";
+  }
+
+  return `${Math.round(value * 100)}%`;
+}
+
+
+function InsightsScreen({
+  managerInsights,
+  plans,
+  records,
+}: {
+  managerInsights: {
+    mortalityWatch: {
+      record: PerformanceRecord;
+      mortality: number;
+      rate: number;
+    }[];
+    mortalityRate: number;
+    waterWatch: PerformanceRecord[];
+    missing: DemandPlan[];
+  };
+  plans: DemandPlan[];
+  records: PerformanceRecord[];
+}) {
+  const farms = useMemo(
+    () => buildFarmOverviews(plans, records),
+    [plans, records],
+  );
+  const [selectedFarmName, setSelectedFarmName] = useState<string | null>(
+    farms.length === 1 ? farms[0].farmName : null,
+  );
+  const [selectedShedId, setSelectedShedId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (farms.length === 1 && !selectedFarmName) {
+      setSelectedFarmName(farms[0].farmName);
+    }
+  }, [farms, selectedFarmName]);
+
+  const selectedFarm = farms.find(
+    (farm) => farm.farmName === selectedFarmName,
+  );
+  const selectedShed = selectedFarm?.sheds.find(
+    (shed) => shed.plan.id === selectedShedId,
+  );
+
+
+  return (
+    <>
+      <ScreenTitle
+        eyebrow="INSIGHTS"
+        title="Broiler performance"
+        detail="Select a farm, then drill into a shed or flock."
+      />
+
+      <section className={styles.insightDrilldown}>
+        <div className={styles.insightSelectorHeader}>
+          <strong>{selectedFarm ? selectedFarm.farmName : "Select a farm"}</strong>
+          {selectedFarm && farms.length > 1 && (
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedFarmName(null);
+                setSelectedShedId(null);
+              }}
+            >
+              Change farm
+            </button>
+          )}
+        </div>
+
+        {!selectedFarm ? (
+          <div className={styles.insightFarmGrid}>
+            {farms.map((farm) => (
+              <button
+                type="button"
+                key={farm.farmName}
+                onClick={() => setSelectedFarmName(farm.farmName)}
+              >
+                <strong>{farm.farmName}</strong>
+                <span>{farm.sheds.length} active flocks · {formatNumber(farm.totalBirds)} birds</span>
+                <small>
+                  {farm.severity === "normal"
+                    ? "All sheds within range"
+                    : `${farm.critical + farm.warning + farm.incomplete} need review`}
+                </small>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className={styles.insightShedChips}>
+            {selectedFarm.sheds.map((shed) => (
+              <button
+                type="button"
+                key={shed.plan.id}
+                className={selectedShedId === shed.plan.id ? styles.insightChipActive : ""}
+                onClick={() => setSelectedShedId(shed.plan.id)}
+              >
+                <strong>{shed.plan.shed_name ?? "Shed"}</strong>
+                <span>{ageLabel(shed.plan)}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {selectedShed && (
+        <FlockPerformanceCharts shed={selectedShed} />
+      )}
+
+      <section className={styles.insightMetricGrid}>
+        <KpiCard
+          icon="!"
+          label="Mortality Watch"
+          value={formatNumber(
+            managerInsights.mortalityWatch.length,
+          )}
+          detail="At or above 0.50%"
+          warning={
+            managerInsights.mortalityWatch.length > 0
+          }
+        />
+        <KpiCard
+          icon="≈"
+          label="Water / Feed"
+          value={formatNumber(
+            managerInsights.waterWatch.length,
+          )}
+          detail="Ratio exceptions"
+          warning={
+            managerInsights.waterWatch.length > 0
+          }
+        />
+      </section>
+
+      <div className={styles.sectionHeading}>
+        <div>
+          <small>TOP SHEDS</small>
+          <h2>Mortality exceptions</h2>
+        </div>
+      </div>
+
+      <section className={styles.rankCard}>
+        {managerInsights.mortalityWatch.length === 0 ? (
+          <div className={styles.emptyState}>
+            No mortality exceptions today.
+          </div>
+        ) : (
+          managerInsights.mortalityWatch.map(
+            (item, index) => {
+              const plan = plans.find(
+                (candidate) =>
+                  candidate.id ===
+                  item.record.placement_plan_id,
+              );
+
+              return (
+                <div
+                  className={styles.rankRow}
+                  key={item.record.id}
+                >
+                  <b>{index + 1}</b>
+                  <div>
+                    <strong>
+                      {plan?.farm_name} ·{" "}
+                      {plan?.shed_name}
+                    </strong>
+                    <small>
+                      {plan ? `${ageLabel(plan, item.record.entry_date)} · ` : ""}
+                      {formatNumber(item.mortality)} birds
+                    </small>
+                  </div>
+                  <span>{item.rate.toFixed(2)}%</span>
+                </div>
+              );
+            },
+          )
+        )}
+      </section>
+    </>
+  );
+}
+
+function MoreScreen({
+  displayName,
+  companyName,
+  online,
+  syncing,
+  pendingCount,
+  mobileDrafts,
+  plans,
+  syncIssueSummary,
+  onSync,
+  onRetry,
+  onKeepMobile,
+  onKeepServer,
+  onDiscard,
+  onLogout,
+}: {
+  displayName: string;
+  companyName: string;
+  online: boolean;
+  syncing: boolean;
+  pendingCount: number;
+  mobileDrafts: MobileDraft[];
+  plans: DemandPlan[];
+  syncIssueSummary: {
+    pending: number;
+    conflicts: number;
+    failed: number;
+  };
+  onSync: () => void;
+  onRetry: (draft: MobileDraft) => void;
+  onKeepMobile: (draft: MobileDraft) => void;
+  onKeepServer: (draft: MobileDraft) => void;
+  onDiscard: (draft: MobileDraft) => void;
+  onLogout: () => void;
+}) {
+  return (
+    <>
+      <ScreenTitle
+        eyebrow="MORE"
+        title="App menu"
+        detail="Account, mobile sync and OviCore tools."
+      />
+
+      <section className={styles.profileCard}>
+        <div className={styles.profileAvatar}>
+          {displayName
+            .split(" ")
+            .slice(0, 2)
+            .map((part) => part[0])
+            .join("")
+            .toUpperCase()}
+        </div>
+        <div>
+          <strong>{displayName}</strong>
+          <span>{companyName}</span>
+        </div>
+        <b>›</b>
+      </section>
+
+      <section className={styles.mobileScopeCard}>
+        <div>
+          <span>✓</span>
+          <div>
+            <strong>Broiler mobile workspace</strong>
+            <small>
+              Daily House Sheet entry, Paper Capture, operational insights,
+              alerts and offline sync.
+            </small>
+          </div>
+        </div>
+
+        <div className={styles.mobileScopeItems}>
+          <span>Daily entry</span>
+          <span>Paper capture</span>
+          <span>Insights</span>
+          <span>Notifications</span>
+          <span>Offline sync</span>
+        </div>
+      </section>
+
+      <div className={styles.sectionHeading}>
+        <div>
+          <small>SYNC CONTROL</small>
+          <h2>Mobile sync</h2>
+        </div>
+        <button
+          type="button"
+          onClick={onSync}
+          disabled={!online || syncing}
+        >
+          {syncing ? "Syncing…" : "Sync now"}
+        </button>
+      </div>
+
+      <section className={styles.syncSummary}>
+        <article>
+          <span>Pending</span>
+          <strong>{syncIssueSummary.pending}</strong>
+        </article>
+        <article>
+          <span>Conflicts</span>
+          <strong>{syncIssueSummary.conflicts}</strong>
+        </article>
+        <article>
+          <span>Failed</span>
+          <strong>{syncIssueSummary.failed}</strong>
+        </article>
+      </section>
+
+      <div className={styles.syncIssueList}>
+        {mobileDrafts.length === 0 ? (
+          <div className={styles.syncEmptyState}>
+            <span>✓</span>
+            <strong>No mobile sync issues</strong>
+            <small>
+              All saved entries are confirmed by OviCore.
+            </small>
+          </div>
+        ) : (
+          [...mobileDrafts]
+            .sort((a, b) =>
+              b.saved_at.localeCompare(a.saved_at),
+            )
+            .map((draft) => {
+              const plan = plans.find(
+                (item) =>
+                  item.id ===
+                  draft.payload.placement_plan_id,
+              );
+
+              return (
+                <article
+                  key={draft.local_id}
+                  className={styles.syncIssueCard}
+                >
+                  <div
+                    className={styles.syncIssueHeader}
+                  >
+                    <div>
+                      <strong>
+                        {plan?.farm_name ??
+                          "Unknown farm"}{" "}
+                        ·{" "}
+                        {plan?.shed_name ??
+                          "Unknown shed"}
+                      </strong>
+                      <small>
+                        {formatDate(
+                          draft.payload.entry_date,
+                        )} · {plan ? ageLabel(plan, draft.payload.entry_date) : "Age unavailable"}
+                      </small>
+                    </div>
+                    <SyncBadge status={draft.status} />
+                  </div>
+
+                  <p>
+                    {draft.last_error ??
+                      "Waiting to be confirmed by OviCore."}
+                  </p>
+
+                  <div
+                    className={styles.syncIssueActions}
+                  >
+                    {draft.status === "conflict" ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onKeepMobile(draft)
+                          }
+                        >
+                          Keep mobile
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onKeepServer(draft)
+                          }
+                        >
+                          Keep server
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => onRetry(draft)}
+                        disabled={
+                          !online ||
+                          draft.status === "syncing"
+                        }
+                      >
+                        Retry sync
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className={styles.dangerButton}
+                      onClick={() => onDiscard(draft)}
+                    >
+                      Discard
+                    </button>
+                  </div>
+                </article>
+              );
+            })
+        )}
+      </div>
+
+      <section className={styles.menuCard}>
+        <button
+          type="button"
+          className={styles.logoutButton}
+          onClick={onLogout}
+        >
+          <span>↪</span>
+          <strong>Log out</strong>
+          <b>›</b>
+        </button>
+      </section>
+
+      <p className={styles.versionText}>
+        OviCore Mobile · {pendingCount} pending ·{" "}
+        {online ? "Online" : "Offline"}
+      </p>
+    </>
+  );
+}
+
+function KpiCard({
+  icon,
+  label,
+  value,
+  detail,
+  warning = false,
+}: {
+  icon: string;
+  label: string;
+  value: string;
+  detail: string;
+  warning?: boolean;
+}) {
+  return (
+    <article
+      className={`${styles.kpiCard} ${
+        warning ? styles.kpiWarning : ""
+      }`}
+    >
+      <div className={styles.kpiIcon}>{icon}</div>
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <small>{detail}</small>
+    </article>
+  );
+}
+
+function ScreenTitle({
+  eyebrow,
+  title,
+  detail,
+}: {
+  eyebrow: string;
+  title: string;
+  detail: string;
+}) {
+  return (
+    <div className={styles.screenTitle}>
+      <small>{eyebrow}</small>
+      <h1>{title}</h1>
+      <p>{detail}</p>
+    </div>
+  );
+}
+
+function NumberRow({
+  label,
+  value,
+  suffix,
+  decimal = false,
+  disabled = false,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  suffix?: string;
+  decimal?: boolean;
+  disabled?: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className={styles.numberRow}>
+      <span>{label}</span>
+      <div>
+        <input
+          type="number"
+          inputMode={decimal ? "decimal" : "numeric"}
+          min="0"
+          step={decimal ? "0.01" : "1"}
+          value={value}
+          disabled={disabled}
+          onChange={(event) =>
+            onChange(event.target.value)
+          }
+        />
+        {suffix && <b>{suffix}</b>}
+      </div>
+    </label>
+  );
+}
+
+function NumberBox({
+  label,
+  value,
+  disabled = false,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  disabled?: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className={styles.numberBox}>
+      <span>{label}</span>
+      <input
+        type="number"
+        inputMode="numeric"
+        min="0"
+        step="1"
+        value={value}
+        disabled={disabled}
+        onChange={(event) =>
+          onChange(event.target.value)
+        }
+      />
+    </label>
+  );
+}
+
+function SummaryMetric({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function SyncBadge({
+  status,
+}: {
+  status: MobileDraft["status"];
+}) {
+  return (
+    <span
+      className={`${styles.syncBadge} ${
+        status === "conflict"
+          ? styles.syncBadgeConflict
+          : status === "failed"
+            ? styles.syncBadgeFailed
+            : status === "syncing"
+              ? styles.syncBadgeSyncing
+              : styles.syncBadgePending
+      }`}
+    >
+      {status}
+    </span>
+  );
+}
+
+function NavButton({
+  active,
+  label,
+  icon,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  icon: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={active ? styles.navActive : ""}
+      onClick={onClick}
+    >
+      <span>{icon}</span>
+      <small>{label}</small>
+    </button>
+  );
+}

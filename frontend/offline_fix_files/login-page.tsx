@@ -1,0 +1,892 @@
+"use client";
+
+import { FormEvent, useEffect, useState } from "react";
+import Image from "next/image";
+import { useRouter } from "next/navigation";
+
+const API_BASE = "";
+
+const MOBILE_KEEP_SIGNED_IN_KEY =
+  "ovicore_mobile_keep_signed_in";
+const REMEMBERED_EMAIL_KEY = "ovicore_remembered_email";
+
+type LoginResponse = {
+  message: string;
+  must_change_password: boolean;
+};
+
+type ApiError = {
+  detail?: string;
+};
+
+function getSafeNextPath(): string {
+  if (typeof window === "undefined") {
+    return "/home";
+  }
+
+  const requestedPath = new URLSearchParams(
+    window.location.search,
+  ).get("next");
+
+  if (
+    !requestedPath ||
+    !requestedPath.startsWith("/") ||
+    requestedPath.startsWith("//")
+  ) {
+    return "/home";
+  }
+
+  return requestedPath;
+}
+
+export default function LoginPage() {
+  const router = useRouter();
+
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  const [showPassword, setShowPassword] = useState(false);
+  const [keepSignedIn, setKeepSignedIn] = useState(true);
+  const [isMobileLogin, setIsMobileLogin] = useState(false);
+
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  useEffect(() => {
+    const nextPath = getSafeNextPath();
+    const mobileLogin = nextPath.startsWith("/mobile");
+    const storedPreference = window.localStorage.getItem(
+      MOBILE_KEEP_SIGNED_IN_KEY,
+    );
+    const rememberedEmail = window.localStorage.getItem(
+      REMEMBERED_EMAIL_KEY,
+    );
+
+    setIsMobileLogin(mobileLogin);
+    setKeepSignedIn(
+      mobileLogin ? storedPreference !== "false" : false,
+    );
+
+    if (mobileLogin && rememberedEmail) {
+      setEmail(rememberedEmail);
+    }
+  }, []);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const normalisedEmail = email.trim().toLowerCase();
+
+    if (!normalisedEmail) {
+      setErrorMessage("Please enter your email address.");
+      return;
+    }
+
+    if (!password) {
+      setErrorMessage("Please enter your password.");
+      return;
+    }
+
+    setLoading(true);
+    setErrorMessage("");
+
+    try {
+      const response = await fetch(`${API_BASE}/api/auth/login`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: normalisedEmail,
+          password,
+        }),
+      });
+
+      const data = (await response.json().catch(() => null)) as
+        | LoginResponse
+        | ApiError
+        | null;
+
+      if (!response.ok) {
+        const apiError =
+          data && "detail" in data && typeof data.detail === "string"
+            ? data.detail
+            : "Login failed. Please check your email address and password.";
+
+        throw new Error(apiError);
+      }
+
+      const nextPath = getSafeNextPath();
+      const mobileLogin = nextPath.startsWith("/mobile");
+
+      if (mobileLogin) {
+        window.localStorage.setItem(
+          MOBILE_KEEP_SIGNED_IN_KEY,
+          keepSignedIn ? "true" : "false",
+        );
+
+        if (keepSignedIn) {
+          window.localStorage.setItem(
+            REMEMBERED_EMAIL_KEY,
+            normalisedEmail,
+          );
+        } else {
+          window.localStorage.removeItem(REMEMBERED_EMAIL_KEY);
+          window.localStorage.removeItem(
+            "ovicore_mobile_cached_user",
+          );
+        }
+      } else {
+        window.localStorage.removeItem(REMEMBERED_EMAIL_KEY);
+      }
+
+      const loginData = data as LoginResponse;
+
+      if (loginData.must_change_password) {
+        router.replace(nextPath);
+        router.refresh();
+        return;
+      }
+
+      router.replace(nextPath);
+      router.refresh();
+    } catch (error) {
+      console.error(error);
+
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Login failed. Please try again."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <main className="login-page">
+      <section className="login-brand-panel">
+        <div className="brand-overlay" />
+
+        <div className="brand-orbit brand-orbit-one" />
+        <div className="brand-orbit brand-orbit-two" />
+
+        <div className="brand-content">
+          <div className="brand-mark">
+            <div className="golden-logo-shell">
+              <Image
+                src="/assets/ovicore-icon.png"
+                alt="OviCore golden egg"
+                width={88}
+                height={88}
+                priority
+                className="golden-logo"
+              />
+            </div>
+
+            <div>
+              <div className="brand-name">OviCore</div>
+              <div className="brand-tagline">
+                Integrated poultry intelligence
+              </div>
+            </div>
+          </div>
+
+          <div className="brand-message">
+            <span className="brand-eyebrow">POULTRY MANAGEMENT PLATFORM</span>
+
+            <h1>
+              Clearer decisions.
+              <br />
+              Stronger performance.
+            </h1>
+
+            <p>
+              Bring farms, flocks, production, planning and performance
+              into one secure operational system.
+            </p>
+
+            <div className="brand-capabilities" aria-label="OviCore capabilities">
+              <span>Live farm visibility</span>
+              <span>Performance intelligence</span>
+              <span>Integrated planning</span>
+            </div>
+          </div>
+
+          <div className="brand-footer">
+            <span>OVICORE</span>
+            <small>Poultry management software</small>
+          </div>
+        </div>
+      </section>
+
+      <section className="login-form-panel">
+        <div className="login-card">
+          <div className="mobile-brand">
+            <Image
+              src="/assets/ovicore-icon.png"
+              alt="OviCore golden egg"
+              width={54}
+              height={54}
+              priority
+              className="login-mobile-brand-icon"
+            />
+
+            <div>
+              <div className="brand-name dark">OviCore</div>
+              <div className="brand-tagline dark">
+                Integrated poultry planning
+              </div>
+            </div>
+          </div>
+
+          <div className="login-heading">
+            <span className="secure-pill">Secure login</span>
+
+            <h2>Welcome back</h2>
+
+            <p>
+              Sign in using your OviCore account. You will return to the requested OviCore screen.
+            </p>
+          </div>
+
+          <form onSubmit={handleSubmit}>
+            <div className="field-group">
+              <label htmlFor="email">Email address</label>
+
+              <input
+                id="email"
+                type="email"
+                value={email}
+                autoComplete="email"
+                placeholder="name@company.com.au"
+                disabled={loading}
+                onChange={(event) => {
+                  setEmail(event.target.value);
+                  setErrorMessage("");
+                }}
+              />
+            </div>
+
+            <div className="field-group">
+              <label htmlFor="password">Password</label>
+
+              <div className="password-field">
+                <input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  autoComplete="current-password"
+                  placeholder="Enter your password"
+                  disabled={loading}
+                  onChange={(event) => {
+                    setPassword(event.target.value);
+                    setErrorMessage("");
+                  }}
+                />
+
+                <button
+                  type="button"
+                  className="password-toggle"
+                  disabled={loading}
+                  onClick={() => setShowPassword((current) => !current)}
+                >
+                  {showPassword ? "Hide" : "Show"}
+                </button>
+              </div>
+            </div>
+
+            <div className="login-options">
+              {isMobileLogin ? (
+                <label className="remember-option">
+                  <input
+                    type="checkbox"
+                    checked={keepSignedIn}
+                    disabled={loading}
+                    onChange={(event) =>
+                      setKeepSignedIn(event.target.checked)
+                    }
+                  />
+                  <span>
+                    <strong>Keep me signed in on this device</strong>
+                    <small>
+                      Stay signed in for 14 days and keep offline access available.
+                    </small>
+                  </span>
+                </label>
+              ) : null}
+
+              <button
+                type="button"
+                className="forgot-button"
+                disabled={loading}
+                onClick={() => {
+                  alert(
+                    "Password recovery will be added in the next security step."
+                  );
+                }}
+              >
+                Forgot password?
+              </button>
+            </div>
+
+            {errorMessage ? (
+              <div className="error-message" role="alert">
+                {errorMessage}
+              </div>
+            ) : null}
+
+            <button
+              type="submit"
+              className="login-button"
+              disabled={loading}
+            >
+              {loading ? (
+                <>
+                  <span className="spinner" />
+                  Signing in...
+                </>
+              ) : (
+                "Sign in to OviCore"
+              )}
+            </button>
+          </form>
+
+          <div className="login-support">
+            <strong>Need access?</strong>
+            <span>
+              Contact your Company Admin or OviCore administrator.
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <style jsx>{`
+        * {
+          box-sizing: border-box;
+        }
+
+        .login-page {
+          min-height: 100vh;
+          display: grid;
+          grid-template-columns: minmax(420px, 1.05fr) minmax(440px, 0.95fr);
+          background: #f5f8f6;
+          color: #143429;
+          font-family:
+            Inter,
+            ui-sans-serif,
+            system-ui,
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            sans-serif;
+        }
+
+        .login-brand-panel {
+          position: relative;
+          overflow: hidden;
+          min-height: 100vh;
+          background-color: #064233;
+          background-image: url("/assets/login-poultry-bg.jpg");
+          background-size: cover;
+          background-position: 58% center;
+          background-repeat: no-repeat;
+        }
+
+        .brand-overlay {
+          position: absolute;
+          inset: 0;
+          background-image:
+            linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+          background-size: 52px 52px;
+          mask-image: linear-gradient(to bottom right, #000, transparent 86%);
+        }
+
+        .brand-orbit {
+          position: absolute;
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 50%;
+          pointer-events: none;
+        }
+
+        .brand-orbit-one {
+          width: 470px;
+          height: 470px;
+          top: -190px;
+          right: -160px;
+          box-shadow: 0 0 0 74px rgba(255, 255, 255, 0.018);
+        }
+
+        .brand-orbit-two {
+          width: 310px;
+          height: 310px;
+          bottom: -155px;
+          left: -120px;
+          border-color: rgba(255, 174, 31, 0.14);
+        }
+
+        .brand-content {
+          position: relative;
+          z-index: 1;
+          width: min(100%, 760px);
+          min-height: 100vh;
+          padding: clamp(42px, 6vh, 72px) clamp(44px, 6vw, 86px);
+          display: grid;
+          grid-template-rows: auto 1fr auto;
+          gap: 38px;
+        }
+
+        .brand-mark,
+        .mobile-brand {
+          display: flex;
+          align-items: center;
+          gap: 18px;
+        }
+
+        .golden-logo-shell {
+          width: 92px;
+          height: 92px;
+          display: grid;
+          place-items: center;
+          flex: 0 0 auto;
+          background: transparent;
+        }
+
+        .golden-logo {
+          width: 88px;
+          height: 88px;
+          object-fit: contain;
+          filter: drop-shadow(0 18px 24px rgba(0, 0, 0, 0.24));
+        }
+
+        .login-mobile-brand-icon {
+          width: 54px;
+          height: 54px;
+          object-fit: contain;
+          background: transparent;
+          filter: drop-shadow(0 8px 14px rgba(15, 23, 42, 0.16));
+        }
+
+        .brand-name {
+          color: #ffffff;
+          font-size: 32px;
+          font-weight: 900;
+          line-height: 1;
+          letter-spacing: -0.055em;
+        }
+
+        .brand-name.dark {
+          color: #0a4a36;
+          font-size: 22px;
+        }
+
+        .brand-tagline {
+          margin-top: 7px;
+          color: rgba(235, 255, 244, 0.7);
+          font-size: 12px;
+          font-weight: 700;
+          letter-spacing: 0.04em;
+        }
+
+        .brand-tagline.dark {
+          color: #688078;
+        }
+
+        .brand-message {
+          align-self: center;
+          max-width: 660px;
+          padding: 34px 0 28px;
+        }
+
+        .brand-eyebrow {
+          display: inline-flex;
+          padding: 8px 12px;
+          border: 1px solid rgba(255, 191, 73, 0.28);
+          border-radius: 999px;
+          background: rgba(255, 168, 20, 0.1);
+          color: #ffd48a;
+          font-size: 10px;
+          font-weight: 900;
+          letter-spacing: 0.14em;
+        }
+
+        .brand-message h1 {
+          max-width: 690px;
+          margin: 24px 0 18px;
+          color: #ffffff;
+          font-size: clamp(46px, 5.4vw, 74px);
+          line-height: 0.98;
+          letter-spacing: -0.06em;
+        }
+
+        .brand-message p {
+          max-width: 580px;
+          margin: 0;
+          color: rgba(236, 255, 244, 0.77);
+          font-size: 16px;
+          line-height: 1.65;
+        }
+
+        .brand-capabilities {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 9px;
+          margin-top: 28px;
+        }
+
+        .brand-capabilities span {
+          display: inline-flex;
+          align-items: center;
+          min-height: 34px;
+          padding: 0 12px;
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          border-radius: 999px;
+          background: rgba(255, 255, 255, 0.065);
+          color: rgba(245, 255, 250, 0.86);
+          font-size: 11px;
+          font-weight: 800;
+        }
+
+        .brand-footer {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          color: rgba(233, 255, 242, 0.54);
+        }
+
+        .brand-footer span {
+          color: rgba(255, 255, 255, 0.78);
+          font-size: 10px;
+          font-weight: 950;
+          letter-spacing: 0.16em;
+        }
+
+        .brand-footer small {
+          padding-left: 10px;
+          border-left: 1px solid rgba(255, 255, 255, 0.16);
+          font-size: 11px;
+          font-weight: 650;
+        }
+
+        .login-form-panel {
+          min-height: 100vh;
+          display: grid;
+          place-items: center;
+          padding: 36px;
+          background:
+            radial-gradient(
+              circle at 100% 0%,
+              rgba(12, 105, 70, 0.08),
+              transparent 33%
+            ),
+            #f7faf8;
+        }
+
+        .login-card {
+          width: min(100%, 460px);
+          padding: 34px;
+          border: 1px solid #dce8e1;
+          border-radius: 22px;
+          background: rgba(255, 255, 255, 0.94);
+          box-shadow:
+            0 28px 70px rgba(16, 65, 47, 0.12),
+            0 4px 12px rgba(16, 65, 47, 0.05);
+          backdrop-filter: blur(14px);
+        }
+
+        .mobile-brand {
+          display: none;
+          margin-bottom: 30px;
+        }
+
+        .secure-pill {
+          display: inline-flex;
+          padding: 6px 10px;
+          border-radius: 999px;
+          background: #e8f7ed;
+          color: #147044;
+          font-size: 10px;
+          font-weight: 900;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+
+        .login-heading h2 {
+          margin: 16px 0 5px;
+          color: #123c2e;
+          font-size: 34px;
+          line-height: 1.1;
+          letter-spacing: -0.035em;
+        }
+
+        .login-heading p {
+          margin: 0 0 28px;
+          color: #6d8179;
+          font-size: 14px;
+        }
+
+        .field-group {
+          margin-bottom: 18px;
+        }
+
+        .field-group label {
+          display: block;
+          margin-bottom: 7px;
+          color: #294a3e;
+          font-size: 12px;
+          font-weight: 800;
+        }
+
+        .field-group input {
+          width: 100%;
+          height: 48px;
+          padding: 0 14px;
+          border: 1px solid #cfded6;
+          border-radius: 10px;
+          outline: none;
+          background: #fbfdfc;
+          color: #173f31;
+          font-size: 14px;
+          transition:
+            border-color 120ms ease,
+            box-shadow 120ms ease,
+            background 120ms ease;
+        }
+
+        .field-group input:focus {
+          border-color: #148452;
+          background: #ffffff;
+          box-shadow: 0 0 0 4px rgba(20, 132, 82, 0.1);
+        }
+
+        .field-group input:disabled {
+          cursor: not-allowed;
+          opacity: 0.72;
+        }
+
+        .password-field {
+          position: relative;
+        }
+
+        .password-field input {
+          padding-right: 72px;
+        }
+
+        .password-toggle {
+          position: absolute;
+          top: 50%;
+          right: 9px;
+          transform: translateY(-50%);
+          border: 0;
+          border-radius: 7px;
+          padding: 7px 9px;
+          background: transparent;
+          color: #267653;
+          font-size: 11px;
+          font-weight: 850;
+          cursor: pointer;
+        }
+
+        .password-toggle:hover {
+          background: #edf7f1;
+        }
+
+        .login-options {
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 12px;
+          margin: 3px 0 18px;
+        }
+
+        .remember-option {
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          color: #294a3e;
+          cursor: pointer;
+        }
+
+        .remember-option input {
+          width: 18px;
+          height: 18px;
+          margin: 1px 0 0;
+          accent-color: #0d7a50;
+          flex: 0 0 auto;
+        }
+
+        .remember-option span,
+        .remember-option strong,
+        .remember-option small {
+          display: block;
+        }
+
+        .remember-option strong {
+          font-size: 12px;
+          font-weight: 850;
+        }
+
+        .remember-option small {
+          margin-top: 3px;
+          color: #6d8179;
+          font-size: 10px;
+          line-height: 1.35;
+        }
+
+        .forgot-button {
+          border: 0;
+          padding: 0;
+          background: transparent;
+          color: #177049;
+          font-size: 12px;
+          font-weight: 800;
+          cursor: pointer;
+        }
+
+        .forgot-button:hover {
+          text-decoration: underline;
+        }
+
+        .error-message {
+          margin-bottom: 14px;
+          padding: 11px 12px;
+          border: 1px solid #f2c6c3;
+          border-radius: 9px;
+          background: #fff0ef;
+          color: #9c322c;
+          font-size: 12px;
+          font-weight: 650;
+          line-height: 1.4;
+        }
+
+        .login-button {
+          width: 100%;
+          height: 50px;
+          display: inline-flex;
+          justify-content: center;
+          align-items: center;
+          gap: 9px;
+          border: 0;
+          border-radius: 10px;
+          background: linear-gradient(135deg, #07563d, #0d7a50);
+          color: #ffffff;
+          font-size: 14px;
+          font-weight: 900;
+          cursor: pointer;
+          box-shadow: 0 13px 24px rgba(9, 105, 69, 0.18);
+          transition:
+            transform 120ms ease,
+            box-shadow 120ms ease,
+            opacity 120ms ease;
+        }
+
+        .login-button:hover:not(:disabled) {
+          transform: translateY(-1px);
+          box-shadow: 0 15px 28px rgba(9, 105, 69, 0.24);
+        }
+
+        .login-button:disabled {
+          cursor: wait;
+          opacity: 0.72;
+        }
+
+        .spinner {
+          width: 15px;
+          height: 15px;
+          border: 2px solid rgba(255, 255, 255, 0.45);
+          border-top-color: #ffffff;
+          border-radius: 50%;
+          animation: spin 700ms linear infinite;
+        }
+
+        .login-support {
+          margin-top: 22px;
+          padding-top: 20px;
+          border-top: 1px solid #e7eeea;
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+          color: #6b8077;
+          font-size: 11px;
+          text-align: center;
+        }
+
+        .login-support strong {
+          color: #35584a;
+        }
+
+        @keyframes spin {
+          to {
+            transform: rotate(360deg);
+          }
+        }
+
+        @media (max-width: 1280px) and (min-width: 901px) {
+          .login-brand-panel {
+            background-position: 62% center;
+          }
+        }
+
+        @media (max-width: 1050px) and (min-width: 901px) {
+          .login-brand-panel {
+            background-position: 66% center;
+          }
+
+          .brand-content {
+            padding-left: 38px;
+            padding-right: 38px;
+          }
+
+          .brand-message h1 {
+            font-size: clamp(42px, 5vw, 58px);
+          }
+        }
+
+        @media (max-width: 900px) {
+          .login-page {
+            grid-template-columns: 1fr;
+          }
+
+          .login-brand-panel {
+            display: none;
+          }
+
+          .login-form-panel {
+            padding: 22px;
+          }
+
+          .mobile-brand {
+            display: flex;
+          }
+        }
+
+        @media (max-width: 520px) {
+          .login-form-panel {
+            padding: 0;
+            align-items: stretch;
+          }
+
+          .login-card {
+            width: 100%;
+            min-height: 100vh;
+            padding: 28px 22px;
+            border: 0;
+            border-radius: 0;
+            box-shadow: none;
+          }
+
+          .login-heading h2 {
+            font-size: 30px;
+          }
+
+          .login-options {
+            align-items: flex-start;
+          }
+        }
+      `}</style>
+    </main>
+  );
+}
