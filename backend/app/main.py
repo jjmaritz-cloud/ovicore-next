@@ -7049,6 +7049,19 @@ def list_commercial_layer_performance(
                     else None
                 ),
                 feed_g_bird_day=feed_g_bird_day,
+                # Water is stored in litres on the Daily House Card.
+                # Expose both the recorded total and the calculated mL/bird/day.
+                # Do not turn a missing entry into a false zero reading.
+                water_litres=(
+                    float(entry.water_litres)
+                    if entry.water_litres is not None
+                    else None
+                ),
+                water_ml_bird_day=(
+                    round(float(entry.water_litres) * 1000 / closing_birds, 3)
+                    if entry.water_litres is not None and closing_birds > 0
+                    else None
+                ),
                 eggs_per_bird_cumulative=eggs_per_bird_cumulative,
                 bodyweight_g=(
                     float(entry.bodyweight_g)
