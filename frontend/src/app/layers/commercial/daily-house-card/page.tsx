@@ -191,49 +191,48 @@ function displayDateToIso(value: string) {
   return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
 }
 
+// Date-only flock records must not be interpreted in the browser's timezone.
+// UTC calendar arithmetic avoids one-day shifts at daylight-saving transitions.
+function dateOnlyUtc(isoDate: string): number | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate.slice(0, 10));
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const utc = Date.UTC(year, month - 1, day);
+  const checked = new Date(utc);
+  if (
+    checked.getUTCFullYear() !== year ||
+    checked.getUTCMonth() !== month - 1 ||
+    checked.getUTCDate() !== day
+  ) return null;
+  return utc;
+}
+
 function addDays(isoDate: string, days: number) {
-  const value = new Date(`${isoDate}T00:00:00`);
-
-  if (Number.isNaN(value.getTime())) {
-    return "";
-  }
-
-  value.setDate(value.getDate() + days);
-
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, "0");
-  const day = String(value.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
+  const start = dateOnlyUtc(isoDate);
+  if (start === null) return "";
+  return new Date(start + days * 86400000).toISOString().slice(0, 10);
 }
 
 function diffDays(startIso: string, endIso: string) {
-  const start = new Date(`${startIso}T00:00:00`);
-  const end = new Date(`${endIso}T00:00:00`);
-
-  if (
-    Number.isNaN(start.getTime()) ||
-    Number.isNaN(end.getTime())
-  ) {
-    return 0;
-  }
-
-  return Math.max(
-    0,
-    Math.floor(
-      (end.getTime() - start.getTime()) /
-        86400000,
-    ),
-  );
+  const start = dateOnlyUtc(startIso);
+  const end = dateOnlyUtc(endIso);
+  if (start === null || end === null) return 0;
+  return Math.max(0, Math.round((end - start) / 86400000));
 }
 
+// Commercial Layers currently operates on Australian flock dates. Explicitly
+// use Sydney calendar time, not UTC or the device's timezone, to include today.
 function todayIso() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
+  const parts = new Intl.DateTimeFormat("en-AU", {
+    timeZone: "Australia/Sydney",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const part = (type: string) => parts.find(item => item.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
 }
 
 function valueToNumber(
