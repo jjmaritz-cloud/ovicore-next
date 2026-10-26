@@ -181,6 +181,39 @@ function MiniChart({ values, colour=palette.green }:{values: Array<number|null>;
   const pts=entries.map(e=>`${10+e.i/Math.max(values.length-1,1)*380},${95-(e.v-min)/spread*80}`).join(" ");
   return <svg viewBox="0 0 400 112" preserveAspectRatio="none" style={{width:"100%",height:130}} aria-label="Recent performance trend"><line x1="10" y1="95" x2="390" y2="95" stroke="#e3ebe7"/><polyline points={pts} fill="none" stroke={colour} strokeWidth="2.7" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" /></svg>;
 }
+// Compact, marker-free KPI sparklines. Missing observations break the line rather
+// than being plotted as zero; this matters for intermittent weight/grade entries.
+function KpiSparkline({values, label, lowerIsBetter=false, cumulative=false, sparse=false}:{values:Array<number|null>;label:string;lowerIsBetter?:boolean;cumulative?:boolean;sparse?:boolean}) {
+  const points = values.map((v,i)=>({value:v,index:i})).filter((p):p is {value:number;index:number}=>valid(p.value));
+  if(points.length<2) return <div style={{height:27,display:"flex",alignItems:"center",fontSize:9,color:"#93a49b"}}>No recent trend</div>;
+  const all = points.map(p=>p.value), min=Math.min(...all), max=Math.max(...all);
+  const pad=Math.max((max-min)*0.22,Math.abs(max)*0.008,0.001);
+  const low=min-pad, high=max+pad;
+  const x=(i:number)=>2+i/Math.max(values.length-1,1)*116;
+  const y=(v:number)=>25-(v-low)/(high-low)*22;
+  // Only join adjacent valid records; never bridge a data gap.
+  const segments:string[]=[];
+  let segment:string[]=[];
+  values.forEach((v,i)=>{
+    if(valid(v)) segment.push(`${x(i).toFixed(1)},${y(v).toFixed(1)}`);
+    else { if(segment.length>=2) segments.push(segment.join(" ")); segment=[]; }
+  });
+  if(segment.length>=2) segments.push(segment.join(" "));
+  // Intermittent bodyweight measurements may be joined with a dashed line
+  // to distinguish sampling intervals from missing daily observations.
+  if(sparse && points.length>=2) segments.splice(0,segments.length,points.map(p=>`${x(p.index).toFixed(1)},${y(p.value).toFixed(1)}`).join(" "));
+  const change=points[points.length-1].value-points[0].value;
+  const meaningful=Math.abs(change)>Math.max(Math.abs(points[0].value)*0.01,0.0001);
+  const adverse=meaningful && (lowerIsBetter?change>0:change<0);
+  // Cumulative series naturally rise; a rising mortality value isn't a
+  // meaningful sparkline alert without its daily-rate context.
+  const colour=cumulative?"#557e88":!meaningful?"#64877a":adverse?"#c16a42":"#188266";
+  return <svg viewBox="0 0 120 29" preserveAspectRatio="none" role="img" aria-label={`${label} over the last 14 records; ${points.length} recorded values`} style={{width:"100%",height:29,display:"block",marginTop:5}}>
+    <line x1="1" x2="119" y1="27" y2="27" stroke="#edf2ef" strokeWidth="1"/>
+    {segments.map((polyline,i)=><polyline key={i} points={polyline} fill="none" stroke={colour} strokeWidth="1.8" strokeDasharray={sparse?"4 3":undefined} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke"/>)}
+  </svg>;
+}
+
 function CommercialIntelligenceContent(){
   const params=useSearchParams(); const {currentUser,loadingUser,userError}=useCurrentUser();
   const companyId=useMemo(()=>{ const id=Number(params.get("company_id")); return currentUser?.is_global_admin ? Number.isInteger(id)&&id>0?id:null : currentUser?.company_id ?? null; },[params,currentUser?.company_id,currentUser?.is_global_admin]);
@@ -209,6 +242,18 @@ function CommercialIntelligenceContent(){
   const latest=focus?.latest;
   const series=focus?.rows.slice(-30)??[];
   const latestSeven = focus?.rows.slice(-7) ?? [];
+  const sparkRows = focus?.rows.slice(-14) ?? [];
+  const sparkValues: Record<string, Array<number|null>> = {
+    production: sparkRows.map(r=>r.production_pct??null),
+    mortality: sparkRows.map(r=>r.cumulative_mortality_pct??null),
+    feed: sparkRows.map(feed),
+    fcr: sparkRows.map((_,i)=>periodFcr(focus!.rows.slice(Math.max(0,focus!.rows.length-sparkRows.length+i-6),focus!.rows.length-sparkRows.length+i+1))),
+    water: sparkRows.map(water),
+    quality: sparkRows.map(saleable),
+    bodyweight: sparkRows.map(r=>r.bodyweight_g??null),
+    eggs: sparkRows.map(r=>r.eggs_per_bird_cumulative??null),
+  };
+
   const fcrSevenDay = periodFcr(latestSeven);
   const fcrSevenCoverage = latestSeven.filter(r => fcrPerDozen(r) !== null).length;
   // The FCR trend is a rolling, egg-weighted 7-record FCR, with at least three paired records.
@@ -221,15 +266,15 @@ function CommercialIntelligenceContent(){
     {loading?<div style={card}>Loading Commercial Layers intelligence…</div>:!focus?<div style={card}>No flocks with daily performance records are available. Enter or import Daily House Card history first.</div>:<>
       <div style={{...card,display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",background:"#f5fbf8"}}><div><div style={{...muted,textTransform:"uppercase",fontWeight:900}}>Today's flock story · latest recorded {latest?.entry_date}</div><h2 style={{margin:"4px 0",color:"#103f32",fontSize:19}}>{focus.flock.farm_name} · {focus.flock.shed_name}</h2><div style={muted}>{focus.flock.flock_code} · {fmt(latest?.age_days,0)} days / {fmt(valid(latest?.age_days)?latest.age_days/7:null,1)} weeks · {focus.flock.status??"Status unknown"}</div></div><div style={{fontWeight:900,color:focus.signals.some(s=>s.level==="high")?palette.red:focus.signals.length?palette.amber:palette.green}}>{focus.signals.some(s=>s.level==="high")?"ACTION":focus.signals.length?"WATCH":focus.welfare==="insufficient"?"INSUFFICIENT DATA":"NO CURRENT FLAGS"}</div></div>
       <div className="li-kpis">{[
-        ["Hen-day production",fmt(latest?.production_pct,1)+"%",valid(latest?.production_standard_pct)?`Std ${fmt(latest.production_standard_pct)}%`:"No age standard"],
-        ["Cumulative mortality",fmt(latest?.cumulative_mortality_pct,2)+"%","Cumulative flock position"],
-        ["Feed per bird",fmt(feed(latest),1)+" g","Daily feed intake"],
-        ["FCR · 7 records",valid(fcrSevenDay)?`${fmt(fcrSevenDay,2)} kg/doz`:"—",`${fcrSevenCoverage}/${latestSeven.length} days with feed and production data`],
-        ["Water per bird",fmt(water(latest),0)+" mL","Daily water intake"],
-        ["Saleable egg rate",fmt(saleable(latest),1)+"%","Requires egg grade data"],
-        ["Bodyweight",fmt(latest?.bodyweight_g,0)+" g",valid(latest?.bodyweight_standard_g)?`Std ${fmt(latest.bodyweight_standard_g,0)} g`:"No age standard"],
-        ["Eggs per bird",fmt(latest?.eggs_per_bird_cumulative,1),"Cumulative"],
-      ].map(([name,value,sub])=><div key={name} style={card}><div style={{...muted,fontSize:10,fontWeight:800}}>{name}</div><div style={{fontSize:19,fontWeight:900,color:"#103f32",margin:"5px 0"}}>{value}</div><div style={{...muted,fontSize:10}}>{sub}</div></div>)}</div>
+        {key:"production",name:"Hen-day production",value:valid(latest?.production_pct)?`${fmt(latest.production_pct,1)}%`:"—",sub:valid(latest?.production_standard_pct)?`Std ${fmt(latest.production_standard_pct)}%`:"No age standard"},
+        {key:"mortality",name:"Cumulative mortality",value:valid(latest?.cumulative_mortality_pct)?`${fmt(latest.cumulative_mortality_pct,2)}%`:"—",sub:"Cumulative flock position",cumulative:true},
+        {key:"feed",name:"Feed per bird",value:valid(feed(latest))?`${fmt(feed(latest),1)} g`:"—",sub:"Daily feed intake"},
+        {key:"fcr",name:"FCR · 7 records",value:valid(fcrSevenDay)?`${fmt(fcrSevenDay,2)} kg/doz`:"—",sub:`${fcrSevenCoverage}/${latestSeven.length} days with feed and production data`,lowerIsBetter:true},
+        {key:"water",name:"Water per bird",value:valid(water(latest))?`${fmt(water(latest),0)} mL`:"—",sub:"Daily water intake"},
+        {key:"quality",name:"Saleable egg rate",value:valid(saleable(latest))?`${fmt(saleable(latest),1)}%`:"—",sub:"Requires egg grade data"},
+        {key:"bodyweight",name:"Bodyweight",value:valid(latest?.bodyweight_g)?`${fmt(latest.bodyweight_g,0)} g`:"—",sub:valid(latest?.bodyweight_standard_g)?`Std ${fmt(latest.bodyweight_standard_g,0)} g`:"No age standard"},
+        {key:"eggs",name:"Eggs per bird",value:fmt(latest?.eggs_per_bird_cumulative,1),sub:"Cumulative",cumulative:true},
+      ].map(k=><div key={k.key} style={{...card,padding:"10px 11px"}}><div style={{...muted,fontSize:10,fontWeight:800}}>{k.name}</div><div style={{fontSize:19,fontWeight:900,color:"#103f32",margin:"4px 0"}}>{k.value}</div><div style={{...muted,fontSize:10,minHeight:13}}>{k.sub}</div><KpiSparkline label={k.name} values={sparkValues[k.key]} lowerIsBetter={k.lowerIsBetter} cumulative={k.cumulative} sparse={k.key==="bodyweight"}/></div>)}</div>
       <section style={{...card,borderLeft:`4px solid ${focus.welfare==="high"?palette.red:focus.welfare==="attention"||focus.welfare==="watch"?palette.amber:palette.green}`}}>
         <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",flexWrap:"wrap"}}>
           <div><strong>Layer Welfare Early Warning · deterioration cascade</strong><div style={{...muted,marginTop:3}}>Fixed seven-day pre-event baseline · last ten calendar days · preliminary screening thresholds</div></div>
