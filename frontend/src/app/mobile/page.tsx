@@ -126,9 +126,10 @@ type CompanyOption = {
   company_name?: string;
   enable_broilers?: boolean;
   enable_breeders?: boolean;
+  enable_layers?: boolean;
 };
 
-type MobileModule = "broilers" | "breeders";
+type MobileModule = "broilers" | "breeders" | "layers";
 
 type DemandPlan = {
   id: number;
@@ -1085,8 +1086,8 @@ export default function MobileBroilerApp() {
         MOBILE_SELECTED_MODULE_KEY,
       );
 
-      return stored === "broilers" || stored === "breeders"
-        ? stored
+      return stored === "broilers" || stored === "breeders" || stored === "layers"
+        ? (stored as MobileModule)
         : null;
     });
   const [loadingModules, setLoadingModules] = useState(false);
@@ -1267,7 +1268,8 @@ export default function MobileBroilerApp() {
       const operatingCompanies = companyData.filter(
         (company) =>
           company.enable_broilers !== false ||
-          company.enable_breeders === true,
+          company.enable_breeders === true ||
+          company.enable_layers === true,
       );
 
       setCompanies(operatingCompanies);
@@ -1315,6 +1317,10 @@ export default function MobileBroilerApp() {
         if (selectedCompany?.enable_breeders === true) {
           modules.push("breeders");
         }
+
+        if (selectedCompany?.enable_layers === true) {
+          modules.push("layers");
+        }
       } else {
         const response = await authenticatedFetch(
           `${API_BASE}/api/access/my-modules`,
@@ -1330,7 +1336,7 @@ export default function MobileBroilerApp() {
 
         modules = data.filter(
           (module): module is MobileModule =>
-            module === "broilers" || module === "breeders",
+            module === "broilers" || module === "breeders" || module === "layers",
         );
       }
 
@@ -2378,6 +2384,23 @@ export default function MobileBroilerApp() {
                   <b>›</b>
                 </button>
               )}
+
+              {availableModules.includes("layers") && (
+                <button
+                  type="button"
+                  className={styles.moduleCard}
+                  onClick={() => selectModule("layers")}
+                >
+                  <span className={styles.moduleIcon}>🥚</span>
+                  <div>
+                    <strong>Commercial Layers</strong>
+                    <small>
+                      Flocks, Daily House Card, performance and farm intelligence
+                    </small>
+                  </div>
+                  <b>›</b>
+                </button>
+              )}
             </div>
           )}
 
@@ -2419,6 +2442,71 @@ export default function MobileBroilerApp() {
     selectedCompany?.company_name?.trim() ||
     currentUser?.company_name?.trim() ||
     "OviCore Operations";
+
+  if (selectedModule === "layers") {
+    return (
+      <main className={styles.app}>
+        <header className={styles.appHeader}>
+          <div className={styles.brand}>
+            <Image
+              src="/assets/ovicore-icon.png"
+              alt="OviCore"
+              width={42}
+              height={42}
+              priority
+            />
+            <div>
+              <strong>OviCore</strong>
+              <small>{companyName} · Commercial Layers</small>
+            </div>
+          </div>
+
+          <div className={styles.headerActions}>
+            <button
+              type="button"
+              className={styles.notificationButton}
+              aria-label="Change module"
+              onClick={changeModule}
+            >
+              ⇄
+            </button>
+          </div>
+        </header>
+
+        <section className={`${styles.screen} ${styles.breederScreen}`}>
+          <ScreenTitle
+            eyebrow="COMMERCIAL LAYERS"
+            title="Layer workspace"
+            detail="Daily production entry, flock position, performance and on-farm intelligence."
+          />
+
+          <div className={styles.moduleGrid}>
+            <Link
+              href="/mobile/layers/commercial"
+              className={styles.moduleCard}
+            >
+              <span className={styles.moduleIcon}>▦</span>
+              <div>
+                <strong>Commercial Layers</strong>
+                <small>
+                  Open the complete mobile Commercial Layers workspace
+                </small>
+              </div>
+              <b>›</b>
+            </Link>
+          </div>
+
+          <button
+            type="button"
+            className={`${styles.secondaryButton} ${styles.compactSecondaryButton}`}
+            onClick={changeModule}
+          >
+            Change module
+          </button>
+        </section>
+      </main>
+    );
+  }
 
   if (selectedModule === "breeders") {
     return (
