@@ -54,6 +54,10 @@ export const layersMenu: SidebarMenuConfig = {
           label: "Performance",
           href: "/layers/commercial/performance",
         },
+        {
+          label: "Farm Intelligence",
+          href: "/layers/commercial/intelligence",
+        },
       ],
     },
   ],
