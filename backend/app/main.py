@@ -19,6 +19,7 @@ from app.routers import hatchery
 from app.routers import access
 from app.routers import auth
 from app.routers import standards
+from app.routers import flock_purge
 from app.routers import daily_data_import
 from app.routers.standards import PerformanceStandard
 from app.routers.auth import get_current_user
@@ -84,6 +85,7 @@ app.include_router(access.router)
 app.include_router(auth.router)
 app.include_router(standards.router)
 app.include_router(daily_data_import.router)
+app.include_router(flock_purge.router)
 
 origins = [
     "http://localhost:3000",

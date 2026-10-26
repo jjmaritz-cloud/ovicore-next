@@ -90,6 +90,11 @@ export const adminMenu: SidebarMenuConfig = {
           label: "Data Import",
           href: "/admin/data-import",
         },
+        {
+          label: "Flock Purge",
+          href: "/admin/flock-purge",
+          allowedRoles: ["global_admin"],
+        },
       ],
     },
   ],
