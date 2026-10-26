@@ -2040,7 +2040,7 @@ function ProfessionalLayerChart({
                   points={standardLinePoints}
                   fill="none"
                   stroke={metric.colour}
-                  strokeWidth="1.8"
+                  strokeWidth="1.4"
                   strokeDasharray="7 6"
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -2053,7 +2053,7 @@ function ProfessionalLayerChart({
                   points={actualPoints}
                   fill="none"
                   stroke={metric.colour}
-                  strokeWidth="2.8"
+                  strokeWidth="2.0"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 />
@@ -2185,7 +2185,7 @@ function ProfessionalLayerChart({
         }
 
         .hover-banner {
-          min-height: 34px;
+          min-height: 39px;
           display: flex;
           align-items: center;
           gap: 10px;
@@ -2205,7 +2205,7 @@ function ProfessionalLayerChart({
 
         .hover-banner-placeholder {
           color: #8a9891;
-          font-size: 9px;
+          font-size: 11px;
           font-weight: 700;
         }
 
@@ -2219,13 +2219,13 @@ function ProfessionalLayerChart({
 
         .hover-banner-age strong {
           color: #173f2d;
-          font-size: 10px;
+          font-size: 12px;
           line-height: 1.1;
         }
 
         .hover-banner-age span {
           color: #7a8981;
-          font-size: 8px;
+          font-size: 10px;
           line-height: 1.1;
         }
 
@@ -2233,9 +2233,9 @@ function ProfessionalLayerChart({
           min-width: 0;
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: 10px;
           flex: 1 1 auto;
-          overflow: hidden;
+          overflow-x: auto;
         }
 
         .hover-metric {
@@ -2255,19 +2255,19 @@ function ProfessionalLayerChart({
 
         .hover-metric b {
           color: #486157;
-          font-size: 8px;
+          font-size: 10px;
         }
 
         .hover-metric em {
           color: #173f2d;
-          font-size: 9px;
+          font-size: 11px;
           font-style: normal;
           font-weight: 850;
         }
 
         .hover-metric small {
           color: #84928b;
-          font-size: 7px;
+          font-size: 9px;
         }
 
         .hover-metric .variance {
@@ -2341,12 +2341,12 @@ function ProfessionalLayerChart({
           display: inline-flex;
           align-items: center;
           gap: 5px;
-          padding: 4px 7px;
+          padding: 5px 8px;
           border: 1px solid #e0e9e4;
           border-radius: 999px;
           background: #ffffff;
           color: #607269;
-          font-size: 9px;
+          font-size: 11px;
           font-weight: 750;
           cursor: pointer;
         }
