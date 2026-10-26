@@ -1146,7 +1146,7 @@ function CommercialLayersDailyHouseCardContent() {
         <table>
           <thead>
             <tr>
-              <th colSpan={2}>Day</th>
+              <th colSpan={3}>Day</th>
               <th colSpan={6}>Bird Count</th>
               <th colSpan={4}>Daily Inputs</th>
               <th colSpan={10}>Egg Production</th>
@@ -1156,7 +1156,8 @@ function CommercialLayersDailyHouseCardContent() {
             <tr>
               {[
                 "Date",
-                "Age",
+                "Age (Days)",
+                "Age (Weeks)",
                 "Opening",
                 "Mortality",
                 "Culls",
@@ -1189,13 +1190,13 @@ function CommercialLayersDailyHouseCardContent() {
           <tbody>
             {loading || loadingUser ? (
               <tr>
-                <td colSpan={23}>
+                <td colSpan={24}>
                   Loading Daily House Card...
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={23}>
+                <td colSpan={24}>
                   No active Commercial Layer flock selected.
                 </td>
               </tr>
@@ -1204,6 +1205,8 @@ function CommercialLayersDailyHouseCardContent() {
                 <tr key={row.local_key}>
                   <td>{row.entry_date}</td>
                   <td>{row.age_days}</td>
+                  {/* Display-only flock age in decimal weeks; age_days remains the source of truth. */}
+                  <td data-cell="calculated">{formatNumber(row.age_days / 7, 2)}</td>
 
                   <td data-cell="calculated">
                     {formatNumber(row.opening_birds)}
