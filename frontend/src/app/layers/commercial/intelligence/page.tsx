@@ -30,21 +30,38 @@ const water = (r: RecordRow | undefined) => !r ? null : valid(r.water_ml_bird_da
 const feed = (r: RecordRow | undefined) => !r ? null : valid(r.feed_g_bird_day) ? r.feed_g_bird_day : valid(r.feed_kg) && valid(r.closing_birds) && r.closing_birds > 0 ? r.feed_kg*1000/r.closing_birds : null;
 const dailyMort = (r: RecordRow) => valid(r.opening_birds) && r.opening_birds > 0 && (valid(r.mortality_birds) || valid(r.cull_birds)) ? ((r.mortality_birds ?? 0)+(r.cull_birds ?? 0))/r.opening_birds*100 : null;
 const saleable = (r: RecordRow | undefined) => !r ? null : valid(r.saleable_eggs) && valid(r.total_eggs) && r.total_eggs > 0 ? r.saleable_eggs/r.total_eggs*100 : null;
-// Layer feed conversion: kg of feed consumed per dozen total eggs produced.
-// Never treat missing feed/egg values as zero or use an average of daily ratios.
-const fcrPerDozen = (r: RecordRow | undefined) =>
-  r && valid(r.feed_kg) && r.feed_kg >= 0 && valid(r.total_eggs) && r.total_eggs > 0
-    ? (r.feed_kg * 12) / r.total_eggs
-    : null;
-
-// Aggregate matched feed-and-egg days; require at least three valid days in a 7-day window.
-// This is a production (total egg) measure, not saleable-egg FCR or egg-mass FCR.
+// Layer FCR is kilograms of feed per dozen TOTAL eggs.
+// Prefer matching raw daily totals. Where the performance API exposes only
+// calculated values, use feed g/bird/day and hen-day production % instead.
+// Both must cover the same day and use a consistent bird-number basis.
+const fcrInputs = (r: RecordRow): { feedKg: number; eggs: number } | null => {
+  if (valid(r.feed_kg) && r.feed_kg >= 0 && valid(r.total_eggs) && r.total_eggs > 0) {
+    return { feedKg: r.feed_kg, eggs: r.total_eggs };
+  }
+  const feedG = feed(r);
+  const henDay = r.production_pct;
+  if (!valid(feedG) || feedG < 0 || !valid(henDay) || henDay <= 0) return null;
+  // Effective daily birds weight period totals if API provides counts.
+  // Otherwise one representative bird/day gives the same daily FCR ratio.
+  const birds = valid(r.opening_birds) && r.opening_birds > 0 &&
+    valid(r.closing_birds) && r.closing_birds > 0
+      ? (r.opening_birds + r.closing_birds) / 2
+      : valid(r.closing_birds) && r.closing_birds > 0 ? r.closing_birds
+      : valid(r.opening_birds) && r.opening_birds > 0 ? r.opening_birds : 1;
+  return { feedKg: feedG * birds / 1000, eggs: henDay * birds / 100 };
+};
+const fcrPerDozen = (r: RecordRow | undefined) => {
+  const data = r ? fcrInputs(r) : null;
+  return data && data.eggs > 0 ? data.feedKg * 12 / data.eggs : null;
+};
+// A period FCR is the ratio of summed matched feed and egg equivalents;
+// do not average daily FCRs or treat missing values as zero.
 const periodFcr = (rows: RecordRow[], minValidDays = 3) => {
-  const paired = rows.filter(r => fcrPerDozen(r) !== null);
+  const paired = rows.map(fcrInputs).filter((v): v is {feedKg:number; eggs:number} => v !== null);
   if (paired.length < minValidDays) return null;
-  const feedKg = paired.reduce((sum, row) => sum + row.feed_kg!, 0);
-  const totalEggs = paired.reduce((sum, row) => sum + row.total_eggs!, 0);
-  return totalEggs > 0 ? (feedKg * 12) / totalEggs : null;
+  const totalFeed = paired.reduce((sum, r) => sum + r.feedKg, 0);
+  const totalEggs = paired.reduce((sum, r) => sum + r.eggs, 0);
+  return totalEggs > 0 ? totalFeed * 12 / totalEggs : null;
 };
 const currentWindow = (rows: RecordRow[], n: number) => rows.slice(-n);
 
@@ -129,7 +146,7 @@ function CommercialIntelligenceContent(){
         ["Hen-day production",fmt(latest?.production_pct,1)+"%",valid(latest?.production_standard_pct)?`Std ${fmt(latest.production_standard_pct)}%`:"No age standard"],
         ["Cumulative mortality",fmt(latest?.cumulative_mortality_pct,2)+"%","Cumulative flock position"],
         ["Feed per bird",fmt(feed(latest),1)+" g","Daily feed intake"],
-        ["FCR · 7 records",valid(fcrSevenDay)?`${fmt(fcrSevenDay,2)} kg/doz`:"—",`${fcrSevenCoverage}/7 days with feed and egg data`],
+        ["FCR · 7 records",valid(fcrSevenDay)?`${fmt(fcrSevenDay,2)} kg/doz`:"—",`${fcrSevenCoverage}/${latestSeven.length} days with feed and production data`],
         ["Water per bird",fmt(water(latest),0)+" mL","Daily water intake"],
         ["Saleable egg rate",fmt(saleable(latest),1)+"%","Requires egg grade data"],
         ["Bodyweight",fmt(latest?.bodyweight_g,0)+" g",valid(latest?.bodyweight_standard_g)?`Std ${fmt(latest.bodyweight_standard_g,0)} g`:"No age standard"],
