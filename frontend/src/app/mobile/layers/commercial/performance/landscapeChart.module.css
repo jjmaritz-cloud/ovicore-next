@@ -1,0 +1,38 @@
+.page { min-width: 0; }
+.landscapeChart { margin: 18px 0; }
+.chartPanel { background: white; border: 1px solid #dbe7e1; border-radius: 18px; padding: 16px; box-shadow: 0 6px 24px #123e2910; color: #123d31; }
+.chartHead { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.chartHead h2 { font-size: clamp(18px, 2vw, 24px); line-height: 1.2; margin: 2px 0; }
+.chartHead p { margin: 2px 0 0; font-size: 12px; color: #71847d; }
+.chartHead select { border: 1px solid #dce6e1; border-radius: 9px; padding: 8px; max-width: 120px; background: white; font-size: 12px; }
+.chartEyebrow { color: #18815e; font-size: 10px; font-weight: 800; letter-spacing: .09em; }
+.plotWrap { margin-top: 12px; min-width: 0; position: relative; }
+.plot { width: 100%; height: clamp(180px, 35vw, 390px); touch-action: pan-y; display: block; }
+.empty { display: grid; place-items: center; color: #71847d; min-height: 170px; text-align: center; padding: 15px; }
+.inspector { background: #10372f; color: white; padding: 8px 11px; border-radius: 10px; font-size: 11px; }
+.inspector > strong { display: block; margin-bottom: 5px; }
+.inspector > div { display: flex; flex-wrap: wrap; gap: 5px 14px; }
+.inspector span { white-space: nowrap; }
+.inspector i { display: inline-block; width: 8px; height: 8px; margin-right: 5px; border-radius: 50%; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.legend button { display: flex; align-items: center; gap: 6px; background: #f2f8f5; color: #284d40; font-size: 11px; border-radius: 100px; border: 1px solid #d8e6df; padding: 6px 9px; cursor: pointer; }
+.legend button span { width: 14px; height: 4px; display: inline-block; border-radius: 4px; }
+.legend .legendOff { opacity: .4; background: #fff; text-decoration: line-through; }
+.legend button:focus-visible { outline: 2px solid #16805a; outline-offset: 2px; }
+.scaleNote { margin: 10px 0 0; font-size: 10px; line-height: 1.4; color: #71847d; }
+@media (orientation: landscape) and (max-height: 650px) and (pointer: coarse) {
+  .page > :not(:has(.landscapeChart)) { display: none !important; }
+  .page > div:has(.landscapeChart) { display: contents !important; }
+  .page > div:has(.landscapeChart) > :not(.landscapeChart) { display: none !important; }
+  .landscapeChart { position: fixed; inset: 0; margin: 0; z-index: 9999; background: #f8fbfa; padding: max(6px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(5px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); overflow: auto; }
+  .chartPanel { padding: 8px 12px; border: 0; box-shadow: none; border-radius: 0; min-height: 100%; }
+  .chartHead p, .chartEyebrow, .scaleNote { display: none; }
+  .chartHead h2 { font-size: 17px; }
+  .plotWrap { margin-top: 2px; }
+  .plot { height: clamp(160px, 54dvh, 330px); touch-action: none; }
+  .inspector { padding: 4px 8px; font-size: 10px; }
+  .inspector > strong { display: inline; margin-right: 8px; }
+  .inspector > div { display: inline-flex; }
+  .legend { margin-top: 5px; gap: 4px; }
+  .legend button { padding: 4px 7px; font-size: 10px; }
+}
