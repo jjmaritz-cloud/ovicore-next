@@ -1328,6 +1328,7 @@ function ProfessionalLayerChart({
   expanded?: boolean;
 }) {
   const [hoverX, setHoverX] = useState<number | null>(null);
+  const [openedCommentKey, setOpenedCommentKey] = useState<string | null>(null);
 
   // Each secondary metric can be vertically offset for visual comparison.
   // This never changes the underlying values. Double-clicking its scale resets it.
@@ -1522,38 +1523,32 @@ function ProfessionalLayerChart({
     nearestPoint?.x ??
     nearestStandardPoint?.x ??
     null;
-  // Daily mode shows the actual Daily Data Entry comment.
-  // Weekly mode never merges/rephrases daily comments: it only flags that
-  // one or more comments exist within the hovered week.
-  const hoverComment = useMemo(() => {
-    if (!nearestPoint) return null;
-
-    if (showDaily) {
-      return dailyComment(nearestPoint.row);
-    }
-
-    const hoveredWeek = Math.floor(
-      nearestPoint.row.age_weeks ??
-        nearestPoint.x,
-    );
-
-    const hasDailyCommentInWeek = rows.some((row) => {
-      const rowWeek = Math.floor(
-        row.age_weeks ??
-          Number(row.age_days ?? 0) / 7,
-      );
-
-      return (
-        rowWeek === hoveredWeek &&
-        dailyComment(row) !== null
-      );
+  // Comments are kept as separate daily entries even when the plotted values
+  // are aggregated into biological-age weeks.
+  const commentGroups = useMemo(() => {
+    const groups = new Map<string, { pointX: number; comments: { date: string; text: string }[] }>();
+    rows.forEach((row) => {
+      const text = dailyComment(row);
+      const age = finite(row.age_days) ??
+        (finite(row.age_weeks) !== null ? Number(row.age_weeks) * 7 : null);
+      if (!text || age === null) return;
+      const pointX = showDaily ? age : Math.floor(age / 7);
+      const key = String(pointX);
+      const group = groups.get(key) ?? { pointX, comments: [] };
+      group.comments.push({ date: row.entry_date, text });
+      groups.set(key, group);
     });
+    return [...groups.entries()].map(([key, group]) => ({ key, ...group }))
+      .sort((a, b) => a.pointX - b.pointX);
+  }, [rows, showDaily]);
 
-    return hasDailyCommentInWeek
-      ? "Comments in daily"
-      : null;
-  }, [nearestPoint, rows, showDaily]);
-
+  const commentMarkers = commentGroups.flatMap((group) => {
+    const point = points.find((p) => p.x === group.pointX);
+    const production = point ? finite(point.row.production_pct) : null;
+    if (production === null || group.pointX < minX || group.pointX > maxX) return [];
+    return [{ ...group, px: x(group.pointX), py: y(METRICS[0], production) }];
+  });
+  const openedComment = commentMarkers.find((marker) => marker.key === openedCommentKey);
 
   const handleMove = (
     event: React.MouseEvent<SVGRectElement>,
@@ -1728,12 +1723,6 @@ function ProfessionalLayerChart({
               })}
             </div>
 
-            {hoverComment ? (
-              <div className="hover-comment">
-                <span>💬</span>
-                <strong>{hoverComment}</strong>
-              </div>
-            ) : null}
           </>
         ) : (
           <span className="hover-banner-placeholder">
@@ -2120,6 +2109,38 @@ function ProfessionalLayerChart({
           onClick={handleMove}
         />
 
+        {/* Annotation markers sit above the hover hit-area and therefore remain clickable. */}
+        {commentMarkers.map((marker) => (
+          <g key={`comment-${marker.key}`} role="button" tabIndex={0}
+            aria-label={`${marker.comments.length} comment${marker.comments.length === 1 ? "" : "s"} at ${showDaily ? "day" : "week"} ${marker.pointX}`}
+            onClick={(event) => { event.stopPropagation(); setOpenedCommentKey(current => current === marker.key ? null : marker.key); }}
+            onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setOpenedCommentKey(current => current === marker.key ? null : marker.key); } }}
+            style={{ cursor: "pointer" }}>
+            <circle cx={marker.px} cy={marker.py} r="10" fill="#f5ad29" stroke="#ffffff" strokeWidth="2.5" />
+            <text x={marker.px} y={marker.py + 3.4} fontSize="10" fontWeight="900" fill="#563600" textAnchor="middle" pointerEvents="none">
+              {marker.comments.length > 1 ? marker.comments.length : "!"}
+            </text>
+            <circle cx={marker.px} cy={marker.py} r="16" fill="transparent" />
+          </g>
+        ))}
+        {openedComment ? (() => {
+          const popupWidth = 310;
+          const popupHeight = 132;
+          const popupX = Math.min(width - popupWidth - 5, Math.max(5, openedComment.px + 14));
+          const popupY = Math.min(height - popupHeight - 8, Math.max(7, openedComment.py - popupHeight - 14));
+          return <foreignObject x={popupX} y={popupY} width={popupWidth} height={popupHeight}>
+            <div style={{ width: "100%", height: "100%", boxSizing: "border-box", padding: "10px", border: "1px solid #e9cb7f", borderRadius: "10px", background: "#fffdf5", boxShadow: "0 8px 24px #0002", fontSize: "12px", color: "#294336", overflow: "auto" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", marginBottom: "5px" }}>
+                <b>{showDaily ? `Day ${openedComment.pointX}` : `Week ${openedComment.pointX}`} · {openedComment.comments.length} comment(s)</b>
+                <button type="button" onClick={() => setOpenedCommentKey(null)} aria-label="Close comments" style={{ background: "none", border: "none", cursor: "pointer", fontWeight: 800 }}>×</button>
+              </div>
+              {openedComment.comments.map((comment, index) => <div key={`${comment.date}-${index}`} style={{ marginBottom: "7px", borderTop: "1px solid #eee4ca", paddingTop: "4px" }}>
+                <b>{comment.date}</b><div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{comment.text}</div>
+              </div>)}
+            </div>
+          </foreignObject>;
+        })() : null}
+
         {activeHoverX !== null ? (
           <line
             x1={x(activeHoverX)}
@@ -2283,27 +2304,6 @@ function ProfessionalLayerChart({
           color: #d94841;
         }
 
-        .hover-comment {
-          flex: 0 1 auto;
-          min-width: 0;
-          max-width: 260px;
-          display: flex;
-          align-items: center;
-          gap: 4px;
-          padding: 3px 7px;
-          border: 1px solid #f0dfaa;
-          border-radius: 999px;
-          background: #fff9e8;
-          color: #725815;
-          white-space: nowrap;
-        }
-
-        .hover-comment strong {
-          overflow: hidden;
-          font-size: 8px;
-          text-overflow: ellipsis;
-        }
-
         svg {
           display: block;
           width: 100%;
@@ -2325,9 +2325,7 @@ function ProfessionalLayerChart({
             gap: 4px 8px;
           }
 
-          .hover-comment {
-            max-width: 100%;
-          }
+
         }
 
         .legend {
