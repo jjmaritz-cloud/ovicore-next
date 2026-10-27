@@ -400,6 +400,7 @@ function CommercialLayerPerformanceContent() {
   const [ageRange, setAgeRange] =
     useState<"laying" | "full">("laying");
   const [showDaily, setShowDaily] = useState(false);
+  const [showComments, setShowComments] = useState(false);
   const [selectedMetrics, setSelectedMetrics] =
     useState<MetricKey[]>([
       "production",
@@ -724,6 +725,14 @@ function CommercialLayerPerformanceContent() {
           </div>
 
           <div className="chart-head-actions">
+            <label className="comments-toggle" title="Show or hide daily comment markers on the graph">
+              <input
+                type="checkbox"
+                checked={showComments}
+                onChange={(event) => setShowComments(event.target.checked)}
+              />
+              Show comments
+            </label>
             <span className="standard-pill">
               Standard: {ISA_ALT_STANDARD_LABEL}
             </span>
@@ -755,6 +764,7 @@ function CommercialLayerPerformanceContent() {
               rows={filteredRows}
               selectedMetrics={selectedMetrics}
               showDaily={showDaily}
+              showComments={showComments}
               onToggleMetric={toggleMetric}
             />
           </>
@@ -776,6 +786,10 @@ function CommercialLayerPerformanceContent() {
                 </span>
               </div>
 
+              <label className="comments-toggle" style={{ marginLeft: "auto" }}>
+                <input type="checkbox" checked={showComments} onChange={(event) => setShowComments(event.target.checked)} />
+                Show comments
+              </label>
               <button
                 type="button"
                 onClick={() => setChartExpanded(false)}
@@ -789,6 +803,7 @@ function CommercialLayerPerformanceContent() {
                 rows={filteredRows}
                 selectedMetrics={selectedMetrics}
                 showDaily={showDaily}
+                showComments={showComments}
                 onToggleMetric={toggleMetric}
                 expanded
               />
@@ -944,6 +959,21 @@ function CommercialLayerPerformanceContent() {
           font-size: 10px;
         }
 
+         .comments-toggle {
+           display: inline-flex;
+           align-items: center;
+           gap: 6px;
+           padding: 5px 9px;
+           border: 1px solid #d8e5dd;
+           border-radius: 999px;
+           background: #fff;
+           color: #264d39;
+           font-size: 10px;
+           font-weight: 800;
+           white-space: nowrap;
+           cursor: pointer;
+         }
+        .comments-toggle input { accent-color: #16805a; margin: 0; }
         .chart-head-actions {
           display: flex;
           align-items: center;
@@ -1318,12 +1348,14 @@ function ProfessionalLayerChart({
   rows,
   selectedMetrics,
   showDaily,
+  showComments,
   onToggleMetric,
   expanded = false,
 }: {
   rows: PerformanceRow[];
   selectedMetrics: MetricKey[];
   showDaily: boolean;
+  showComments: boolean;
   onToggleMetric: (key: MetricKey) => void;
   expanded?: boolean;
 }) {
@@ -1548,7 +1580,9 @@ function ProfessionalLayerChart({
     if (production === null || group.pointX < minX || group.pointX > maxX) return [];
     return [{ ...group, px: x(group.pointX), py: y(METRICS[0], production) }];
   });
-  const openedComment = commentMarkers.find((marker) => marker.key === openedCommentKey);
+  const openedComment = showComments
+    ? commentMarkers.find((marker) => marker.key === openedCommentKey)
+    : undefined;
 
   const handleMove = (
     event: React.MouseEvent<SVGRectElement>,
@@ -2110,7 +2144,7 @@ function ProfessionalLayerChart({
         />
 
         {/* Annotation markers sit above the hover hit-area and therefore remain clickable. */}
-        {commentMarkers.map((marker) => (
+        {showComments && commentMarkers.map((marker) => (
           <g key={`comment-${marker.key}`} role="button" tabIndex={0}
             aria-label={`${marker.comments.length} comment${marker.comments.length === 1 ? "" : "s"} at ${showDaily ? "day" : "week"} ${marker.pointX}`}
             onClick={(event) => { event.stopPropagation(); setOpenedCommentKey(current => current === marker.key ? null : marker.key); }}
