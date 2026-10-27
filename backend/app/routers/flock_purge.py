@@ -27,7 +27,7 @@ class FlockPurgeAudit(Base):
 
 class PurgeSelection(BaseModel):
     company_id: int = Field(gt=0)
-    module: Literal["rearing", "layers"]
+    module: Literal["rearing", "layers", "broilers", "broiler_plans"]
     flock_ids: list[int] = Field(min_length=1, max_length=1000)
 
 class PurgeExecute(PurgeSelection):
@@ -44,7 +44,13 @@ def require_global_admin(user):
 def selected_models(module):
     if module == "rearing":
         return models.LayerRearingFlock, models.LayerRearingDailyPerformance
-    return models.CommercialLayerFlock, models.CommercialLayerDailyPerformance
+    if module == "layers":
+        return models.CommercialLayerFlock, models.CommercialLayerDailyPerformance
+    if module == "broilers":
+        return models.Flock, None
+    if module == "broiler_plans":
+        return models.BroilerPlacementPlan, models.BroilerDailyPerformance
+    raise HTTPException(400, "Unsupported production module")
 
 
 def inventory(db, payload, lock=False):
@@ -60,7 +66,25 @@ def inventory(db, payload, lock=False):
     if len(found) != len(payload.flock_ids):
         raise HTTPException(409, "Some selected flocks no longer exist in the selected company")
     ids = [f.id for f in found]
-    daily_count = db.query(Daily).filter(Daily.company_id == payload.company_id, Daily.flock_id.in_(ids)).count()
+    daily_count = 0
+    if payload.module == "broiler_plans":
+        daily_count = db.query(Daily).filter(Daily.company_id == payload.company_id, Daily.placement_plan_id.in_(ids)).count()
+    elif Daily is not None:
+        daily_count = db.query(Daily).filter(Daily.company_id == payload.company_id, Daily.flock_id.in_(ids)).count()
+    captures_count = 0
+    if payload.module == "broiler_plans":
+        captures_count = db.query(models.BroilerPaperCapture).filter(
+            models.BroilerPaperCapture.company_id == payload.company_id,
+            models.BroilerPaperCapture.placement_plan_id.in_(ids)
+        ).count()
+    # A processing cycle uses a non-FK integer ID. Its ownership is ambiguous:
+    # never purge a broiler identifier if any matching processing record exists.
+    if payload.module in ("broilers", "broiler_plans"):
+        processing = db.query(models.BroilerProcessing.id).filter(
+            models.BroilerProcessing.broiler_cycle_id.in_(ids)
+        ).first()
+        if processing:
+            raise HTTPException(409, "Processing references one of these broiler IDs; manual dependency review required")
     # A rearing flock may have produced a laying flock. The laying flock is NOT deleted.
     links = []
     if payload.module == "rearing":
@@ -71,7 +95,9 @@ def inventory(db, payload, lock=False):
             raise HTTPException(409, "Cross-company transfer linkage detected; purge blocked")
     # Abort if future ORM models introduce other direct FK dependencies.
     # Deleting unexpected dependencies must never happen silently.
-    allowed = {Daily.__tablename__}
+    allowed = {Daily.__tablename__} if Daily is not None else set()
+    if payload.module == "broiler_plans":
+        allowed.add(models.BroilerPaperCapture.__tablename__)
     if payload.module == "rearing":
         allowed.add(models.CommercialLayerFlock.__tablename__)
     for table in Base.metadata.tables.values():
@@ -81,10 +107,10 @@ def inventory(db, payload, lock=False):
             if fk.column.table.name == Flock.__tablename__:
                 # Even an empty dependency deserves explicit code review before purge support.
                 raise HTTPException(409, f"Unhandled relation from {table.name}; purge blocked")
-    entries = [{"id": f.id, "flock_code": f.flock_code, "farm_id": f.farm_id,
+    entries = [{"id": f.id, "flock_code": f.cycle_code if payload.module == "broiler_plans" else f.flock_code, "farm_id": f.farm_id,
                 "status": f.status, "farm_name": f.farm.farm_name if f.farm else "",
                 "shed_name": f.shed.shed_name if f.shed else ""} for f in found]
-    canonical = {"company_id": payload.company_id, "module": payload.module,
+    canonical = {"company_id": payload.company_id, "module": payload.module, "paper_captures": captures_count,
                  "flocks": entries, "daily_records": daily_count,
                  "linked_layer_ids": sorted(link.id for link in links)}
     signature = hashlib.sha256(json.dumps(canonical, sort_keys=True).encode()).hexdigest()
@@ -92,12 +118,12 @@ def inventory(db, payload, lock=False):
 
 
 @router.get("/flocks")
-def list_flocks(company_id: int, module: Literal["rearing", "layers"],
+def list_flocks(company_id: int, module: Literal["rearing", "layers", "broilers", "broiler_plans"],
                 user: models.AppUser = Depends(get_current_user), db: Session = Depends(get_db)):
     require_global_admin(user)
     Flock, _ = selected_models(module)
     rows = db.query(Flock).filter(Flock.company_id == company_id).order_by(Flock.id.desc()).all()
-    return [{"id": f.id, "flock_code": f.flock_code, "status": f.status,
+    return [{"id": f.id, "flock_code": f.cycle_code if module == "broiler_plans" else f.flock_code, "status": f.status,
              "farm_name": f.farm.farm_name if f.farm else "",
              "shed_name": f.shed.shed_name if f.shed else ""} for f in rows]
 
@@ -127,8 +153,23 @@ def execute(payload: PurgeExecute, user: models.AppUser = Depends(get_current_us
                 models.CommercialLayerFlock.company_id == payload.company_id,
                 models.CommercialLayerFlock.source_rearing_flock_id.in_(ids)
             ).update({models.CommercialLayerFlock.source_rearing_flock_id: None}, synchronize_session=False)
-        deleted_daily = db.query(Daily).filter(Daily.company_id == payload.company_id,
-                                             Daily.flock_id.in_(ids)).delete(synchronize_session=False)
+        if payload.module == "broiler_plans":
+            # Captures reference daily rows, so remove captures first.
+            db.query(models.BroilerPaperCapture).filter(
+                models.BroilerPaperCapture.company_id == payload.company_id,
+                models.BroilerPaperCapture.placement_plan_id.in_(ids)
+            ).delete(synchronize_session=False)
+            deleted_daily = db.query(Daily).filter(
+                Daily.company_id == payload.company_id,
+                Daily.placement_plan_id.in_(ids)
+            ).delete(synchronize_session=False)
+        elif Daily is not None:
+            deleted_daily = db.query(Daily).filter(
+                Daily.company_id == payload.company_id,
+                Daily.flock_id.in_(ids)
+            ).delete(synchronize_session=False)
+        else:
+            deleted_daily = 0
         deleted_flocks = db.query(Flock).filter(Flock.company_id == payload.company_id,
                                               Flock.id.in_(ids)).delete(synchronize_session=False)
         db.add(FlockPurgeAudit(company_id=payload.company_id, admin_user_id=user.id,
