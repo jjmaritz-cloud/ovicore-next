@@ -6858,6 +6858,7 @@ def list_commercial_layer_flocks(
 def list_commercial_layer_performance(
     company_id: int | None = None,
     flock_id: int | None = None,
+    include_rearing: bool = False,
     current_user: models.AppUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -7105,6 +7106,120 @@ def list_commercial_layer_performance(
                 last_saved_at=entry.last_saved_at,
             )
         )
+
+    # Full lifecycle is opt-in. Existing Daily House Card and other consumers
+    # continue receiving the original laying-only measurements by default.
+    if include_rearing and flock_id is not None:
+        source_flock = (
+            db.query(models.CommercialLayerFlock)
+            .filter(
+                models.CommercialLayerFlock.id == flock_id,
+                models.CommercialLayerFlock.company_id == resolved_company_id,
+            )
+            .first()
+        )
+        if source_flock and source_flock.source_rearing_flock_id:
+            rearing_flock = (
+                db.query(models.LayerRearingFlock)
+                .filter(
+                    models.LayerRearingFlock.id == source_flock.source_rearing_flock_id,
+                    models.LayerRearingFlock.company_id == resolved_company_id,
+                )
+                .first()
+            )
+            # Respect access to the historical farm as well as the laying farm.
+            if rearing_flock and access.user_has_farm_access(
+                db, current_user, rearing_flock.farm_id
+            ):
+                rearing_entries = (
+                    db.query(models.LayerRearingDailyPerformance)
+                    .filter(
+                        models.LayerRearingDailyPerformance.company_id == resolved_company_id,
+                        models.LayerRearingDailyPerformance.flock_id == rearing_flock.id,
+                    )
+                    .order_by(
+                        models.LayerRearingDailyPerformance.entry_date.asc(),
+                        models.LayerRearingDailyPerformance.id.asc(),
+                    )
+                    .all()
+                )
+                rearing_output = []
+                rearing_mortality = 0
+                rearing_birds = int(rearing_flock.birds_placed or 0)
+                for entry in rearing_entries:
+                    if (
+                        rearing_flock.actual_transfer_date is not None
+                        and entry.entry_date >= rearing_flock.actual_transfer_date
+                    ):
+                        continue
+                    age_days = entry.age_days
+                    if age_days is None and rearing_flock.hatch_date:
+                        age_days = (entry.entry_date - rearing_flock.hatch_date).days
+                    if age_days is None or age_days < 0:
+                        continue
+                    rearing_mortality += int(entry.mortality_birds or 0)
+                    closing_birds = int(entry.closing_birds or 0)
+                    rearing_output.append(
+                        CommercialLayerPerformanceOut(
+                            id=entry.id,
+                            company_id=resolved_company_id,
+                            flock_id=source_flock.id,
+                            farm_name=rearing_flock.farm.farm_name if rearing_flock.farm else "",
+                            shed_name=rearing_flock.shed.shed_name if rearing_flock.shed else "",
+                            flock_code=rearing_flock.flock_code,
+                            breed=rearing_flock.breed,
+                            entry_date=entry.entry_date,
+                            age_days=age_days,
+                            age_weeks=round(age_days / 7, 2),
+                            opening_birds=entry.opening_birds,
+                            mortality_birds=int(entry.mortality_birds or 0),
+                            cull_birds=int(entry.cull_birds or 0),
+                            closing_birds=entry.closing_birds,
+                            cumulative_mortality_pct=(
+                                round(rearing_mortality / rearing_birds * 100, 3)
+                                if rearing_birds > 0 else None
+                            ),
+                            feed_g_bird_day=(
+                                round(float(entry.feed_kg) * 1000 / closing_birds, 3)
+                                if entry.feed_kg is not None and closing_birds > 0 else None
+                            ),
+                            water_litres=(
+                                float(entry.water_litres)
+                                if entry.water_litres is not None else None
+                            ),
+                            water_ml_bird_day=(
+                                round(float(entry.water_litres) * 1000 / closing_birds, 3)
+                                if entry.water_litres is not None and closing_birds > 0 else None
+                            ),
+                            bodyweight_g=(
+                                float(entry.avg_weight_kg) * 1000
+                                if entry.avg_weight_kg is not None else None
+                            ),
+                            notes=entry.notes,
+                            last_saved_by=entry.last_saved_by,
+                            last_saved_at=entry.last_saved_at,
+                        )
+                    )
+                # Cumulative mortality must be continuous through transfer.
+                # Only adjust laying rows when there is actual rearing history.
+                if rearing_output and rearing_birds > 0:
+                    for index, row in enumerate(output):
+                        if row.cumulative_mortality_pct is None:
+                            continue
+                        # Row's percentage represents mortality to that date;
+                        # derive it using the housed bird base before combining.
+                        housed_birds = int(source_flock.birds_housed or 0)
+                        deaths_to_date = (
+                            row.cumulative_mortality_pct * housed_birds / 100
+                            if housed_birds > 0 else 0
+                        )
+                        output[index] = row.model_copy(update={
+                            "cumulative_mortality_pct": round(
+                                (rearing_mortality + deaths_to_date) / rearing_birds * 100, 3
+                            )
+                        })
+                output = rearing_output + output
+                output.sort(key=lambda row: (row.age_days if row.age_days is not None else 10**9, row.entry_date))
 
     return output
 
