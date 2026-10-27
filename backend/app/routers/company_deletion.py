@@ -64,6 +64,7 @@ def inspect_company(db: Session, company_id: int, lock: bool = False):
     blockers = []
     counts = {}
     dependencies = []
+    reference_counts = {}
     farm_ids = [r[0] for r in db.query(models.BroilerFarm.id).filter(models.BroilerFarm.company_id == company_id)]
     shed_ids = [r[0] for r in db.query(models.BroilerShed.id).filter(models.BroilerShed.company_id == company_id)]
     for table_name in sorted(actual):
@@ -90,14 +91,38 @@ def inspect_company(db: Session, company_id: int, lock: bool = False):
                 if table is None: table = Table(table_name, MetaData(), autoload_with=db.get_bind())
                 n = db.execute(select(func.count()).select_from(table).where(table.c[col].in_(ids))).scalar_one()
                 if n: blockers.append(f"{table_name} has {n} records referencing selected {col} values")
-        # Explicitly reject unknown foreign-key references to company, farm, and shed.
+        # Review every FK to the company, its farms and sheds, including secondary
+        # destination links in rearing records. A declared FK is not itself a
+        # dependency: only rows referencing the selected company's IDs block.
+        # Fail closed on composite or otherwise unrecognised relationships.
         for fk in inspector.get_foreign_keys(table_name):
-            if fk.get("referred_table") in {"companies", "broiler_farms", "broiler_sheds"} and table_name not in ALLOWED_ROWS and table_name != "company_deletion_audit":
-                cols = fk.get("constrained_columns", [])
-                if not cols:
-                    blockers.append(f"Unhandled FK in {table_name}")
-                elif not any(col in {"company_id", "farm_id", "shed_id"} for col in cols):
-                    blockers.append(f"Unreviewed foreign key in {table_name}: {', '.join(cols)}")
+            target = fk.get("referred_table")
+            if target not in {"companies", "broiler_farms", "broiler_sheds"} or table_name in ALLOWED_ROWS:
+                continue
+            cols = fk.get("constrained_columns") or []
+            referred_cols = fk.get("referred_columns") or []
+            if len(cols) != 1 or len(referred_cols) != 1 or referred_cols[0] != "id":
+                blockers.append(f"Unreviewed foreign key in {table_name}: {', '.join(cols) or 'unknown'}")
+                continue
+            col = cols[0]
+            ids = ([company_id] if target == "companies" else
+                   farm_ids if target == "broiler_farms" else shed_ids)
+            # If the referenced set is empty, no rows can reference these IDs.
+            if not ids:
+                continue
+            from sqlalchemy import MetaData, Table
+            table = metadata.get(table_name)
+            if table is None:
+                table = Table(table_name, MetaData(), autoload_with=db.get_bind())
+            if col not in table.c:
+                blockers.append(f"Unreviewed foreign key in {table_name}: {col}")
+                continue
+            matching = db.execute(select(func.count()).select_from(table).where(table.c[col].in_(ids))).scalar_one()
+            # Include reference counts in the signed preview so changing links
+            # between preview and execution invalidates the confirmation.
+            reference_counts[f"{table_name}.{col}"] = matching
+            if matching:
+                blockers.append(f"{table_name}.{col} references selected company assets in {matching} row(s)")
     # broiler_chick_supply is currently outside models.py: never delete if it has rows for the selected company.
     if "broiler_chick_supply" not in actual:
         blockers.append("Expected table broiler_chick_supply missing; check the live schema")
@@ -109,7 +134,8 @@ def inspect_company(db: Session, company_id: int, lock: bool = False):
     if counts.get("broiler_farms") != 2 or counts.get("broiler_sheds") != 2:
         blockers.append("Farm/shed counts differ from reviewed Surfcoast footprint; inspect again")
     snapshot = {"company_id": company.id, "company_name": company.company_name,
-                "counts": counts, "farm_ids": sorted(farm_ids), "shed_ids": sorted(shed_ids)}
+                "counts": counts, "farm_ids": sorted(farm_ids), "shed_ids": sorted(shed_ids),
+                "foreign_key_references": reference_counts}
     signature = hashlib.sha256(json.dumps(snapshot, sort_keys=True).encode()).hexdigest()
     return company, snapshot, dependencies, sorted(set(blockers)), signature
 
