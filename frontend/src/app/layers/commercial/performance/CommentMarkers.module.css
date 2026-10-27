@@ -1,0 +1,8 @@
+.layer circle[role="button"]{cursor:pointer;outline:none}
+.layer circle[role="button"]:focus-visible{stroke:#0F7554;stroke-width:3}
+.popup{box-sizing:border-box;height:100%;overflow:hidden;border-radius:10px;background:#103E32;color:#fff;padding:8px 10px;box-shadow:0 8px 25px #0003;font:12px system-ui,sans-serif}
+.heading{display:flex;align-items:center;justify-content:space-between;gap:4px}
+.heading button{border:none;background:transparent;color:white;font-size:20px;line-height:1;cursor:pointer}
+.notes{height:70px;overflow:auto;overscroll-behavior:contain}
+.note{padding:5px 0;border-top:1px solid #ffffff2c;line-height:1.3;overflow-wrap:anywhere}
+.note b{color:#f0d49a}
