@@ -30,8 +30,10 @@ export default function CompanyDeletionReadiness() {
   const [success, setSuccess] = useState("");
   const isAdmin = currentUser?.is_global_admin === true;
   const chosenCompany = companies.find(c => String(c.id) === selected);
-  // The backend protects company ID 1. Never allow UI deletion to bypass that protection.
-  const protectedSelection = chosenCompany?.id === 1 || chosenCompany?.company_name.trim().toLowerCase() === "ovicore";
+  // Protect the OviCore system company by identity.
+  // The backend remains authoritative for deletion eligibility.
+  const protectedSelection =
+    chosenCompany?.company_name.trim().toLowerCase() === "ovicore";
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -100,8 +102,7 @@ export default function CompanyDeletionReadiness() {
             Selected database company: <strong>{chosenCompany.company_name}</strong> · ID <strong>{chosenCompany.id}</strong>
           </p>}
           {protectedSelection && <p role="alert" style={{color:"#a52323",fontWeight:600}}>
-            Deletion is blocked: this company is returned as protected ID 1. Confirm the system-company identity in the database; do not bypass the server protection.
-          </p>}
+            Deletion is blocked: the OviCore system company cannot be deleted.          </p>}
           <button className="ovicore-btn" disabled={!selected || busy || protectedSelection} onClick={loadPreview}>{busy ? "Checking…" : "Preview company dependencies"}</button>
           {error && <p role="alert" style={{ color: "#a52323" }}>{error}</p>}
           {preview && <section style={{ border: "1px solid #d7e5df", padding: 14, borderRadius: 10 }}>
