@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import OviCoreShell from "@/components/ovicore/OviCoreShell";
 import OviCorePageHeader from "@/components/ovicore/OviCorePageHeader";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -8,7 +9,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 type Company = { id: number; company_name: string };
 type Flock = { id: number; flock_code: string; status: string; farm_name: string; shed_name: string };
 type Preview = { flocks: Flock[]; daily_records: number; linked_layers_preserved: number; preview_signature: string };
-type Module = "rearing" | "layers";
+type Module = "rearing" | "layers" | "broilers";
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { credentials: "include", cache: "no-store", ...init });
@@ -28,6 +29,7 @@ export default function GlobalAdminFlockPurgePage() {
   const [flocks, setFlocks] = useState<Flock[]>([]);
   const [selected, setSelected] = useState<number[]>([]);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [preview, setPreview] = useState<Preview | null>(null);
   const [confirmation, setConfirmation] = useState("");
   const [backupVerified, setBackupVerified] = useState(false);
@@ -42,7 +44,7 @@ export default function GlobalAdminFlockPurgePage() {
   }, [isAdmin]);
 
   useEffect(() => {
-    setSelected([]); setFlocks([]); setPreview(null); setSearch(""); setError(""); setMessage("");
+    setSelected([]); setFlocks([]); setPreview(null); setSearch(""); setStatusFilter("all"); setError(""); setMessage("");
     if (!isAdmin || !companyId) return;
     let cancelled = false;
     setBusy(true);
@@ -54,8 +56,9 @@ export default function GlobalAdminFlockPurgePage() {
   }, [companyId, module, isAdmin]);
 
   const visible = useMemo(() => flocks.filter(f =>
+    (statusFilter === "all" || f.status.toLowerCase() === statusFilter.toLowerCase()) &&
     `${f.flock_code} ${f.farm_name} ${f.shed_name} ${f.status}`.toLowerCase().includes(search.toLowerCase())
-  ), [flocks, search]);
+  ), [flocks, search, statusFilter]);
   const companyName = companies.find(c => String(c.id) === companyId)?.company_name || "";
   const payload = { company_id: Number(companyId), module, flock_ids: [...selected].sort((a, b) => a - b) };
   function changeSelection(ids: number[]) {
@@ -72,7 +75,7 @@ export default function GlobalAdminFlockPurgePage() {
     finally { setBusy(false); }
   }
   async function purge() {
-    if (!preview || confirmation !== "PURGE" || !backupVerified) return;
+    if (!preview || confirmation !== "PURGE" || !backupVerified || module === "broilers") return;
     setBusy(true); setError("");
     try {
       const result = await api<{ deleted_flocks: number; deleted_daily_records: number }>("/api/admin/flock-purge/execute", {
@@ -87,10 +90,11 @@ export default function GlobalAdminFlockPurgePage() {
   }
 
   return <OviCoreShell module="admin">
-    <OviCorePageHeader title="Flock Purge" subtitle="Global Administration · Data Management · Permanently remove selected rearing or laying flocks" />
+    <OviCorePageHeader title="Flock Purge" subtitle="Global Administration · Data Management · Select specific flocks for reviewed deletion" />
     <section className="page-card" style={{ padding: 18, marginTop: 12 }}>
       {loadingUser ? <p>Checking permissions…</p> : !isAdmin ?
         <p role="alert" style={{ color: "#9d2525" }}>{userError || "Global Admin access is required."}</p> : <>
+        <p style={{ margin: "0 0 14px" }}><Link href="/admin/company-delete">Company deletion readiness &amp; dependency preview</Link></p>
         <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "end" }}>
           <label style={{ display: "grid", gap: 6, minWidth: 280, flex: 1 }}>
             <strong>1. Company</strong>
@@ -104,13 +108,21 @@ export default function GlobalAdminFlockPurgePage() {
             <select className="ovicore-select" value={module} disabled={busy} onChange={e => setModule(e.target.value as Module)}>
               <option value="layers">Commercial Layers (Laying)</option>
               <option value="rearing">Commercial Rearing</option>
+              <option value="broilers">Commercial Broilers (review-only until API verified)</option>
             </select>
           </label>
         </div>
+        {companyId && module === "broilers" && <p role="status" style={{ color: "#8a5500", marginTop: 12 }}>Broiler listing requires backend support for module=broilers. Broiler deletion is disabled until its preview and execute endpoints are verified.</p>}
         {companyId && <div style={{ marginTop: 20 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
             <strong>3. Select flocks to purge ({selected.length} selected / {flocks.length} total)</strong>
-            <input className="search-box" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search farm, shed, flock, status" />
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <select className="ovicore-select" aria-label="Filter flock status" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+                <option value="all">All statuses, including active</option>
+                {[...new Set(flocks.map(f => f.status))].sort().map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+              <input className="search-box" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search farm, shed, flock, status" />
+            </div>
           </div>
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
             <button className="ovicore-btn" disabled={busy} onClick={() => changeSelection([...new Set([...selected, ...visible.map(f => f.id)])])}>Select filtered</button>
@@ -126,11 +138,11 @@ export default function GlobalAdminFlockPurgePage() {
             </table>
             {!busy && !visible.length && <p style={{ padding: 12 }}>No matching flocks.</p>}
           </div>
-          <button className="ovicore-btn ovicore-btn-danger" style={{ marginTop: 14 }} disabled={busy || !selected.length} onClick={loadPreview}>Preview selected purge</button>
+          <button className="ovicore-btn ovicore-btn-danger" style={{ marginTop: 14 }} disabled={busy || !selected.length || module === "broilers"} onClick={loadPreview}>Preview selected purge</button>
         </div>}
         {preview && <section style={{ border: "1px solid #e8b4b4", borderRadius: 10, padding: 15, marginTop: 20 }}>
           <h3 style={{ margin: "0 0 8px" }}>4. Review and confirm deletion</h3>
-          <p><strong>{companyName}</strong> · {module === "layers" ? "Commercial Layers" : "Commercial Rearing"}</p>
+          <p><strong>{companyName}</strong> · {module === "layers" ? "Commercial Layers" : module === "rearing" ? "Commercial Rearing" : "Commercial Broilers"}</p>
           <p>{preview.flocks.length} flocks and {preview.daily_records} daily performance records will be permanently removed.</p>
           {preview.linked_layers_preserved > 0 && <p>{preview.linked_layers_preserved} linked laying flocks will be preserved and their source rearing links detached.</p>}
           <p style={{ color: "#9d2525" }}>This operation cannot be undone. Confirm that a restorable database backup has been taken.</p>
@@ -138,7 +150,7 @@ export default function GlobalAdminFlockPurgePage() {
           <label style={{ display: "grid", gap: 5, maxWidth: 240 }}>Type PURGE to confirm
             <input value={confirmation} onChange={e => setConfirmation(e.target.value)} autoComplete="off" style={{ padding: 8, border: "1px solid #d8b2b2", borderRadius: 5 }} />
           </label>
-          <button className="ovicore-btn ovicore-btn-danger" style={{ marginTop: 14 }} disabled={busy || !backupVerified || confirmation !== "PURGE"} onClick={purge}>{busy ? "Processing…" : "Permanently purge selected flocks"}</button>
+          <button className="ovicore-btn ovicore-btn-danger" style={{ marginTop: 14 }} disabled={busy || !backupVerified || confirmation !== "PURGE" || module === "broilers"} onClick={purge}>{busy ? "Processing…" : "Permanently purge selected flocks"}</button>
         </section>}
         {error && <p role="alert" style={{ color: "#a52323", marginTop: 12 }}>{error}</p>}
         {message && <p role="status" style={{ color: "#11633e", marginTop: 12 }}>{message}</p>}
