@@ -114,7 +114,7 @@ export function CommentMarkers({ comments, mode, ageFromDate, xForAge, productio
         <g>
           <line x1={activeX} y1={plot.top} x2={activeX} y2={plot.bottom} stroke="#DA9826" strokeDasharray="4 5" opacity="0.65" pointerEvents="none" />
           <foreignObject x={popupX} y={popupY} width={popupWidth} height={105}>
-            <div xmlns="http://www.w3.org/1999/xhtml" className={styles.popup}>
+            <div className={styles.popup}>
               <div className={styles.heading}><b>{mode === "weekly" ? `Week of ${active.key}` : active.key}</b><button onClick={() => setOpened(null)} aria-label="Close comments">×</button></div>
               <div className={styles.notes}>{active.comments.map(c => <div key={c.id} className={styles.note}><b>{c.entryDate.slice(0, 10)}</b>{c.author ? ` · ${c.author}` : ""}<div>{c.text}</div></div>)}</div>
             </div>
