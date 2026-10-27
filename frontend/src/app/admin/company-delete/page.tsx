@@ -29,6 +29,9 @@ export default function CompanyDeletionReadiness() {
   const [backupVerified, setBackupVerified] = useState(false);
   const [success, setSuccess] = useState("");
   const isAdmin = currentUser?.is_global_admin === true;
+  const chosenCompany = companies.find(c => String(c.id) === selected);
+  // The backend protects company ID 1. Never allow UI deletion to bypass that protection.
+  const protectedSelection = chosenCompany?.id === 1 || chosenCompany?.company_name.trim().toLowerCase() === "ovicore";
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -44,27 +47,34 @@ export default function CompanyDeletionReadiness() {
   }, [isAdmin]);
 
   async function loadPreview() {
-    if (!selected) return;
+    if (!selected || !chosenCompany) return;
+    if (protectedSelection) {
+      setError(`Deletion blocked: ${chosenCompany.company_name} is returned as company ID ${chosenCompany.id}, which is protected by the backend. Confirm the true OviCore system-company ID in the database before changing the backend restriction.`);
+      return;
+    }
     setBusy(true); setError(""); setPreview(null);
     try {
       // This endpoint must be implemented server-side, company-scoped and admin-authorised.
       const response = await fetch(`/api/admin/company-deletion/preview?company_id=${encodeURIComponent(selected)}`, {
         credentials: "include", cache: "no-store",
       });
-      if (!response.ok) throw new Error(
-        response.status === 404
-          ? "Company-deletion preview API is not implemented. Backend integration is required before deletion."
-          : `Preview failed (${response.status})`,
-      );
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({})) as { detail?: string };
+        throw new Error(body.detail || (response.status === 404
+          ? "Company-deletion preview API is not available."
+          : `Preview failed (${response.status})`));
+      }
       const data = await response.json() as Preview;
-      if (data.company_id !== Number(selected)) throw new Error("Company preview identity mismatch.");
+      if (data.company_id !== chosenCompany.id || data.company_name !== chosenCompany.company_name) {
+        throw new Error("Company preview identity mismatch: deletion blocked.");
+      }
       setPreview(data);
     } catch (e) { setError(e instanceof Error ? e.message : "Preview unavailable"); }
     finally { setBusy(false); }
   }
 
   async function executeDelete() {
-    if (!preview || preview.blockers.length || !backupVerified || companyConfirmation !== preview.company_name || wordConfirmation !== "DELETE COMPANY") return;
+    if (!preview || protectedSelection || preview.blockers.length || !backupVerified || companyConfirmation !== preview.company_name || wordConfirmation !== "DELETE COMPANY") return;
     setBusy(true); setError("");
     try {
       const r = await fetch("/api/admin/company-deletion/execute", { method: "POST", credentials: "include", headers: {"Content-Type":"application/json"}, body: JSON.stringify({company_id:preview.company_id,preview_signature:preview.preview_signature,company_name_confirmation:companyConfirmation,confirmation:wordConfirmation,backup_verified:backupVerified}) });
@@ -86,7 +96,13 @@ export default function CompanyDeletionReadiness() {
               {companies.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}
             </select>
           </label>
-          <button className="ovicore-btn" disabled={!selected || busy} onClick={loadPreview}>{busy ? "Checking…" : "Preview company dependencies"}</button>
+          {chosenCompany && <p style={{margin:0, fontSize:13}}>
+            Selected database company: <strong>{chosenCompany.company_name}</strong> · ID <strong>{chosenCompany.id}</strong>
+          </p>}
+          {protectedSelection && <p role="alert" style={{color:"#a52323",fontWeight:600}}>
+            Deletion is blocked: this company is returned as protected ID 1. Confirm the system-company identity in the database; do not bypass the server protection.
+          </p>}
+          <button className="ovicore-btn" disabled={!selected || busy || protectedSelection} onClick={loadPreview}>{busy ? "Checking…" : "Preview company dependencies"}</button>
           {error && <p role="alert" style={{ color: "#a52323" }}>{error}</p>}
           {preview && <section style={{ border: "1px solid #d7e5df", padding: 14, borderRadius: 10 }}>
             <h2 style={{ marginTop: 0 }}>{preview.company_name} — Dependency review</h2>
@@ -101,7 +117,7 @@ export default function CompanyDeletionReadiness() {
               <label><input type="checkbox" checked={backupVerified} onChange={e=>setBackupVerified(e.target.checked)}/> I have verified a recoverable database backup.</label>
               <label style={{display:"grid",gap:4}}>Type the exact company name<input value={companyConfirmation} onChange={e=>setCompanyConfirmation(e.target.value)}/></label>
               <label style={{display:"grid",gap:4}}>Type DELETE COMPANY<input value={wordConfirmation} onChange={e=>setWordConfirmation(e.target.value)}/></label>
-              <button className="ovicore-btn ovicore-btn-danger" disabled={busy || !backupVerified || companyConfirmation !== preview.company_name || wordConfirmation !== "DELETE COMPANY"} onClick={executeDelete}>Permanently delete company</button>
+              <button className="ovicore-btn ovicore-btn-danger" disabled={busy || protectedSelection || !backupVerified || companyConfirmation !== preview.company_name || wordConfirmation !== "DELETE COMPANY"} onClick={executeDelete}>Permanently delete company</button>
             </>}
           </div>}
         </>}
