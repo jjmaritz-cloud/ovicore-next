@@ -17,6 +17,8 @@ const API_BASE = "";
 
 type Flock = {
   id: number;
+  source_rearing_flock_id?: number | null;
+  source_rearing_flock_code?: string | null;
   farm_id: number;
   shed_id: number;
   farm_name: string;
@@ -455,7 +457,7 @@ function CommercialLayerPerformanceContent() {
 
     try {
       const response = await authenticatedFetch(
-        `${API_BASE}/api/layers/commercial/performance?company_id=${companyId}&flock_id=${selectedFlockId}`,
+        `${API_BASE}/api/layers/commercial/performance?company_id=${companyId}&flock_id=${selectedFlockId}&include_rearing=${ageRange === "full"}`,
         { cache: "no-store" },
       );
 
@@ -475,7 +477,7 @@ function CommercialLayerPerformanceContent() {
     } finally {
       setLoading(false);
     }
-  }, [companyId, selectedFlockId]);
+  }, [companyId, selectedFlockId, ageRange]);
 
   useEffect(() => {
     async function initialise() {
@@ -558,7 +560,7 @@ function CommercialLayerPerformanceContent() {
     void (async () => {
       try {
         const res = await authenticatedFetch(
-          `${API_BASE}/api/layers/commercial/performance?company_id=${companyId}&flock_id=${compareId}`,
+          `${API_BASE}/api/layers/commercial/performance?company_id=${companyId}&flock_id=${compareId}&include_rearing=${ageRange === "full"}`,
           {cache:"no-store", signal:controller.signal}
         );
         if (!res.ok) throw new Error(`Comparison flock unavailable (${res.status})`);
@@ -569,7 +571,7 @@ function CommercialLayerPerformanceContent() {
       }
     })();
     return () => controller.abort();
-  }, [companyId, compareId, selectedFlockId]);
+  }, [companyId, compareId, selectedFlockId, ageRange]);
   const comparisonFlock = flocks.find(f => f.id === compareId);
   const filteredComparisonRows = useMemo(() => comparisonRows.filter(r =>
     (r.age_days ?? ((r.age_weeks ?? 0) * 7)) >= (ageRange === "laying" ? 119 : 0)
@@ -706,7 +708,7 @@ function CommercialLayerPerformanceContent() {
 
         <p className="selection-caption">
           {selectedFlock
-            ? `Showing ${selectedFlock.farm_name} / ${selectedFlock.shed_name} / ${selectedFlock.flock_code}`
+            ? `Showing ${selectedFlock.farm_name} / ${selectedFlock.shed_name} / ${selectedFlock.flock_code}${selectedFlock.source_rearing_flock_code ? ` · Reared as: ${selectedFlock.source_rearing_flock_code}` : ""}`
             : "No Commercial Layer flock is available yet."}
         </p>
       </section>
@@ -719,7 +721,7 @@ function CommercialLayerPerformanceContent() {
           const actual = latest ? metric.actual(latest) : null;
           const apiStandard = latest ? metric.standard(latest) : null;
           const fallbackStandard =
-            latest?.age_weeks != null && metric.key !== "water"
+            latest?.age_weeks != null && latest.age_weeks >= 18 && metric.key !== "water"
               ? isaStandardValue(
                   metric.key,
                   nearestIsaStandard(latest.age_weeks),
