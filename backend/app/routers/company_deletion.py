@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import Column, DateTime, Integer, String, Text, func, inspect, select
+from sqlalchemy import Column, DateTime, Integer, String, Text, func, inspect, select, text
 from sqlalchemy.orm import Session
 from app.db import Base, get_db
 from app import models
@@ -40,11 +40,23 @@ def inspect_company(db: Session, company_id: int, lock: bool = False):
     if lock: q = q.with_for_update()
     company = q.first()
     if company is None: raise HTTPException(404, "Company not found")
-    if company.id == 1 or company.company_name.strip().lower() == "ovicore":
+    # IDs are only unique inside a database: production OviCore is ID 1,
+    # while the independent Render sandbox uses ID 1 for Surfcoast.
+    # Keep the system-company name protected in every environment.
+    if company.company_name.strip().casefold() == "ovicore":
         raise HTTPException(403, "OviCore system company cannot be deleted")
 
     if company.company_name.strip() != "Surfcoast Eggs - Sandbox":
         raise HTTPException(403, "This controlled deletion route is limited to Surfcoast Eggs - Sandbox")
+
+    # Fail closed unless connected to the separately verified Render sandbox DB.
+    # Do not weaken ID-based protection for any other database.
+    bind = db.get_bind()
+    if bind.dialect.name != "postgresql":
+        raise HTTPException(403, "Sandbox deletion requires PostgreSQL")
+    database_name = db.execute(text("SELECT current_database()")).scalar_one()
+    if database_name != "ovicore_sandbox":
+        raise HTTPException(403, "Company deletion is restricted to the verified sandbox database")
 
     inspector = inspect(db.get_bind())
     actual = set(inspector.get_table_names())
@@ -82,7 +94,10 @@ def inspect_company(db: Session, company_id: int, lock: bool = False):
         for fk in inspector.get_foreign_keys(table_name):
             if fk.get("referred_table") in {"companies", "broiler_farms", "broiler_sheds"} and table_name not in ALLOWED_ROWS and table_name != "company_deletion_audit":
                 cols = fk.get("constrained_columns", [])
-                if not cols: blockers.append(f"Unhandled FK in {table_name}")
+                if not cols:
+                    blockers.append(f"Unhandled FK in {table_name}")
+                elif not any(col in {"company_id", "farm_id", "shed_id"} for col in cols):
+                    blockers.append(f"Unreviewed foreign key in {table_name}: {', '.join(cols)}")
     # broiler_chick_supply is currently outside models.py: never delete if it has rows for the selected company.
     if "broiler_chick_supply" not in actual:
         blockers.append("Expected table broiler_chick_supply missing; check the live schema")
