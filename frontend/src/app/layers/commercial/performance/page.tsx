@@ -401,6 +401,10 @@ function CommercialLayerPerformanceContent() {
     useState<"laying" | "full">("laying");
   const [showDaily, setShowDaily] = useState(false);
   const [showComments, setShowComments] = useState(false);
+  const [compareId, setCompareId] = useState<number | "">("");
+  const [comparisonRows, setComparisonRows] = useState<PerformanceRow[]>([]);
+  const [compareMetric, setCompareMetric] = useState<MetricKey>("production");
+  const [comparisonError, setComparisonError] = useState("");
   const [selectedMetrics, setSelectedMetrics] =
     useState<MetricKey[]>([
       "production",
@@ -530,6 +534,46 @@ function CommercialLayerPerformanceContent() {
   const selectedFlock = flocks.find(
     (flock) => flock.id === selectedFlockId,
   );
+
+  // Identify the nearest earlier flock in the SAME shed using flock start dates.
+  // If start dates are unavailable, ask the user to select a historical flock.
+  const previousFlock = useMemo(() => {
+    if (!selectedFlock) return null;
+    const start = (f: Flock) => f.housed_date || f.hatch_date || "";
+    const currentDate = start(selectedFlock);
+    if (!currentDate) return null;
+    return flocks.filter(f => f.id !== selectedFlock.id &&
+      f.shed_id === selectedFlock.shed_id && f.farm_id === selectedFlock.farm_id &&
+      start(f) && start(f) < currentDate)
+      .sort((a,b) => start(b).localeCompare(start(a)))[0] ?? null;
+  }, [flocks, selectedFlock]);
+
+  useEffect(() => { setCompareId(""); setComparisonRows([]); setComparisonError(""); }, [selectedFlockId]);
+  useEffect(() => {
+    if (!companyId || !compareId || compareId === selectedFlockId) {
+      setComparisonRows([]); setComparisonError(""); return;
+    }
+    const controller = new AbortController();
+    setComparisonRows([]); setComparisonError("");
+    void (async () => {
+      try {
+        const res = await authenticatedFetch(
+          `${API_BASE}/api/layers/commercial/performance?company_id=${companyId}&flock_id=${compareId}`,
+          {cache:"no-store", signal:controller.signal}
+        );
+        if (!res.ok) throw new Error(`Comparison flock unavailable (${res.status})`);
+        const data: PerformanceRow[] = await res.json();
+        if (!controller.signal.aborted) setComparisonRows(data);
+      } catch (e) {
+        if (!controller.signal.aborted) setComparisonError(e instanceof Error ? e.message : "Could not load comparison flock");
+      }
+    })();
+    return () => controller.abort();
+  }, [companyId, compareId, selectedFlockId]);
+  const comparisonFlock = flocks.find(f => f.id === compareId);
+  const filteredComparisonRows = useMemo(() => comparisonRows.filter(r =>
+    (r.age_days ?? ((r.age_weeks ?? 0) * 7)) >= (ageRange === "laying" ? 119 : 0)
+  ), [comparisonRows, ageRange]);
 
   const filteredRows = useMemo(() => {
     const minimumAge = ageRange === "laying" ? 17 * 7 : 0;
@@ -706,6 +750,24 @@ function CommercialLayerPerformanceContent() {
         })}
       </section>
 
+      <section className="comparison-controls" aria-label="Compare flock performance">
+        <label className="compare-field">Compare flock
+          <select value={compareId} onChange={e=>setCompareId(e.target.value ? Number(e.target.value) : "")}>
+            <option value="">No comparison</option>
+            {previousFlock && <option value={previousFlock.id}>Previous flock · {previousFlock.flock_code}</option>}
+            {flocks.filter(f => f.id !== selectedFlockId && f.id !== previousFlock?.id)
+              .map(f => <option key={f.id} value={f.id}>{f.farm_name} / {f.shed_name} / {f.flock_code}</option>)}
+          </select>
+        </label>
+        {compareId !== "" && <label className="compare-field">Compare metric
+          <select value={compareMetric} onChange={e => setCompareMetric(e.target.value as MetricKey)}>
+            {METRICS.map(m => <option key={m.key} value={m.key}>{m.shortLabel}</option>)}
+          </select>
+        </label>}
+        {compareId !== "" && <span className="comparison-key">● Current: {selectedFlock?.flock_code} &nbsp; <span style={{color:"#008b86"}}>━ Previous/selected: {comparisonFlock?.flock_code}</span></span>}
+        {comparisonError && <span role="alert" style={{color:"#ad342c"}}>{comparisonError}</span>}
+      </section>
+      <style jsx>{` .comparison-controls{display:flex;align-items:end;gap:12px;flex-wrap:wrap;border:1px solid #dce8e2;border-radius:12px;background:white;padding:9px 12px}.compare-field{display:grid;gap:3px;min-width:210px;font-size:11px;font-weight:800;color:#315846}.compare-field select{min-height:32px;border:1px solid #cbd8d1;border-radius:8px;background:white;padding:4px 8px;max-width:420px}.comparison-key{font-size:11px;font-weight:800;color:#1677d2;padding-bottom:7px}`}</style>
       <section className="chart-card">
         <div className="chart-card-head">
           <div className="chart-title-block">
@@ -762,6 +824,9 @@ function CommercialLayerPerformanceContent() {
           <>
             <ProfessionalLayerChart
               rows={filteredRows}
+              comparisonRows={filteredComparisonRows}
+              comparisonLabel={comparisonFlock?.flock_code ?? "Comparison flock"}
+              comparisonMetric={compareId !== "" ? compareMetric : null}
               selectedMetrics={selectedMetrics}
               showDaily={showDaily}
               showComments={showComments}
@@ -801,6 +866,9 @@ function CommercialLayerPerformanceContent() {
             <div className="chart-expanded-body">
               <ProfessionalLayerChart
                 rows={filteredRows}
+                comparisonRows={filteredComparisonRows}
+                comparisonLabel={comparisonFlock?.flock_code ?? "Comparison flock"}
+                comparisonMetric={compareId !== "" ? compareMetric : null}
                 selectedMetrics={selectedMetrics}
                 showDaily={showDaily}
                 showComments={showComments}
@@ -1346,6 +1414,9 @@ function CompactMetricCard({
 
 function ProfessionalLayerChart({
   rows,
+  comparisonRows,
+  comparisonLabel,
+  comparisonMetric,
   selectedMetrics,
   showDaily,
   showComments,
@@ -1353,6 +1424,9 @@ function ProfessionalLayerChart({
   expanded = false,
 }: {
   rows: PerformanceRow[];
+  comparisonRows: PerformanceRow[];
+  comparisonLabel: string;
+  comparisonMetric: MetricKey | null;
   selectedMetrics: MetricKey[];
   showDaily: boolean;
   showComments: boolean;
@@ -1380,7 +1454,7 @@ function ProfessionalLayerChart({
   } | null>(null);
 
   const activeMetrics = METRICS.filter((metric) =>
-    selectedMetrics.includes(metric.key),
+    selectedMetrics.includes(metric.key) || metric.key === comparisonMetric,
   );
 
   const width = expanded ? 1600 : 1400;
@@ -1458,6 +1532,35 @@ function ProfessionalLayerChart({
     });
   }, [rows, showDaily]);
 
+  // Use identical biological age bins for the comparison flock.
+  const comparisonPoints = useMemo(() => {
+    if (!comparisonMetric) return [] as {row:PerformanceRow;x:number}[];
+    if (showDaily) return comparisonRows.map(row => ({row, x: Number(row.age_days ?? (row.age_weeks ?? 0)*7)}));
+    const groups = new Map<number, PerformanceRow[]>();
+    for (const row of comparisonRows) {
+      const age = finite(row.age_days) ?? (finite(row.age_weeks) !== null ? Number(row.age_weeks)*7 : null);
+      if (age === null) continue;
+      const week = Math.floor(age/7);
+      groups.set(week, [...(groups.get(week) ?? []), row]);
+    }
+    const def = METRICS.find(m => m.key === comparisonMetric)!;
+    const cumulative = comparisonMetric === "mortality" || comparisonMetric === "eggsPerBird" || comparisonMetric === "bodyweight";
+    return Array.from(groups, ([x, group]) => {
+      const sorted = group.slice().sort((a,b) => (a.age_days ?? a.age_weeks!*7) - (b.age_days ?? b.age_weeks!*7));
+      const valid = sorted.map(r => def.actual(r)).filter((v):v is number => v !== null);
+      const value = valid.length ? (cumulative ? valid[valid.length-1] : valid.reduce((a,b)=>a+b,0)/valid.length) : null;
+      const row: PerformanceRow = {...sorted[sorted.length-1]};
+      if (comparisonMetric === "production") row.production_pct = value;
+      if (comparisonMetric === "mortality") row.cumulative_mortality_pct = value;
+      if (comparisonMetric === "eggWeight") row.egg_weight_g = value;
+      if (comparisonMetric === "feed") row.feed_g_bird_day = value;
+      if (comparisonMetric === "water") {row.water_ml_bird_day = value; row.water_intake_ml_bird_day = value;row.water_l_bird_day = null;}
+      if (comparisonMetric === "eggsPerBird") row.eggs_per_bird_cumulative = value;
+      if (comparisonMetric === "bodyweight") row.bodyweight_g = value;
+      return {row, x};
+    }).sort((a,b)=>a.x-b.x);
+  }, [comparisonRows, comparisonMetric, showDaily]);
+
   const points = displayRows.map((row) => ({
     row,
     x: showDaily
@@ -1474,7 +1577,7 @@ function ProfessionalLayerChart({
 
   const actualX = points.map((point) => point.x);
   const standardX = standardPoints.map((point) => point.x);
-  const allX = [...actualX, ...standardX];
+  const allX = [...actualX, ...standardX, ...comparisonPoints.map(p=>p.x)];
 
   const minX = allX.length ? Math.min(...allX) : 17;
   const maxX = allX.length ? Math.max(...allX, minX + 1) : 100;
@@ -1490,6 +1593,7 @@ function ProfessionalLayerChart({
         metric.actual(row),
         metric.standard(row),
       ]),
+      ...(metric.key === comparisonMetric ? comparisonPoints.map(p => metric.actual(p.row)) : []),
       ...standardPoints.map(({ standard }) =>
         isaStandardValue(metric.key, standard),
       ),
@@ -2088,6 +2192,19 @@ function ProfessionalLayerChart({
           );
         })}
 
+        {comparisonMetric && comparisonPoints.length > 0 && (() => {
+          const metric = METRICS.find(m => m.key === comparisonMetric)!;
+          const segments: string[][] = []; let current: string[] = [];
+          for (const p of comparisonPoints) {
+            const value = metric.actual(p.row);
+            if (value === null) {if(current.length > 1)segments.push(current);current=[];continue;}
+            current.push(`${x(p.x)},${y(metric,value)}`);
+          }
+          if (current.length > 1)segments.push(current);
+          return <g aria-label={`Comparison ${comparisonLabel}`}>
+            {segments.map((seg,i)=><polyline key={i} points={seg.join(" ")} fill="none" stroke="#008b86" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" opacity="0.95" pointerEvents="none" />)}
+          </g>;
+        })()}
         {nearestPoint
           ? activeMetrics.map((metric) => {
               const value =
@@ -2199,6 +2316,18 @@ function ProfessionalLayerChart({
         </text>
       </svg>
 
+      {comparisonMetric && <div className="comparison-legend" aria-live="polite">
+        <span style={{color:"#1677d2"}}>━━ Current flock</span>
+        <span style={{color:"#008b86"}}>━━ {comparisonLabel}</span>
+        <span>Metric: {METRICS.find(m=>m.key===comparisonMetric)?.shortLabel}</span>
+        {activeHoverX !== null && (()=>{
+          const metric = METRICS.find(m=>m.key===comparisonMetric)!;
+          const nearest = comparisonPoints.length ? comparisonPoints.reduce((best,p)=>Math.abs(p.x-activeHoverX)<Math.abs(best.x-activeHoverX)?p:best) : null;
+          const other = nearest ? metric.actual(nearest.row) : null;
+          const current = nearestPoint ? metric.actual(nearestPoint.row) : null;
+          return <span>{`Current ${current === null ? "—" : current.toFixed(metric.decimals)} | ${comparisonLabel} ${other === null ? "—" : other.toFixed(metric.decimals)} | Δ ${current===null||other===null?"—":(current-other).toFixed(metric.decimals)} ${metric.unit}`}</span>;
+        })()}
+      </div>}
       <div className="legend" aria-label="Graph metric controls">
         {METRICS.map((metric) => {
           const active = selectedMetrics.includes(metric.key);
@@ -2229,6 +2358,7 @@ function ProfessionalLayerChart({
       </div>
 
       <style jsx>{`
+        .comparison-legend{display:flex;flex-wrap:wrap;gap:14px;align-items:center;font-size:11px;font-weight:800;color:#34594b;padding:5px 8px;background:#f3faf8;border-radius:7px}
         .chart-wrap {
           width: 100%;
           min-height: 0;
