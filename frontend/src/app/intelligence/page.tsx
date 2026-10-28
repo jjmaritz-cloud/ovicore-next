@@ -5,25 +5,41 @@ import OviCoreShell from "@/components/ovicore/OviCoreShell";
 
 type Card = { label:string; value:number|null; unit?:string };
 type Column = {key:string; label:string};
-type Response = {title:string;answer:string;scope:{start?:string;end?:string};cards:Card[];columns:Column[];rows:Record<string,string|number|null>[];chart:{title:string;metric:string;points:{date:string;value:number|null}[]}|null;observations:string[];capability:string};
+type Response = {title:string;answer:string;scope:{start?:string;end?:string};cards:Card[];columns:Column[];rows:Record<string,string|number|null>[];chart:{title:string;metric:string;points:{date:string;value?:number|null;feed_g_bird_day?:number|null;water_ml_bird_day?:number|null}[];series?:{key:string;label:string;unit:string}[]}|null;observations:string[];capability:string};
 function dateAU(value:string|undefined){if(!value)return "—";const parts=/^(\d{4})-(\d{2})-(\d{2})$/.exec(value);return parts?`${parts[3]}/${parts[2]}/${parts[1]}`:value;}
 const examples = ["What data can you show me?", "Which sheds have the highest mortality over the last 10 days?", "Show production trends over the last 30 days", "Why has production dropped in Shed 1?", "Compare feed intake over the last 14 days"];
 function show(value:string|number|null|undefined){return typeof value === "number"?value.toLocaleString("en-AU",{maximumFractionDigits:2}):value??"—";}
 function Trend({data}:{data:NonNullable<Response["chart"]>}){
-  const values=data.points.map(p=>p.value).filter((v):v is number=>v!==null);
+  if(data.series?.length===2){
+    const specs=data.series;
+    const palette=["#079da4","#a15fda"];
+    const valuesByAxis=specs.map(sp=>data.points.map(p=>(p as unknown as Record<string,number|null|undefined>)[sp.key]).filter((v):v is number=>typeof v==='number'&&Number.isFinite(v)));
+    if(valuesByAxis.every(v=>v.length<2))return <div className="ai-empty">Not enough daily readings to graph feed and water.</div>;
+    const ranges=valuesByAxis.map(v=>{const mn=Math.min(...v),mx=Math.max(...v),pad=Math.max((mx-mn)*.12,1);return [mn-pad,mx+pad];});
+    const xx=(i:number)=>68+i*660/Math.max(data.points.length-1,1);
+    const yy=(v:number,axis:number)=>188-(v-ranges[axis][0])/(ranges[axis][1]-ranges[axis][0])*142;
+    return <section className="ai-panel ai-chart"><div className="ai-panel-heading"><div><span className="ai-eyebrow">PERFORMANCE SIGNAL</span><h3>{data.title}</h3></div><span className="ai-tag">Daily · Dual axis</span></div>
+      <div style={{display:'flex',gap:18,justifyContent:'center',fontSize:12,fontWeight:700,marginTop:4}}>{specs.map((sp,a)=><span key={sp.key} style={{color:palette[a]}}>● {sp.label} ({sp.unit})</span>)}</div>
+      <svg viewBox="0 0 800 242" role="img" aria-label="Daily feed and water, independent labelled left and right axes" className="ai-trend-svg">
+      {[0,1,2,3,4].map(i=><g key={i}><line x1="68" x2="728" y1={46+i*35.5} y2={46+i*35.5} stroke="#dfe9ef" strokeDasharray="4 5"/>{specs.map((sp,a)=>{const v=ranges[a][1]-(ranges[a][1]-ranges[a][0])*i/4;return <text key={a} x={a===0?57:739} y={50+i*35.5} textAnchor={a===0?'end':'start'} fontSize="11" fill={palette[a]}>{show(Number(v.toFixed(1)))}</text>;})}</g>)}
+      {specs.map((sp,a)=>{const segments:string[]=[];let active:string[]=[];data.points.forEach((p,i)=>{const v=(p as unknown as Record<string,number|null|undefined>)[sp.key];if(typeof v==='number'){active.push(`${xx(i).toFixed(1)},${yy(v,a).toFixed(1)}`);}else{if(active.length>1)segments.push(active.join(' '));active=[];}});if(active.length>1)segments.push(active.join(' '));return <g key={sp.key}>{segments.map((pts,i)=><polyline key={i} points={pts} fill="none" stroke={palette[a]} strokeWidth="2.7" strokeLinejoin="round" strokeLinecap="round"/>)}{data.points.map((p,i)=>{const v=(p as unknown as Record<string,number|null|undefined>)[sp.key];return typeof v==='number'?<circle key={i} cx={xx(i)} cy={yy(v,a)} r="3.4" fill="white" stroke={palette[a]} strokeWidth="2"><title>{dateAU(p.date)} · {sp.label}: {show(v)} {sp.unit}</title></circle>:null;})}</g>;})}
+      <text x="68" y="224" fill="#62788b" fontSize="12">{dateAU(data.points[0]?.date)}</text><text x="728" y="224" textAnchor="end" fill="#62788b" fontSize="12">{dateAU(data.points[data.points.length-1]?.date)}</text>
+      </svg><div className="ai-chart-foot">Feed: left axis (g/bird/day) · Water: right axis (mL/bird/day). Hover for daily recorded values; missing readings are not zeros.</div></section>;
+  }
+  const values=data.points.map(p=>p.value).filter((v):v is number=>typeof v==="number");
   if(values.length<2)return <div className="ai-empty">Not enough daily readings to draw a reliable trend.</div>;
   const min=Math.min(...values),max=Math.max(...values),padding=Math.max((max-min)*0.12,0.01),low=min-padding,high=max+padding;
   const x=(i:number)=>55+i*710/Math.max(data.points.length-1,1);
   const y=(v:number)=>188-(v-low)/(high-low)*142;
   const segments:string[]=[];let active:string[]=[];
-  data.points.forEach((p,i)=>{if(p.value!==null)active.push(`${x(i).toFixed(1)},${y(p.value).toFixed(1)}`);else{if(active.length>1)segments.push(active.join(" "));active=[];}});
+  data.points.forEach((p,i)=>{if(typeof p.value==="number")active.push(`${x(i).toFixed(1)},${y(p.value).toFixed(1)}`);else{if(active.length>1)segments.push(active.join(" "));active=[];}});
   if(active.length>1)segments.push(active.join(" "));
   const gridValues=[0,1,2,3,4].map(i=>low+(high-low)*i/4);
   return <section className="ai-panel ai-chart"><div className="ai-panel-heading"><div><span className="ai-eyebrow">PERFORMANCE SIGNAL</span><h3>{data.title}</h3></div><span className="ai-tag">Daily · Actual</span></div><svg viewBox="0 0 800 242" role="img" aria-label={`${data.metric} daily time series`} className="ai-trend-svg">
     <defs><linearGradient id="aiFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#09aaac" stopOpacity=".2"/><stop offset="100%" stopColor="#09aaac" stopOpacity="0"/></linearGradient></defs>
     {gridValues.map((v,i)=><g key={i}><line x1="55" x2="765" y1={y(v)} y2={y(v)} stroke="#dfe9ef" strokeDasharray="4 5"/><text x="44" y={y(v)+4} fontSize="11" textAnchor="end" fill="#62788b">{show(Number(v.toFixed(2)))}</text></g>)}
     {segments.map((points,i)=><polyline key={i} points={points} fill="none" stroke="#069d9f" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round"/>)}
-    {data.points.map((p,i)=>p.value===null?null:<circle key={i} cx={x(i)} cy={y(p.value)} r="4" fill="#fff" stroke="#069d9f" strokeWidth="2"><title>{dateAU(p.date)} · {show(p.value)}</title></circle>)}
+    {data.points.map((p,i)=>typeof p.value!=="number"?null:<circle key={i} cx={x(i)} cy={y(p.value)} r="4" fill="#fff" stroke="#069d9f" strokeWidth="2"><title>{dateAU(p.date)} · {show(p.value)}</title></circle>)}
     <text x="55" y="224" fill="#62788b" fontSize="12">{dateAU(data.points[0]?.date)}</text><text x="765" y="224" textAnchor="end" fill="#62788b" fontSize="12">{dateAU(data.points[data.points.length-1]?.date)}</text>
   </svg><div className="ai-chart-foot">Hover over a point to see its recorded value. Missing readings are not treated as zero.</div></section>;
 }

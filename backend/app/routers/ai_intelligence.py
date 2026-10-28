@@ -273,6 +273,15 @@ def ask_intelligence(payload: AskRequest, current_user: models.AppUser = Depends
     elif metric == 'fcr_kg_dozen':
         plan['intent'] = 'fcr'
 
+    # Recognise a multi-metric request independently of the single-metric dictionary.
+    # This must precede final metric selection; otherwise "feed and water" returns only water.
+    q = payload.question.casefold()
+    feed_water = bool(re.search(r"\b(?:feed|feeding|ration|gbd)\b", q) and
+                      re.search(r"\b(?:water|drinking)\b", q)) and not re.search(
+                          r"\b(?:why|cause|caused|investigat)\b", q)
+    if feed_water:
+        plan['intent'] = 'feed'  # Dataset selection only; result contains BOTH metrics.
+
     # Dates, including those typed in natural language, are parsed deterministically.
     intent, days, limit = plan["intent"], plan["days"], plan["limit"]
     scope = {"company_id": company_id, "module": "layers"}
@@ -384,7 +393,7 @@ def ask_intelligence(payload: AskRequest, current_user: models.AppUser = Depends
         {"key": "delta", "label": "Change vs prior period"},
         {"key": "days_recorded", "label": "Days recorded"},
     ]
-    if intent in {"mortality", "investigate", "overview"}:
+    if intent in {"mortality", "investigate", "overview"} or feed_water:
         if intent == "mortality":
             columns += [{"key": "mortality_birds", "label": "Mortality birds"}]
         columns += [{"key": "feed_g_bird_day", "label": "Feed g/b/day"}, {"key": "water_ml_bird_day", "label": "Water mL/b/day"}, {"key": "production_pct", "label": "HD %"}]
@@ -403,6 +412,28 @@ def ask_intelligence(payload: AskRequest, current_user: models.AppUser = Depends
                 by_day[record.entry_date].append(record)
         points = [{"date": d.isoformat(), "value": _metrics(day)[key]} for d, day in sorted(by_day.items())]
         chart = {"title": "Daily trend — selected flocks", "metric": key, "points": points}
+    if feed_water and chosen:
+        # Independent daily denominators and missing-value handling remain in _metrics.
+        # Dual chart values are aggregated only across the authorised, selected flocks.
+        by_day = defaultdict(list)
+        for item in chosen:
+            for record in item['daily']:
+                by_day[record.entry_date].append(record)
+        chart = {
+            'title': 'Daily feed and water intake — selected flocks',
+            'metric': 'feed_water',
+            'series': [
+                {'key':'feed_g_bird_day','label':'Feed','unit':'g/bird/day'},
+                {'key':'water_ml_bird_day','label':'Water','unit':'mL/bird/day'}
+            ],
+            'points': [{'date':d.isoformat(),**{k:_metrics(day)[k] for k in ('feed_g_bird_day','water_ml_bird_day')}}
+                       for d,day in sorted(by_day.items())]
+        }
+        columns = [{'key':'farm','label':'Farm'},{'key':'shed','label':'Shed'},
+                   {'key':'flock','label':'Flock'},
+                   {'key':'feed_g_bird_day','label':'Feed g/b/day'},
+                   {'key':'water_ml_bird_day','label':'Water mL/b/day'},
+                   {'key':'days_recorded','label':'Days recorded'}]
     focus = chosen[0] if chosen else None
     heading = {"mortality": "Mortality ranking", "production": "Hen-day production", "feed": "Feed intake", "water": "Water intake", "fcr": "Feed conversion ratio", "investigate": "Production investigation", "overview": "Commercial Layers overview"}[intent]
     cards = [_card("Reporting flocks", len(items))]
@@ -411,6 +442,14 @@ def ask_intelligence(payload: AskRequest, current_user: models.AppUser = Depends
         cards.append(_card("Total mortality birds", sum(item["current"]["mortality_birds"] for item in items), " birds"))
     if focus:
         cards.extend([_card({"mortality_pct": "Mortality", "production_pct": "Hen-day production", "feed_g_bird_day": "Feed intake", "water_ml_bird_day": "Water intake", "fcr_kg_dozen": "FCR"}[key], focus["current"][key], {"mortality_pct": "%", "production_pct": "%", "feed_g_bird_day": " g/b/day", "water_ml_bird_day": " mL/b/day", "fcr_kg_dozen": " kg/doz"}[key]), _card("Change vs prior period", focus["changes"][key]), _card("Days recorded", focus["current"]["days_recorded"])])
+    if feed_water:
+        heading = 'Feed and water intake'
+        if focus:
+            cards = [_card('Reporting flocks',len(items)),
+                     _card('Feed intake',focus['current']['feed_g_bird_day'],' g/b/day'),
+                     _card('Water intake',focus['current']['water_ml_bird_day'],' mL/b/day'),
+                     _card('Feed days',focus['current']['feed_days']),
+                     _card('Water days',focus['current']['water_days'])]
     observations = ["Comparisons use the preceding equal-length calendar period; missing values are excluded rather than counted as zero."]
     if focus:
         changes = focus["changes"]
@@ -440,6 +479,14 @@ def ask_intelligence(payload: AskRequest, current_user: models.AppUser = Depends
             answer = f"{total:,} mortality birds recorded across {len(items)} authorised reporting flock(s) for {_au(start)} – {_au(end)}." if items else f"No mortality records found for {_au(start)} – {_au(end)} in your authorised Commercial Layers data."
     else:
         answer = f"I found {len(items)} reporting flock(s) in your authorised Commercial Layers data. {heading} results are shown below." if items else f"No matching data was found for {_au(start)} – {_au(end)}."
+    if feed_water and focus:
+        fm = focus['current']['feed_g_bird_day']
+        wm = focus['current']['water_ml_bird_day']
+        answer = (f"For {_au(start)} – {_au(end)}, average feed intake was "
+                  f"{fm:g} g/bird/day and water intake was {wm:g} mL/bird/day."
+                  if fm is not None and wm is not None else
+                  'Feed and water were requested, but one or both metrics have no valid readings in the selected period.')
+        observations.append('Feed and water use separate valid bird-day denominators. The graph uses separate labelled axes so neither series is visually suppressed.')
     return {"title": f"{heading} — {_au(start)} to {_au(end)}", "answer": answer, "scope": scope, "cards": cards, "columns": columns, "rows": rows, "chart": chart, "observations": observations, "capability": intent}
 
 
