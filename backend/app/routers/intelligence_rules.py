@@ -23,7 +23,7 @@ def _matched(text, phrase):
     # Whole-token matching prevents e.g. "mort" matching an unrelated word.
     return bool(re.search(r'(?<!\w)' + re.escape(phrase.casefold()) + r'(?!\w)', text))
 
-def interpret(question):
+def interpret(question, custom_rules=None):
     q = question.casefold()
     matches = []
     for entry in load_rules()['metric_dictionary']:
@@ -33,6 +33,9 @@ def interpret(question):
         for term in entry.get('synonyms', []):
             if _matched(q, term):
                 matches.append((len(term), metric, term))
+    for entry in custom_rules or []:
+        if _matched(q, entry["phrase"]):
+            matches.append((1000 + len(entry["phrase"]), entry["metric"], entry["phrase"]))
     matches.sort(reverse=True)
     metric = matches[0][1] if matches else None
     # Resolve frequent competing expressions using explicit safety precedence.

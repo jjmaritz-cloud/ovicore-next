@@ -16,6 +16,8 @@ from app import models
 from app.db import get_db
 from app.routers.auth import get_current_user
 from app.routers.intelligence_rules import interpret
+from app.routers import intelligence_training
+from typing import Any
 
 router = APIRouter(prefix="/api/intelligence", tags=["Intelligence"])
 TODAY_TZ = ZoneInfo("Australia/Sydney")
@@ -163,7 +165,10 @@ def ask_intelligence(payload: AskRequest, current_user: models.AppUser = Depends
     company_id = _permissions(db, current_user, payload.company_id)
     explicit_dates = _question_dates(payload.question)
     plan = _fallback_plan(payload.question)  # Preserve original fallback and response contract.
-    learned = interpret(payload.question)  # Local approved terminology rules only.
+    # Depop dates are not yet connected: never substitute production KPIs.
+    if re.search(r"\b(?:depopulat(?:e|ed|ion|ing)?|depop|destock|empty\s+(?:the\s+)?shed)\b",payload.question,re.I):
+        raise HTTPException(422, "I understand this is a depopulation question, but planned and actual depopulation dates are not connected to Intelligence yet. No date has been assumed.")
+    learned = interpret(payload.question, intelligence_training.active_rules(db))  # Reviewed local rules only.
     metric = learned['metric']
     # Unsupported advanced questions must not silently return unrelated statistics.
     if learned['intent'] == 'compare_flocks':
@@ -349,3 +354,37 @@ def ask_intelligence(payload: AskRequest, current_user: models.AppUser = Depends
     else:
         answer = f"I found {len(items)} reporting flock(s) in your authorised Commercial Layers data. {heading} results are shown below." if items else f"No matching data was found for {_au(start)} – {_au(end)}."
     return {"title": f"{heading} — {_au(start)} to {_au(end)}", "answer": answer, "scope": scope, "cards": cards, "columns": columns, "rows": rows, "chart": chart, "observations": observations, "capability": intent}
+
+
+class TrainingPackRequest(BaseModel):
+    package: dict[str, Any]
+
+class TrainingToggleRequest(BaseModel):
+    enabled: bool
+
+def _require_training_admin(current_user):
+    if not current_user.is_global_admin:
+        raise HTTPException(403, "Only OviCore Global Administrators can manage shared training rules.")
+
+@router.get("/training/packs")
+def list_training_packs(current_user: models.AppUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    _require_training_admin(current_user)
+    return {"packs": intelligence_training.packs(db),"allowed_metrics":sorted(intelligence_training.SUPPORTED_METRICS)}
+
+@router.post("/training/validate")
+def validate_training_pack(payload: TrainingPackRequest, current_user: models.AppUser = Depends(get_current_user)):
+    _require_training_admin(current_user)
+    package=intelligence_training.validate_pack(payload.package)
+    return {"valid":True,"name":package['name'],"rules":package['rules'],"note":"Rules only map phrases to existing metrics. No code or calculation changes."}
+
+@router.post("/training/import")
+def import_training_pack(payload: TrainingPackRequest, current_user: models.AppUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    _require_training_admin(current_user)
+    pack_id=intelligence_training.add_pack(db,payload.package,current_user.id)
+    return {"id":pack_id,"message":"Training rules activated. New questions use them immediately."}
+
+@router.patch("/training/packs/{pack_id}")
+def toggle_training_pack(pack_id:int, payload: TrainingToggleRequest, current_user: models.AppUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    _require_training_admin(current_user)
+    intelligence_training.set_pack_enabled(db,pack_id,payload.enabled)
+    return {"id":pack_id,"enabled":payload.enabled}
