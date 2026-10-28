@@ -25,6 +25,7 @@ from app.routers import daily_data_import
 from app.routers.standards import PerformanceStandard
 from app.routers.auth import get_current_user
 from app import models
+from app.routers import ai_intelligence
 
 from .db import Base, engine, SessionLocal, get_db
 from .models import (
@@ -79,6 +80,7 @@ from .seed import seed_demo_data
 
 app = FastAPI(title="OviCore Broiler Module API", version="0.1.0")
 app.include_router(broiler_processing.router)
+app.include_router(ai_intelligence.router)
 app.include_router(app_notes.router)
 app.include_router(broiler_supply.router)
 app.include_router(hatchery.router)
