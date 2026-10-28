@@ -5,26 +5,26 @@ import OviCoreShell from "@/components/ovicore/OviCoreShell";
 
 type Card = { label:string; value:number|null; unit?:string };
 type Column = {key:string; label:string};
-type Response = {title:string;answer:string;scope:{start?:string;end?:string};cards:Card[];columns:Column[];rows:Record<string,string|number|null>[];chart:{title:string;metric:string;points:{date:string;value?:number|null;feed_g_bird_day?:number|null;water_ml_bird_day?:number|null}[];series?:{key:string;label:string;unit:string}[]}|null;observations:string[];capability:string};
+type Response = {title:string;answer:string;scope:{start?:string;end?:string};cards:Card[];columns:Column[];rows:Record<string,string|number|null>[];chart:{title:string;metric:string;points:{date:string;value?:number|null;feed_g_bird_day?:number|null;water_ml_bird_day?:number|null;[key:string]:string|number|null|undefined}[];additional_charts?:any[];series?:{key:string;label:string;unit:string}[]}|null;observations:string[];capability:string};
 function dateAU(value:string|undefined){if(!value)return "—";const parts=/^(\d{4})-(\d{2})-(\d{2})$/.exec(value);return parts?`${parts[3]}/${parts[2]}/${parts[1]}`:value;}
 const examples = ["What data can you show me?", "Which sheds have the highest mortality over the last 10 days?", "Show production trends over the last 30 days", "Why has production dropped in Shed 1?", "Compare feed intake over the last 14 days"];
 function show(value:string|number|null|undefined){return typeof value === "number"?value.toLocaleString("en-AU",{maximumFractionDigits:2}):value??"—";}
 function Trend({data}:{data:NonNullable<Response["chart"]>}){
-  if(data.series?.length===2){
+  if(data.series?.length && data.series.length>=1){
     const specs=data.series;
     const palette=["#079da4","#a15fda"];
     const valuesByAxis=specs.map(sp=>data.points.map(p=>(p as unknown as Record<string,number|null|undefined>)[sp.key]).filter((v):v is number=>typeof v==='number'&&Number.isFinite(v)));
-    if(valuesByAxis.every(v=>v.length<2))return <div className="ai-empty">Not enough daily readings to graph feed and water.</div>;
+    if(valuesByAxis.every(v=>v.length<2))return <div className="ai-empty">Not enough valid daily readings to draw the requested metrics.</div>;
     const ranges=valuesByAxis.map(v=>{const mn=Math.min(...v),mx=Math.max(...v),pad=Math.max((mx-mn)*.12,1);return [mn-pad,mx+pad];});
     const xx=(i:number)=>68+i*660/Math.max(data.points.length-1,1);
     const yy=(v:number,axis:number)=>188-(v-ranges[axis][0])/(ranges[axis][1]-ranges[axis][0])*142;
     return <section className="ai-panel ai-chart"><div className="ai-panel-heading"><div><span className="ai-eyebrow">PERFORMANCE SIGNAL</span><h3>{data.title}</h3></div><span className="ai-tag">Daily · Dual axis</span></div>
       <div style={{display:'flex',gap:18,justifyContent:'center',fontSize:12,fontWeight:700,marginTop:4}}>{specs.map((sp,a)=><span key={sp.key} style={{color:palette[a]}}>● {sp.label} ({sp.unit})</span>)}</div>
-      <svg viewBox="0 0 800 242" role="img" aria-label="Daily feed and water, independent labelled left and right axes" className="ai-trend-svg">
+      <svg viewBox="0 0 800 242" role="img" aria-label="Daily production metrics, independently labelled axes" className="ai-trend-svg">
       {[0,1,2,3,4].map(i=><g key={i}><line x1="68" x2="728" y1={46+i*35.5} y2={46+i*35.5} stroke="#dfe9ef" strokeDasharray="4 5"/>{specs.map((sp,a)=>{const v=ranges[a][1]-(ranges[a][1]-ranges[a][0])*i/4;return <text key={a} x={a===0?57:739} y={50+i*35.5} textAnchor={a===0?'end':'start'} fontSize="11" fill={palette[a]}>{show(Number(v.toFixed(1)))}</text>;})}</g>)}
       {specs.map((sp,a)=>{const segments:string[]=[];let active:string[]=[];data.points.forEach((p,i)=>{const v=(p as unknown as Record<string,number|null|undefined>)[sp.key];if(typeof v==='number'){active.push(`${xx(i).toFixed(1)},${yy(v,a).toFixed(1)}`);}else{if(active.length>1)segments.push(active.join(' '));active=[];}});if(active.length>1)segments.push(active.join(' '));return <g key={sp.key}>{segments.map((pts,i)=><polyline key={i} points={pts} fill="none" stroke={palette[a]} strokeWidth="2.7" strokeLinejoin="round" strokeLinecap="round"/>)}{data.points.map((p,i)=>{const v=(p as unknown as Record<string,number|null|undefined>)[sp.key];return typeof v==='number'?<circle key={i} cx={xx(i)} cy={yy(v,a)} r="3.4" fill="white" stroke={palette[a]} strokeWidth="2"><title>{dateAU(p.date)} · {sp.label}: {show(v)} {sp.unit}</title></circle>:null;})}</g>;})}
       <text x="68" y="224" fill="#62788b" fontSize="12">{dateAU(data.points[0]?.date)}</text><text x="728" y="224" textAnchor="end" fill="#62788b" fontSize="12">{dateAU(data.points[data.points.length-1]?.date)}</text>
-      </svg><div className="ai-chart-foot">Feed: left axis (g/bird/day) · Water: right axis (mL/bird/day). Hover for daily recorded values; missing readings are not zeros.</div></section>;
+      </svg><div className="ai-chart-foot">Left axis: {specs[0].label} ({specs[0].unit}) · {specs[1] ? `Right axis: ${specs[1].label} (${specs[1].unit}) · ` : ""}Hover for daily recorded values. Missing readings are not zeros.</div></section>;
   }
   const values=data.points.map(p=>p.value).filter((v):v is number=>typeof v==="number");
   if(values.length<2)return <div className="ai-empty">Not enough daily readings to draw a reliable trend.</div>;
@@ -79,7 +79,7 @@ function Content(){
     {busy&&<div className="ai-loading" role="status">✦ Analysing authorised production records…</div>}
     {result&&<><section className="ai-answer"><div className="ai-answer-top"><span className="ai-eyebrow">✦ OVICORE ANALYSIS</span>{result.scope.start&&<span className="ai-date-chip">◷ {dateAU(result.scope.start)} – {dateAU(result.scope.end)}</span>}</div><h2>{result.title}</h2><p>{result.answer}</p></section>
       {result.cards.length>0&&<div className="ai-kpi-grid">{result.cards.map((card,i)=>{const isNegative=card.value!==null&&card.value<0;return <div key={`${card.label}-${i}`} className="ai-kpi"><div className="ai-kpi-label">{card.label}</div><div className="ai-kpi-value">{show(card.value)}{card.value===null?"":card.unit??""}</div><div className="ai-kpi-foot"><span className={isNegative?"ai-pill negative":"ai-pill"}>{isNegative?"↘":"◈"}</span><span>Recorded data</span></div></div>;})}</div>}
-      {result.chart&&<Trend data={result.chart}/>}
+      {result.chart&&<><Trend data={result.chart}/>{result.chart.additional_charts?.map((c,i)=><Trend key={i} data={c}/>)}</>}
       {result.columns.length>0&&<details className="ai-panel ai-details"><summary className="ai-panel-heading"><div><span className="ai-eyebrow">DATA BREAKDOWN</span><h3>Supporting records</h3></div><span className="ai-detail-meta"><span className="ai-tag">{result.rows.length} row{result.rows.length===1?"":"s"}</span><span className="ai-detail-chevron" aria-hidden="true">⌄</span></span></summary><div className="ai-table-scroll"><table className="ai-table"><thead><tr>{result.columns.map(c=><th key={c.key}>{c.label}</th>)}</tr></thead><tbody>{result.rows.map((row,i)=><tr key={`${row.id}-${i}`}>{result.columns.map(col=><td key={col.key}>{show(row[col.key])}</td>)}</tr>)}</tbody></table>{!result.rows.length&&<p className="ai-empty">No matching reporting records.</p>}</div></details>}
       {result.observations.length>0&&<details className="ai-panel ai-findings ai-details" open><summary className="ai-panel-heading"><div><span className="ai-eyebrow">PRACTICAL FARM INTELLIGENCE</span><h3>{result.capability==="capabilities"?"What you can explore":"Key findings & next checks"}</h3></div><span className="ai-detail-chevron" aria-hidden="true">⌄</span></summary><div className="ai-finding-list">{result.observations.map((item,i)=><div className="ai-finding" key={i}><span className="ai-finding-num">{String(i+1).padStart(2,"0")}</span><span>{item}</span></div>)}</div></details>}
       <p className="ai-disclaimer">Analysis uses recorded, authorised data. Parallel changes do not prove causation; check data completeness and confirm findings on farm.</p>

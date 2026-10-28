@@ -273,14 +273,29 @@ def ask_intelligence(payload: AskRequest, current_user: models.AppUser = Depends
     elif metric == 'fcr_kg_dozen':
         plan['intent'] = 'fcr'
 
-    # Recognise a multi-metric request independently of the single-metric dictionary.
-    # This must precede final metric selection; otherwise "feed and water" returns only water.
+    # Detect ALL requested production metrics, independently of the first dictionary match.
+    # Strict word boundaries avoid detecting HD inside other words, or feed in "feed cost".
     q = payload.question.casefold()
-    feed_water = bool(re.search(r"\b(?:feed|feeding|ration|gbd)\b", q) and
-                      re.search(r"\b(?:water|drinking)\b", q)) and not re.search(
-                          r"\b(?:why|cause|caused|investigat)\b", q)
-    if feed_water:
-        plan['intent'] = 'feed'  # Dataset selection only; result contains BOTH metrics.
+    patterns = (
+        ('production_pct', r'(?:\b(?:hen[ -]?day|henday|production|lay\s*rate|laying\s*percentage)\b|\bhd\s*%)'),
+        ('feed_g_bird_day', r'\b(?:feed(?:ing)?|feed\s+intake|gbd|grams\s+per\s+bird|ration\s+intake)\b'),
+        ('water_ml_bird_day', r'\b(?:water|drinking|ml\s*/\s*bird)\b'),
+        ('mortality_pct', r'\b(?:mortality|morts?|deaths?|died|mort\s*%)\b'),
+        ('fcr_kg_dozen', r'\b(?:fcr|feed\s+conversion|kg\s*/\s*dozen)\b'),
+    )
+    requested_metrics = [key for key, pattern in patterns if re.search(pattern, q)]
+    # Rules loaded from Teach OviCore remain a source of additional phrases.
+    if metric in dict(patterns) and metric not in requested_metrics:
+        requested_metrics.append(metric)
+    # A plain comparison of one metric with a prior period is NOT a multi-metric query.
+    multi_metrics = requested_metrics if len(requested_metrics) >= 2 and plan['intent'] != 'investigate' else []
+    if multi_metrics:
+        # Keep the existing selection/sorting pipeline; later override the visible
+        # columns, cards and chart with every metric explicitly requested.
+        primary = multi_metrics[0]
+        plan['intent'] = {'production_pct':'production','feed_g_bird_day':'feed',
+                          'water_ml_bird_day':'water','mortality_pct':'mortality',
+                          'fcr_kg_dozen':'fcr'}[primary]
 
     # Dates, including those typed in natural language, are parsed deterministically.
     intent, days, limit = plan["intent"], plan["days"], plan["limit"]
@@ -393,7 +408,7 @@ def ask_intelligence(payload: AskRequest, current_user: models.AppUser = Depends
         {"key": "delta", "label": "Change vs prior period"},
         {"key": "days_recorded", "label": "Days recorded"},
     ]
-    if intent in {"mortality", "investigate", "overview"} or feed_water:
+    if intent in {"mortality", "investigate", "overview"} or bool(multi_metrics):
         if intent == "mortality":
             columns += [{"key": "mortality_birds", "label": "Mortality birds"}]
         columns += [{"key": "feed_g_bird_day", "label": "Feed g/b/day"}, {"key": "water_ml_bird_day", "label": "Water mL/b/day"}, {"key": "production_pct", "label": "HD %"}]
@@ -412,28 +427,37 @@ def ask_intelligence(payload: AskRequest, current_user: models.AppUser = Depends
                 by_day[record.entry_date].append(record)
         points = [{"date": d.isoformat(), "value": _metrics(day)[key]} for d, day in sorted(by_day.items())]
         chart = {"title": "Daily trend — selected flocks", "metric": key, "points": points}
-    if feed_water and chosen:
-        # Independent daily denominators and missing-value handling remain in _metrics.
-        # Dual chart values are aggregated only across the authorised, selected flocks.
+    if multi_metrics and chosen:
         by_day = defaultdict(list)
         for item in chosen:
             for record in item['daily']:
                 by_day[record.entry_date].append(record)
-        chart = {
-            'title': 'Daily feed and water intake — selected flocks',
-            'metric': 'feed_water',
-            'series': [
-                {'key':'feed_g_bird_day','label':'Feed','unit':'g/bird/day'},
-                {'key':'water_ml_bird_day','label':'Water','unit':'mL/bird/day'}
-            ],
-            'points': [{'date':d.isoformat(),**{k:_metrics(day)[k] for k in ('feed_g_bird_day','water_ml_bird_day')}}
-                       for d,day in sorted(by_day.items())]
+        labels = {
+            'production_pct': ('Hen-day production','%'),
+            'feed_g_bird_day': ('Feed intake','g/bird/day'),
+            'water_ml_bird_day': ('Water intake','mL/bird/day'),
+            'mortality_pct': ('Daily mortality rate','% per bird-day'),
+            'fcr_kg_dozen': ('FCR','kg/dozen'),
         }
-        columns = [{'key':'farm','label':'Farm'},{'key':'shed','label':'Shed'},
-                   {'key':'flock','label':'Flock'},
-                   {'key':'feed_g_bird_day','label':'Feed g/b/day'},
-                   {'key':'water_ml_bird_day','label':'Water mL/b/day'},
-                   {'key':'days_recorded','label':'Days recorded'}]
+        # At most two independent axes in one chart. For 3+ metrics, emit a
+        # chart group, each with at most two series and clearly labelled units.
+        all_daily = [{'date': d.isoformat(), **{m: _metrics(day)[m] for m in multi_metrics}}
+                     for d, day in sorted(by_day.items())]
+        def make_chart(keys):
+            return {
+                'title': 'Daily trends — ' + ' & '.join(labels[k][0] for k in keys),
+                'metric': 'multi',
+                'series': [{'key':m,'label':labels[m][0],'unit':labels[m][1]} for m in keys],
+                'points': [{'date':point['date'],**{m:point[m] for m in keys}} for point in all_daily],
+            }
+        chart = make_chart(multi_metrics[:2])
+        if len(multi_metrics)>2:
+            chart['additional_charts'] = [make_chart(multi_metrics[i:i+2])
+                                          for i in range(2,len(multi_metrics),2)]
+        columns = [{'key':k,'label':label} for k,label in
+                   [('farm','Farm'),('shed','Shed'),('flock','Flock')]] + [
+                       {'key':m,'label':f'{labels[m][0]} ({labels[m][1]})'}
+                       for m in multi_metrics] + [{'key':'days_recorded','label':'Days recorded'}]
     focus = chosen[0] if chosen else None
     heading = {"mortality": "Mortality ranking", "production": "Hen-day production", "feed": "Feed intake", "water": "Water intake", "fcr": "Feed conversion ratio", "investigate": "Production investigation", "overview": "Commercial Layers overview"}[intent]
     cards = [_card("Reporting flocks", len(items))]
@@ -442,14 +466,17 @@ def ask_intelligence(payload: AskRequest, current_user: models.AppUser = Depends
         cards.append(_card("Total mortality birds", sum(item["current"]["mortality_birds"] for item in items), " birds"))
     if focus:
         cards.extend([_card({"mortality_pct": "Mortality", "production_pct": "Hen-day production", "feed_g_bird_day": "Feed intake", "water_ml_bird_day": "Water intake", "fcr_kg_dozen": "FCR"}[key], focus["current"][key], {"mortality_pct": "%", "production_pct": "%", "feed_g_bird_day": " g/b/day", "water_ml_bird_day": " mL/b/day", "fcr_kg_dozen": " kg/doz"}[key]), _card("Change vs prior period", focus["changes"][key]), _card("Days recorded", focus["current"]["days_recorded"])])
-    if feed_water:
-        heading = 'Feed and water intake'
+    if multi_metrics:
+        headings = {'production_pct':'HD%', 'feed_g_bird_day':'Feed',
+                    'water_ml_bird_day':'Water','mortality_pct':'Mortality',
+                    'fcr_kg_dozen':'FCR'}
+        heading = ' and '.join(headings[m] for m in multi_metrics)
         if focus:
-            cards = [_card('Reporting flocks',len(items)),
-                     _card('Feed intake',focus['current']['feed_g_bird_day'],' g/b/day'),
-                     _card('Water intake',focus['current']['water_ml_bird_day'],' mL/b/day'),
-                     _card('Feed days',focus['current']['feed_days']),
-                     _card('Water days',focus['current']['water_days'])]
+            units = {'production_pct':'%', 'feed_g_bird_day':' g/b/day',
+                     'water_ml_bird_day':' mL/b/day','mortality_pct':'% per bird-day',
+                     'fcr_kg_dozen':' kg/doz'}
+            cards = [_card('Reporting flocks',len(items))] + [
+                _card(headings[m],focus['current'][m],units[m]) for m in multi_metrics]
     observations = ["Comparisons use the preceding equal-length calendar period; missing values are excluded rather than counted as zero."]
     if focus:
         changes = focus["changes"]
@@ -479,14 +506,19 @@ def ask_intelligence(payload: AskRequest, current_user: models.AppUser = Depends
             answer = f"{total:,} mortality birds recorded across {len(items)} authorised reporting flock(s) for {_au(start)} – {_au(end)}." if items else f"No mortality records found for {_au(start)} – {_au(end)} in your authorised Commercial Layers data."
     else:
         answer = f"I found {len(items)} reporting flock(s) in your authorised Commercial Layers data. {heading} results are shown below." if items else f"No matching data was found for {_au(start)} – {_au(end)}."
-    if feed_water and focus:
-        fm = focus['current']['feed_g_bird_day']
-        wm = focus['current']['water_ml_bird_day']
-        answer = (f"For {_au(start)} – {_au(end)}, average feed intake was "
-                  f"{fm:g} g/bird/day and water intake was {wm:g} mL/bird/day."
-                  if fm is not None and wm is not None else
-                  'Feed and water were requested, but one or both metrics have no valid readings in the selected period.')
-        observations.append('Feed and water use separate valid bird-day denominators. The graph uses separate labelled axes so neither series is visually suppressed.')
+    if multi_metrics and focus:
+        parts = []
+        for m in multi_metrics:
+            val = focus['current'][m]
+            unit = {'production_pct':'%','feed_g_bird_day':'g/bird/day',
+                    'water_ml_bird_day':'mL/bird/day','mortality_pct':'% per bird-day',
+                    'fcr_kg_dozen':'kg/dozen'}[m]
+            label = {'production_pct':'HD production','feed_g_bird_day':'feed intake',
+                     'water_ml_bird_day':'water intake','mortality_pct':'daily mortality rate',
+                     'fcr_kg_dozen':'FCR'}[m]
+            parts.append(f'{label}: {val:g} {unit}' if val is not None else f'{label}: no valid readings')
+        answer = f"For {_au(start)} – {_au(end)} at {focus['farm']} / {focus['shed']}: " + '; '.join(parts) + '.'
+        observations.append('Each series uses its own valid daily denominator. Separate axes apply when units differ. Missing readings are not zeros.')
     return {"title": f"{heading} — {_au(start)} to {_au(end)}", "answer": answer, "scope": scope, "cards": cards, "columns": columns, "rows": rows, "chart": chart, "observations": observations, "capability": intent}
 
 
