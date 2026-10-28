@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 
 import {
   Bird,
+  BrainCircuit,
   Compass,
   ChartNoAxesCombined,
   Drumstick,
@@ -150,6 +151,21 @@ const modules: ModuleCard[] = [
     icon: Egg,
     iconClass: "home-icon-hatchery",
     group: "Breeder & Hatchery",
+  },
+  {
+    // Shared AI entry point. Module-specific Intelligence screens remain separate.
+    name: "OviCore Intelligence",
+    eyebrow: "Ask OviCore AI",
+    description:
+      "Ask questions about flock performance, mortality, feed, water and production across authorised operations.",
+    tags: ["Ask questions", "Performance", "Insights"],
+    href: "/intelligence",
+    status: "New",
+    statusClass: "home-status-live",
+    icon: BrainCircuit,
+    iconClass: "home-icon-planning",
+    group: "Planning & Operations",
+    featured: true,
   },
   {
     name: "Planning",
