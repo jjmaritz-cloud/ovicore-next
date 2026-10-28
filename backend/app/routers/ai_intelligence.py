@@ -1,15 +1,11 @@
 """Shared OviCore Intelligence API, Commercial Layers connector v2.
 
-Read-only, tenant/farm scoped. Optional language-model intent classification using
-OPENAI_API_KEY; results and numerical conclusions ALWAYS come from ORM records.
-No LLM-generated SQL or permission decisions.
+Read-only, tenant/farm scoped. Deterministic question parsing only.
+No external AI APIs, paid model calls or model-generated SQL.
 """
 from collections import defaultdict
-from datetime import datetime, timedelta
-import json
-import os
+from datetime import date, datetime, timedelta
 import re
-import urllib.request
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -29,6 +25,8 @@ class AskRequest(BaseModel):
     question: str = Field(min_length=3, max_length=2000)
     company_id: int | None = None
     module: str = "layers"
+    start_date: date | None = None
+    end_date: date | None = None
 
 
 def _asfloat(value):
@@ -70,6 +68,40 @@ def _delta(now, previous):
     return round(now - previous, 2) if now is not None and previous is not None else None
 
 
+# Explicit dates in the question always outrank UI date presets.
+# Both ISO YYYY-MM-DD and Australian DD/MM/YYYY or DD-MM-YYYY are supported.
+_DATE_PATTERN = re.compile(r"(?<!\d)(?:\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[/-]\d{1,2}[/-]\d{4})(?!\d)")
+
+
+def _parse_date_token(value: str) -> date:
+    if re.fullmatch(r"\d{4}-\d{1,2}-\d{1,2}", value):
+        parts = [int(n) for n in value.split("-")]
+        return date(*parts)
+    day, month, year = [int(n) for n in re.split(r"[/-]", value)]
+    return date(year, month, day)
+
+
+def _question_dates(question: str) -> tuple[date, date] | None:
+    tokens = _DATE_PATTERN.findall(question)
+    if not tokens:
+        return None
+    if len(tokens) != 2:
+        raise HTTPException(422, "For a custom period, enter both start and end dates, for example 01/07/2026 to 10/07/2026.")
+    try:
+        start, end = (_parse_date_token(token) for token in tokens)
+    except ValueError:
+        raise HTTPException(422, "Invalid date. Use DD/MM/YYYY or YYYY-MM-DD and check the day and month.")
+    if start > end:
+        raise HTTPException(422, "The start date must be on or before the end date.")
+    if (end - start).days > 365:
+        raise HTTPException(422, "Select a date range of 366 days or fewer.")
+    return start, end
+
+
+def _au(value: date) -> str:
+    return value.strftime("%d/%m/%Y")
+
+
 def _fallback_plan(question):
     q = question.lower()
     match_days = re.search(r"(?:last|past|previous)\s+(\d{1,3})\s+days", q)
@@ -80,7 +112,7 @@ def _fallback_plan(question):
         intent = "capabilities"
     elif re.search(r"why|investigat|what.*(wrong|happen)|caus|affected|impact", q):
         intent = "investigate"
-    elif "mortal" in q or "death" in q or "died" in q:
+    elif "mortal" in q or "morts" in q or "mort " in q or "death" in q or "died" in q:
         intent = "mortality"
     elif "fcr" in q or "conversion" in q:
         intent = "fcr"
@@ -93,39 +125,6 @@ def _fallback_plan(question):
     else:
         intent = "overview"
     return {"intent": intent, "days": days, "limit": limit, "location": None}
-
-
-def _llm_plan(question, fallback):
-    """Optional LLM semantic parser; parsed values validated against allowlist.
-
-    On provider errors use deterministic parser rather than failing an on-farm request.
-    Only the QUESTION goes to LLM, never private production data or credentials.
-    """
-    key = os.getenv("OPENAI_API_KEY", "").strip()
-    if not key or os.getenv("OVICORE_AI_USE_LLM", "false").lower() not in {"1", "true", "yes"}:
-        return fallback
-    schema = {"type": "object", "properties": {
-        "intent": {"type": "string", "enum": list(SUPPORTED)},
-        "days": {"type": "integer", "minimum": 1, "maximum": 90},
-        "limit": {"type": "integer", "minimum": 1, "maximum": 25},
-        "location": {"type": ["string", "null"]},
-    }, "required": ["intent", "days", "limit", "location"], "additionalProperties": False}
-    body = {"model": os.getenv("OVICORE_AI_MODEL", "gpt-4.1-mini"), "input": [
-        {"role": "system", "content": "Classify the user request about poultry Commercial Layers. Never calculate or invent results. location is a named farm/shed/flock ONLY if explicitly mentioned; otherwise null. For 'what data can you show' use capabilities. For causes/why use investigate. Use days=10 and limit=10 unless specified."},
-        {"role": "user", "content": question}],
-        "text": {"format": {"type": "json_schema", "name": "ovicore_ai_plan", "strict": True, "schema": schema}}}
-    try:
-        request = urllib.request.Request("https://api.openai.com/v1/responses", data=json.dumps(body).encode(),
-                                         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"}, method="POST")
-        with urllib.request.urlopen(request, timeout=15) as response:
-            payload = json.load(response)
-        fragments = [part.get("text") for output in payload.get("output", []) for part in output.get("content", []) if part.get("type") == "output_text"]
-        plan = json.loads(next(p for p in fragments if p))
-        if plan.get("intent") in SUPPORTED and 1 <= plan.get("days", 0) <= 90 and 1 <= plan.get("limit", 0) <= 25:
-            return plan
-    except (ValueError, KeyError, StopIteration, OSError, TypeError):
-        pass
-    return fallback
 
 
 def _permissions(db, current_user, company_id):
@@ -160,13 +159,27 @@ def ask_intelligence(payload: AskRequest, current_user: models.AppUser = Depends
     if payload.module != "layers":
         raise HTTPException(422, "Only Commercial Layers is connected currently.")
     company_id = _permissions(db, current_user, payload.company_id)
-    plan = _llm_plan(payload.question, _fallback_plan(payload.question))
+    explicit_dates = _question_dates(payload.question)
+    plan = _fallback_plan(payload.question)  # No paid AI calls.
+    # Dates, including those typed in natural language, are parsed deterministically.
     intent, days, limit = plan["intent"], plan["days"], plan["limit"]
     scope = {"company_id": company_id, "module": "layers"}
     if intent == "capabilities":
         return {"title": "What OviCore Intelligence can analyse", "answer": "Commercial Layers is connected. I can examine mortality, feed per bird, water per bird, hen-day production, FCR and recent trends, rank sheds or flocks, and highlight changes for on-farm investigation. Rearing, Feed Mill and People Tracker analysis will be added later.", "scope": scope, "cards": [], "columns": [], "rows": [], "chart": None, "observations": ["Try: Which sheds have the highest mortality over the last 10 days?", "Try: Show the production trend for the last 30 days.", "Try: Why has production dropped in Shed 1?"], "capability": "capabilities"}
-    end = datetime.now(TODAY_TZ).date() - timedelta(days=1)
-    start = end - timedelta(days=days - 1)
+    if explicit_dates:
+        start, end = explicit_dates
+    elif payload.start_date is not None or payload.end_date is not None:
+        if payload.start_date is None or payload.end_date is None:
+            raise HTTPException(422, "Both custom start and end dates are required.")
+        start, end = payload.start_date, payload.end_date
+        if start > end:
+            raise HTTPException(422, "The start date must be on or before the end date.")
+        if (end - start).days > 365:
+            raise HTTPException(422, "Select a date range of 366 days or fewer.")
+    else:
+        end = datetime.now(TODAY_TZ).date() - timedelta(days=1)
+        start = end - timedelta(days=days - 1)
+    days = (end - start).days + 1
     baseline = start - timedelta(days=days)
     scope.update({"start": start.isoformat(), "end": end.isoformat(), "previous_start": baseline.isoformat(), "previous_end": (start - timedelta(days=1)).isoformat()})
     query = (db.query(models.CommercialLayerDailyPerformance, models.CommercialLayerFlock)
@@ -212,6 +225,8 @@ def ask_intelligence(payload: AskRequest, current_user: models.AppUser = Depends
         {"key": "days_recorded", "label": "Days recorded"},
     ]
     if intent in {"mortality", "investigate", "overview"}:
+        if intent == "mortality":
+            columns += [{"key": "mortality_birds", "label": "Mortality birds"}]
         columns += [{"key": "feed_g_bird_day", "label": "Feed g/b/day"}, {"key": "water_ml_bird_day", "label": "Water mL/b/day"}, {"key": "production_pct", "label": "HD %"}]
     rows = []
     for item in chosen:
@@ -231,6 +246,9 @@ def ask_intelligence(payload: AskRequest, current_user: models.AppUser = Depends
     focus = chosen[0] if chosen else None
     heading = {"mortality": "Mortality ranking", "production": "Hen-day production", "feed": "Feed intake", "water": "Water intake", "fcr": "Feed conversion ratio", "investigate": "Production investigation", "overview": "Commercial Layers overview"}[intent]
     cards = [_card("Reporting flocks", len(items))]
+    if intent == "mortality":
+        # Total all authorised reporting flocks, NOT just the top-N shown in the table.
+        cards.append(_card("Total mortality birds", sum(item["current"]["mortality_birds"] for item in items), " birds"))
     if focus:
         cards.extend([_card({"mortality_pct": "Mortality", "production_pct": "Hen-day production", "feed_g_bird_day": "Feed intake", "water_ml_bird_day": "Water intake", "fcr_kg_dozen": "FCR"}[key], focus["current"][key], {"mortality_pct": "%", "production_pct": "%", "feed_g_bird_day": " g/b/day", "water_ml_bird_day": " mL/b/day", "fcr_kg_dozen": " kg/doz"}[key]), _card("Change vs prior period", focus["changes"][key]), _card("Days recorded", focus["current"]["days_recorded"])])
     observations = ["Comparisons use the preceding equal-length calendar period; missing values are excluded rather than counted as zero."]
@@ -246,4 +264,9 @@ def ask_intelligence(payload: AskRequest, current_user: models.AppUser = Depends
         observations.append("Changes occurring together are associations, not proof of causation. Confirm daily coverage and flock age before decisions.")
     if not chosen:
         observations = ["No matching, authorised Commercial Layers records were found for the selected period or named location. Try a broader question or another date range."]
-    return {"title": f"{heading} — last {days} completed days", "answer": f"I found {len(items)} reporting flock(s) in your authorised Commercial Layers data. {heading} results are shown below." if items else "No matching data was found for that period.", "scope": scope, "cards": cards, "columns": columns, "rows": rows, "chart": chart, "observations": observations, "capability": intent}
+    if intent == "mortality":
+        total = sum(item["current"]["mortality_birds"] for item in items)
+        answer = f"{total:,} mortality birds recorded across {len(items)} authorised reporting flock(s) for {_au(start)} – {_au(end)}." if items else f"No mortality records found for {_au(start)} – {_au(end)} in your authorised Commercial Layers data."
+    else:
+        answer = f"I found {len(items)} reporting flock(s) in your authorised Commercial Layers data. {heading} results are shown below." if items else f"No matching data was found for {_au(start)} – {_au(end)}."
+    return {"title": f"{heading} — {_au(start)} to {_au(end)}", "answer": answer, "scope": scope, "cards": cards, "columns": columns, "rows": rows, "chart": chart, "observations": observations, "capability": intent}
