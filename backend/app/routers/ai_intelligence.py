@@ -154,6 +154,82 @@ def _permissions(db, current_user, company_id):
     return company_id
 
 
+def _lifecycle_response(db, company_id, user, question, requested_date, metric):
+    """Read-only, company-scoped flock/lifecycle lookup. Never guess from trends."""
+    q = re.sub(r"[^a-z0-9]+", " ", question.casefold()).strip()
+    flocks_q = db.query(models.CommercialLayerFlock).filter(models.CommercialLayerFlock.company_id == company_id)
+    if not (user.is_global_admin or user.is_company_admin):
+        allowed = db.query(models.UserFarmAccess.farm_id).filter(models.UserFarmAccess.user_id == user.id)
+        flocks_q = flocks_q.filter(models.CommercialLayerFlock.farm_id.in_(allowed))
+    flocks = flocks_q.all()
+    def named(name):
+        t = re.sub(r"[^a-z0-9]+", " ", str(name).casefold()).strip()
+        return bool(t and re.search(r"(?<!\w)" + re.escape(t) + r"(?!\w)", q))
+    def farmname(f): return f.farm.farm_name if f.farm else f"Farm {f.farm_id}"
+    def shedname(f): return f.shed.shed_name if f.shed else f"Shed {f.shed_id}"
+    farms = {farmname(f) for f in flocks}
+    sheds = {shedname(f) for f in flocks}
+    codes = {f.flock_code for f in flocks if f.flock_code}
+    mf, ms, mc = ({n for n in names if named(n)} for names in (farms, sheds, codes))
+    # Detect a named scope even if no authorised record matches it; no broad fallback.
+    requested_shed = re.search(r"\bshed\s*#?\s*([a-z0-9-]+)", q)
+    if requested_shed and not ms:
+        raise HTTPException(404, "The requested shed was not found in your authorised Commercial Layers records.")
+    if not (mf or ms or mc):
+        raise HTTPException(422, "Name a farm and shed, or a flock, to look up its recorded information.")
+    selected = [f for f in flocks if (not mf or farmname(f) in mf) and (not ms or shedname(f) in ms) and (not mc or f.flock_code in mc)]
+    if not selected:
+        raise HTTPException(404, "No authorised flock matches the farm, shed or flock in your question.")
+    today = datetime.now(TODAY_TZ).date()
+    if metric == 'placement_date':
+        if requested_date is None:
+            active = [f for f in selected if str(f.status or '').casefold() == 'active']
+            selected = active if active else selected
+        else:
+            selected = [f for f in selected if f.housed_date and f.housed_date <= requested_date]
+        if len(selected) != 1:
+            raise HTTPException(422, "More than one flock matches this shed. Include the farm and flock code to identify the placement date.")
+        f = selected[0]
+        if not f.housed_date:
+            raise HTTPException(404, "No placement/housing date has been recorded for this flock.")
+        return {'title':f'Flock placement — {shedname(f)}', 'answer':f'{f.flock_code} was placed in {farmname(f)} / {shedname(f)} on {_au(f.housed_date)}.',
+                'scope':{'company_id':company_id,'module':'layers'}, 'cards':[_card('Placement date',_au(f.housed_date)),_card('Flock',f.flock_code)],
+                'columns':[], 'rows':[], 'chart':None,'observations':['Date is taken from the flock housing record.'],'capability':'placement'}
+    # Bird count: exact date when supplied; otherwise most recent recorded reading in active flock.
+    if requested_date is None:
+        selected = [f for f in selected if str(f.status or '').casefold() == 'active']
+        if not selected:
+            raise HTTPException(404, "No active flock was found for that shed. Specify a historical flock code or date.")
+    if requested_date is not None:
+        selected = [f for f in selected if (f.housed_date is None or f.housed_date <= requested_date)]
+    if len(selected) != 1:
+        raise HTTPException(422, "More than one flock matches. Include the farm and flock code for an unambiguous bird count.")
+    f = selected[0]
+    records = db.query(models.CommercialLayerDailyPerformance).filter(
+        models.CommercialLayerDailyPerformance.company_id == company_id,
+        models.CommercialLayerDailyPerformance.flock_id == f.id,
+        getattr(models.CommercialLayerDailyPerformance,metric).isnot(None))
+    if requested_date is not None:
+        records = records.filter(models.CommercialLayerDailyPerformance.entry_date == requested_date)
+    else:
+        records = records.filter(models.CommercialLayerDailyPerformance.entry_date <= today)
+    record = records.order_by(models.CommercialLayerDailyPerformance.entry_date.desc()).first()
+    if record is None:
+        detail = f'on {_au(requested_date)}' if requested_date else 'for the active flock'
+        raise HTTPException(404, f'No recorded bird population is available {detail}.')
+    count = int(getattr(record,metric))
+    label = 'Opening birds' if metric == 'opening_birds' else 'Closing birds'
+    age = (today - record.entry_date).days
+    note = f'Latest recorded daily entry: {_au(record.entry_date)}.' if requested_date is None else f'Exact recorded entry: {_au(record.entry_date)}.'
+    if requested_date is None and age > 2:
+        note += f' Warning: this record is {age} days old; the displayed stock may not be current.'
+    return {'title':f'{label} — {shedname(f)}', 'answer':f'{count:,} birds ({label.lower()}) in {farmname(f)} / {shedname(f)} / {f.flock_code} as recorded on {_au(record.entry_date)}.',
+            'scope':{'company_id':company_id,'module':'layers'},'cards':[_card(label,count,' birds'),_card('Recorded on',_au(record.entry_date)),_card('Flock',f.flock_code)],
+            'columns':[{'key':'farm','label':'Farm'},{'key':'shed','label':'Shed'},{'key':'flock','label':'Flock'},{'key':'date','label':'Date'}, {'key':'opening_birds','label':'Opening birds'},{'key':'closing_birds','label':'Closing birds'}],
+            'rows':[{'id':f.id,'farm':farmname(f),'shed':shedname(f),'flock':f.flock_code,'date':_au(record.entry_date),'opening_birds':record.opening_birds,'closing_birds':record.closing_birds}],
+            'chart':None,'observations':[note,'Bird count comes from the recorded daily data, not a sum of daily populations.'],'capability':'population'}
+
+
 def _card(label, value, unit=""):
     return {"label": label, "value": value, "unit": unit}
 
@@ -168,11 +244,22 @@ def ask_intelligence(payload: AskRequest, current_user: models.AppUser = Depends
     # Depop dates are not yet connected: never substitute production KPIs.
     if re.search(r"\b(?:depopulat(?:e|ed|ion|ing)?|depop|destock|empty\s+(?:the\s+)?shed)\b",payload.question,re.I):
         raise HTTPException(422, "I understand this is a depopulation question, but planned and actual depopulation dates are not connected to Intelligence yet. No date has been assumed.")
+    # Placement/housing date is a flock lifecycle lookup, not a performance metric.
+    if re.search(r"\b(?:when|what\s+date|placement\s+date|housing\s+date)\b",payload.question,re.I) and re.search(r"\b(?:plac(?:e|ed|ement)|hous(?:e|ed|ing))\b",payload.question,re.I):
+        dates = _question_dates(payload.question)
+        return _lifecycle_response(db, company_id, current_user, payload.question, dates[1] if dates else None, 'placement_date')
     learned = interpret(payload.question, intelligence_training.active_rules(db))  # Reviewed local rules only.
     metric = learned['metric']
     # Unsupported advanced questions must not silently return unrelated statistics.
     if learned['intent'] == 'compare_flocks':
         raise HTTPException(422, "Same-age flock comparison is not connected yet. Ask about one flock or metric while comparison support is developed.")
+    if metric in ('closing_birds','opening_birds'):
+        dates = _question_dates(payload.question)
+        if dates and dates[0] != dates[1]:
+            raise HTTPException(422, "Bird population is a point-in-time value. Specify one date or ask for the latest recorded stock.")
+        return _lifecycle_response(db, company_id, current_user, payload.question, dates[0] if dates else None, metric)
+    if metric is None and plan['intent'] == 'overview' and not re.search(r"\b(?:overview|summary|performance|how\s+(?:are|is)\s+(?:my|the)\s+(?:flock|farm|shed))\b",payload.question,re.I):
+        raise HTTPException(422, "I haven't connected that type of question yet. Try asking about mortality, feed, water, production, bird numbers or flock placement.")
     if metric == 'closing_birds' or metric == 'opening_birds':
         plan['intent'] = 'population'
     elif metric in ('mortality_birds', 'mortality_pct'):
