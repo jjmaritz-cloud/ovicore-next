@@ -1,12 +1,16 @@
-"""OviCore Intelligence: verified read-only Commercial Layers analysis.
+"""Shared OviCore Intelligence API, Commercial Layers connector v2.
 
-Phase 1 analytical tool, NOT a general-purpose LLM agent. An LLM planner can
-later call this tool with validated structured arguments. No arbitrary SQL.
+Read-only, tenant/farm scoped. Optional language-model intent classification using
+OPENAI_API_KEY; results and numerical conclusions ALWAYS come from ORM records.
+No LLM-generated SQL or permission decisions.
 """
 from collections import defaultdict
 from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
+import json
+import os
 import re
+import urllib.request
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -17,154 +21,229 @@ from app.db import get_db
 from app.routers.auth import get_current_user
 
 router = APIRouter(prefix="/api/intelligence", tags=["Intelligence"])
+TODAY_TZ = ZoneInfo("Australia/Sydney")
+SUPPORTED = ("capabilities", "mortality", "production", "feed", "water", "fcr", "overview", "investigate")
 
 
 class AskRequest(BaseModel):
-    question: str = Field(min_length=5, max_length=2000)
+    question: str = Field(min_length=3, max_length=2000)
     company_id: int | None = None
     module: str = "layers"
 
 
-def _period_metrics(rows):
-    """Return bird-day-weighted values; missing measurements remain missing."""
-    mortality = sum(int(r.mortality_birds or 0) for r in rows)
-    culls = sum(int(r.cull_birds or 0) for r in rows)
-    bird_days = sum(int(r.opening_birds) for r in rows if r.opening_birds and r.opening_birds > 0)
-    paired_feed = [r for r in rows if r.feed_kg is not None and r.opening_birds and r.opening_birds > 0]
-    paired_water = [r for r in rows if r.water_litres is not None and r.opening_birds and r.opening_birds > 0]
-    feed_bd = sum(int(r.opening_birds) for r in paired_feed)
-    water_bd = sum(int(r.opening_birds) for r in paired_water)
-    egg_bd = sum(int(r.opening_birds) for r in rows if r.opening_birds and r.opening_birds > 0)
+def _asfloat(value):
+    return float(value) if value is not None else None
+
+
+def _metrics(rows):
+    """Bird-day weighted metrics using only paired available readings.
+
+    Daily mortality excludes culls; FCR is kg feed per dozen TOTAL eggs.
+    Don't treat missing feed/water as zero or average daily FCRs.
+    """
+    birdrows = [r for r in rows if r.opening_birds is not None and r.opening_birds > 0]
+    feedrows = [r for r in birdrows if r.feed_kg is not None]
+    waterrows = [r for r in birdrows if r.water_litres is not None]
+    eggrows = [r for r in birdrows if r.total_eggs is not None]
+    fcrrows = [r for r in feedrows if r.total_eggs is not None]
+    birddays = sum(r.opening_birds for r in birdrows)
+    feedbirddays = sum(r.opening_birds for r in feedrows)
+    waterbirddays = sum(r.opening_birds for r in waterrows)
+    eggdays = sum(r.opening_birds for r in eggrows)
+    eggs = sum(r.total_eggs for r in fcrrows)
     return {
-        "mortality_birds": mortality,
-        "culls": culls,
-        "mortality_pct": round(100 * mortality / bird_days, 3) if bird_days else None,
-        "feed_g_bird_day": round(1000 * sum(float(r.feed_kg) for r in paired_feed) / feed_bd, 1) if feed_bd else None,
-        "water_ml_bird_day": round(1000 * sum(float(r.water_litres) for r in paired_water) / water_bd, 0) if water_bd else None,
-        "production_pct": round(100 * sum(int(r.total_eggs or 0) for r in rows if r.opening_birds and r.opening_birds > 0) / egg_bd, 2) if egg_bd else None,
+        "mortality_birds": sum(r.mortality_birds or 0 for r in rows),
+        "mortality_pct": round(100 * sum(r.mortality_birds or 0 for r in birdrows) / birddays, 3) if birddays else None,
+        "feed_g_bird_day": round(1000 * sum(float(r.feed_kg) for r in feedrows) / feedbirddays, 1) if feedbirddays else None,
+        "water_ml_bird_day": round(1000 * sum(float(r.water_litres) for r in waterrows) / waterbirddays, 0) if waterbirddays else None,
+        "production_pct": round(100 * sum(r.total_eggs for r in eggrows) / eggdays, 2) if eggdays else None,
+        "fcr_kg_dozen": round(12 * sum(float(r.feed_kg) for r in fcrrows) / eggs, 3) if eggs > 0 else None,
         "days_recorded": len({r.entry_date for r in rows}),
-        "feed_days": len(paired_feed),
-        "water_days": len(paired_water),
+        "feed_days": len({r.entry_date for r in feedrows}),
+        "water_days": len({r.entry_date for r in waterrows}),
+        "production_days": len({r.entry_date for r in eggrows}),
+        "fcr_days": len({r.entry_date for r in fcrrows}),
     }
 
 
-def _delta(a, b):
-    return round(a - b, 2) if a is not None and b is not None else None
+def _delta(now, previous):
+    return round(now - previous, 2) if now is not None and previous is not None else None
 
 
-@router.post("/ask")
-def ask_intelligence(
-    payload: AskRequest,
-    current_user: models.AppUser = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    if payload.module != "layers":
-        raise HTTPException(422, "Only Commercial Layers is connected in this first release.")
+def _fallback_plan(question):
+    q = question.lower()
+    match_days = re.search(r"(?:last|past|previous)\s+(\d{1,3})\s+days", q)
+    match_top = re.search(r"(?:top|worst|bottom)\s+(\d{1,2})", q)
+    days = max(1, min(90, int(match_days.group(1)) if match_days else 10))
+    limit = max(1, min(25, int(match_top.group(1)) if match_top else 10))
+    if re.search(r"what (?:data|can you|do you)|help|capabilit|available|which metric", q):
+        intent = "capabilities"
+    elif re.search(r"why|investigat|what.*(wrong|happen)|caus|affected|impact", q):
+        intent = "investigate"
+    elif "mortal" in q or "death" in q or "died" in q:
+        intent = "mortality"
+    elif "fcr" in q or "conversion" in q:
+        intent = "fcr"
+    elif "water" in q:
+        intent = "water"
+    elif "feed" in q:
+        intent = "feed"
+    elif "production" in q or "hen day" in q or "hd%" in q or "eggs" in q:
+        intent = "production"
+    else:
+        intent = "overview"
+    return {"intent": intent, "days": days, "limit": limit, "location": None}
 
-    # No cross-company lookup except explicit Global Admin working-company selection.
+
+def _llm_plan(question, fallback):
+    """Optional LLM semantic parser; parsed values validated against allowlist.
+
+    On provider errors use deterministic parser rather than failing an on-farm request.
+    Only the QUESTION goes to LLM, never private production data or credentials.
+    """
+    key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not key or os.getenv("OVICORE_AI_USE_LLM", "false").lower() not in {"1", "true", "yes"}:
+        return fallback
+    schema = {"type": "object", "properties": {
+        "intent": {"type": "string", "enum": list(SUPPORTED)},
+        "days": {"type": "integer", "minimum": 1, "maximum": 90},
+        "limit": {"type": "integer", "minimum": 1, "maximum": 25},
+        "location": {"type": ["string", "null"]},
+    }, "required": ["intent", "days", "limit", "location"], "additionalProperties": False}
+    body = {"model": os.getenv("OVICORE_AI_MODEL", "gpt-4.1-mini"), "input": [
+        {"role": "system", "content": "Classify the user request about poultry Commercial Layers. Never calculate or invent results. location is a named farm/shed/flock ONLY if explicitly mentioned; otherwise null. For 'what data can you show' use capabilities. For causes/why use investigate. Use days=10 and limit=10 unless specified."},
+        {"role": "user", "content": question}],
+        "text": {"format": {"type": "json_schema", "name": "ovicore_ai_plan", "strict": True, "schema": schema}}}
+    try:
+        request = urllib.request.Request("https://api.openai.com/v1/responses", data=json.dumps(body).encode(),
+                                         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(request, timeout=15) as response:
+            payload = json.load(response)
+        fragments = [part.get("text") for output in payload.get("output", []) for part in output.get("content", []) if part.get("type") == "output_text"]
+        plan = json.loads(next(p for p in fragments if p))
+        if plan.get("intent") in SUPPORTED and 1 <= plan.get("days", 0) <= 90 and 1 <= plan.get("limit", 0) <= 25:
+            return plan
+    except (ValueError, KeyError, StopIteration, OSError, TypeError):
+        pass
+    return fallback
+
+
+def _permissions(db, current_user, company_id):
     if current_user.is_global_admin:
-        company_id = payload.company_id
         if not company_id:
             raise HTTPException(400, "Select a company before asking a question.")
     else:
         company_id = current_user.company_id
         if not company_id:
-            raise HTTPException(403, "User has no company assignment.")
-
-    # Entitlement check is mandatory on the API, not only on the homepage card.
-    company = db.query(models.Company).filter(
-        models.Company.id == company_id,
-        models.Company.active == True,
-    ).first()
-    if company is None:
+            raise HTTPException(403, "Your account is not assigned to a company.")
+    company = db.query(models.Company).filter(models.Company.id == company_id, models.Company.active == True).first()
+    if not company:
         raise HTTPException(404, "Company not found or inactive.")
     if not current_user.is_global_admin:
         if not company.enable_layers:
-            raise HTTPException(403, "Commercial Layers is not enabled for your company.")
+            raise HTTPException(403, "Commercial Layers is not enabled for this company.")
         if not current_user.is_company_admin:
             assigned = db.query(models.UserModuleAccess.id).filter(
                 models.UserModuleAccess.user_id == current_user.id,
-                models.UserModuleAccess.module == "layers",
-                models.UserModuleAccess.active == True,
-            ).first()
-            if assigned is None:
-                raise HTTPException(403, "You do not have access to Commercial Layers.")
+                models.UserModuleAccess.module == "layers", models.UserModuleAccess.active == True).first()
+            if not assigned:
+                raise HTTPException(403, "Commercial Layers access required.")
+    return company_id
 
-    # Deterministic first query intent; do not claim to answer arbitrary questions.
-    q = payload.question.lower()
-    if not ("mortal" in q and ("shed" in q or "flock" in q)):
-        raise HTTPException(422, "This first version supports ranking sheds/flocks by mortality. Try the suggested question.")
-    days_match = re.search(r"(?:last|past|previous)\s+(\d{1,2})\s+days", q)
-    top_match = re.search(r"top\s+(\d{1,2})", q)
-    days = int(days_match.group(1)) if days_match else 10
-    top = int(top_match.group(1)) if top_match else 10
-    if not 1 <= days <= 60 or not 1 <= top <= 25:
-        raise HTTPException(422, "Use 1–60 days and top 1–25.")
 
-    end = datetime.now(ZoneInfo("Australia/Sydney")).date() - timedelta(days=1)
+def _card(label, value, unit=""):
+    return {"label": label, "value": value, "unit": unit}
+
+
+@router.post("/ask")
+def ask_intelligence(payload: AskRequest, current_user: models.AppUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    if payload.module != "layers":
+        raise HTTPException(422, "Only Commercial Layers is connected currently.")
+    company_id = _permissions(db, current_user, payload.company_id)
+    plan = _llm_plan(payload.question, _fallback_plan(payload.question))
+    intent, days, limit = plan["intent"], plan["days"], plan["limit"]
+    scope = {"company_id": company_id, "module": "layers"}
+    if intent == "capabilities":
+        return {"title": "What OviCore Intelligence can analyse", "answer": "Commercial Layers is connected. I can examine mortality, feed per bird, water per bird, hen-day production, FCR and recent trends, rank sheds or flocks, and highlight changes for on-farm investigation. Rearing, Feed Mill and People Tracker analysis will be added later.", "scope": scope, "cards": [], "columns": [], "rows": [], "chart": None, "observations": ["Try: Which sheds have the highest mortality over the last 10 days?", "Try: Show the production trend for the last 30 days.", "Try: Why has production dropped in Shed 1?"], "capability": "capabilities"}
+    end = datetime.now(TODAY_TZ).date() - timedelta(days=1)
     start = end - timedelta(days=days - 1)
-    baseline_start = start - timedelta(days=days)
-
-    query = (
-        db.query(models.CommercialLayerDailyPerformance, models.CommercialLayerFlock)
-        .join(models.CommercialLayerFlock, models.CommercialLayerDailyPerformance.flock_id == models.CommercialLayerFlock.id)
-        .filter(
-            models.CommercialLayerDailyPerformance.company_id == company_id,
-            models.CommercialLayerFlock.company_id == company_id,
-            models.CommercialLayerDailyPerformance.entry_date >= baseline_start,
-            models.CommercialLayerDailyPerformance.entry_date <= end,
-        )
-    )
+    baseline = start - timedelta(days=days)
+    scope.update({"start": start.isoformat(), "end": end.isoformat(), "previous_start": baseline.isoformat(), "previous_end": (start - timedelta(days=1)).isoformat()})
+    query = (db.query(models.CommercialLayerDailyPerformance, models.CommercialLayerFlock)
+             .join(models.CommercialLayerFlock, models.CommercialLayerDailyPerformance.flock_id == models.CommercialLayerFlock.id)
+             .filter(models.CommercialLayerDailyPerformance.company_id == company_id,
+                     models.CommercialLayerFlock.company_id == company_id,
+                     models.CommercialLayerDailyPerformance.entry_date >= baseline,
+                     models.CommercialLayerDailyPerformance.entry_date <= end))
     if not (current_user.is_global_admin or current_user.is_company_admin):
-        allowed_farms = db.query(models.UserFarmAccess.farm_id).filter(models.UserFarmAccess.user_id == current_user.id)
-        query = query.filter(models.CommercialLayerFlock.farm_id.in_(allowed_farms))
-
+        allowed = db.query(models.UserFarmAccess.farm_id).filter(models.UserFarmAccess.user_id == current_user.id)
+        query = query.filter(models.CommercialLayerFlock.farm_id.in_(allowed))
     grouped = defaultdict(lambda: {"current": [], "previous": [], "flock": None})
     for record, flock in query.all():
-        # Shed + flock allows multiple sequential flock placements in a shed.
-        key = (flock.farm_id, flock.shed_id, flock.id)
-        period = "current" if record.entry_date >= start else "previous"
-        grouped[key][period].append(record)
-        grouped[key]["flock"] = flock
-
-    results = []
+        slot = grouped[flock.id]
+        slot["flock"] = flock
+        slot["current" if record.entry_date >= start else "previous"].append(record)
+    items = []
     for data in grouped.values():
         if not data["current"]:
             continue
         flock = data["flock"]
-        now = _period_metrics(data["current"])
-        prev = _period_metrics(data["previous"])
-        if now["mortality_pct"] is None:
+        farm = flock.farm.farm_name if flock.farm else f"Farm {flock.farm_id}"
+        shed = flock.shed.shed_name if flock.shed else f"Shed {flock.shed_id}"
+        location = plan.get("location")
+        if location and location.casefold() not in f"{farm} {shed} {flock.flock_code}".casefold():
             continue
-        results.append({
-            "farm": flock.farm.farm_name if flock.farm else f"Farm {flock.farm_id}",
-            "shed": flock.shed.shed_name if flock.shed else f"Shed {flock.shed_id}",
-            "flock": flock.flock_code,
-            "flock_id": flock.id,
-            "current": now,
-            "previous": prev,
-            "changes": {
-                "production_pp": _delta(now["production_pct"], prev["production_pct"]),
-                "feed_g_bird_day": _delta(now["feed_g_bird_day"], prev["feed_g_bird_day"]),
-                "water_ml_bird_day": _delta(now["water_ml_bird_day"], prev["water_ml_bird_day"]),
-            },
-        })
-
-    results.sort(key=lambda r: (r["current"]["mortality_pct"], r["current"]["mortality_birds"]), reverse=True)
-    selected = results[:top]
-    cards = [
-        {"label": "Sheds / flocks ranked", "value": len(selected)},
-        {"label": "Highest mortality", "value": selected[0]["current"]["mortality_pct"] if selected else None, "unit": "%"},
-        {"label": "Mortality birds in ranked flocks", "value": sum(r["current"]["mortality_birds"] for r in selected)},
+        current, previous = _metrics(data["current"]), _metrics(data["previous"])
+        items.append({"farm": farm, "shed": shed, "flock": flock.flock_code, "flock_id": flock.id,
+                      "current": current, "previous": previous,
+                      "changes": {k: _delta(current[k], previous[k]) for k in ("mortality_pct", "production_pct", "feed_g_bird_day", "water_ml_bird_day", "fcr_kg_dozen")},
+                      "daily": sorted(data["current"], key=lambda r: r.entry_date)})
+    key_by_intent = {"mortality": "mortality_pct", "feed": "feed_g_bird_day", "water": "water_ml_bird_day", "production": "production_pct", "fcr": "fcr_kg_dozen", "investigate": "production_pct", "overview": "production_pct"}
+    key = key_by_intent[intent]
+    descending = intent in {"mortality", "fcr"} or "highest" in payload.question.lower() or "top" in payload.question.lower()
+    if intent in {"production", "feed", "water", "investigate", "overview"} and ("worst" in payload.question.lower() or "drop" in payload.question.lower() or "lowest" in payload.question.lower()):
+        descending = False
+    items.sort(key=lambda item: (item["current"][key] is None, -(item["current"][key] or 0) if descending else (item["current"][key] or 0)))
+    chosen = items[:limit]
+    columns = [
+        {"key": "farm", "label": "Farm"}, {"key": "shed", "label": "Shed"}, {"key": "flock", "label": "Flock"},
+        {"key": key, "label": {"mortality_pct": "Mort %", "production_pct": "HD %", "feed_g_bird_day": "Feed g/b/day", "water_ml_bird_day": "Water mL/b/day", "fcr_kg_dozen": "FCR kg/doz"}[key]},
+        {"key": "delta", "label": "Change vs prior period"},
+        {"key": "days_recorded", "label": "Days recorded"},
     ]
-    if any(r["changes"]["production_pp"] is not None for r in selected):
-        cards.append({"label": "Flocks with production decline", "value": sum((r["changes"]["production_pp"] or 0) < 0 for r in selected)})
-    return {
-        "title": f"Top {top} flocks by mortality — last {days} completed days",
-        "scope": {"company_id": company_id, "module": "layers", "start": start.isoformat(), "end": end.isoformat(), "baseline_start": baseline_start.isoformat(), "baseline_end": (start - timedelta(days=1)).isoformat()},
-        "method": "Ranked by mortality birds / sum of opening bird-days × 100. Mortality excludes culls. Period comparisons use matched recorded values, not zeros for missing data.",
-        "cards": cards,
-        "rows": selected,
-        "observations": ["Compare changes cautiously: an association in the same period does not establish causation.", "Review recorded-day coverage before acting on feed, water or production changes."],
-        "capability": "structured_mortality_analysis_v1",
-    }
+    if intent in {"mortality", "investigate", "overview"}:
+        columns += [{"key": "feed_g_bird_day", "label": "Feed g/b/day"}, {"key": "water_ml_bird_day", "label": "Water mL/b/day"}, {"key": "production_pct", "label": "HD %"}]
+    rows = []
+    for item in chosen:
+        row = {"id": item["flock_id"], "farm": item["farm"], "shed": item["shed"], "flock": item["flock"],
+               "delta": item["changes"][key], "days_recorded": item["current"]["days_recorded"]}
+        row.update(item["current"])
+        rows.append(row)
+    # Time-series graph contains measured values aggregated across selected visible flocks.
+    chart = None
+    if intent in {"production", "feed", "water", "fcr", "investigate", "overview"} and chosen:
+        by_day = defaultdict(list)
+        for item in chosen:
+            for record in item["daily"]:
+                by_day[record.entry_date].append(record)
+        points = [{"date": d.isoformat(), "value": _metrics(day)[key]} for d, day in sorted(by_day.items())]
+        chart = {"title": "Daily trend — selected flocks", "metric": key, "points": points}
+    focus = chosen[0] if chosen else None
+    heading = {"mortality": "Mortality ranking", "production": "Hen-day production", "feed": "Feed intake", "water": "Water intake", "fcr": "Feed conversion ratio", "investigate": "Production investigation", "overview": "Commercial Layers overview"}[intent]
+    cards = [_card("Reporting flocks", len(items))]
+    if focus:
+        cards.extend([_card({"mortality_pct": "Mortality", "production_pct": "Hen-day production", "feed_g_bird_day": "Feed intake", "water_ml_bird_day": "Water intake", "fcr_kg_dozen": "FCR"}[key], focus["current"][key], {"mortality_pct": "%", "production_pct": "%", "feed_g_bird_day": " g/b/day", "water_ml_bird_day": " mL/b/day", "fcr_kg_dozen": " kg/doz"}[key]), _card("Change vs prior period", focus["changes"][key]), _card("Days recorded", focus["current"]["days_recorded"])])
+    observations = ["Comparisons use the preceding equal-length calendar period; missing values are excluded rather than counted as zero."]
+    if focus:
+        changes = focus["changes"]
+        for metric, name, unit in (("water_ml_bird_day", "Water", " mL/bird/day"), ("feed_g_bird_day", "Feed", " g/bird/day"), ("production_pct", "Production", " percentage points")):
+            value = changes[metric]
+            if value is not None:
+                observations.append(f"{focus['farm']} / {focus['shed']}: {name} {'fell' if value < 0 else 'rose' if value > 0 else 'was unchanged'} by {abs(value):g}{unit} compared with the prior period.")
+    if intent == "investigate":
+        observations.append("Check water systems, feeder access, ration/delivery changes, environmental conditions and daily entry accuracy. These are investigation prompts, not a diagnosis or proof of causation.")
+    else:
+        observations.append("Changes occurring together are associations, not proof of causation. Confirm daily coverage and flock age before decisions.")
+    if not chosen:
+        observations = ["No matching, authorised Commercial Layers records were found for the selected period or named location. Try a broader question or another date range."]
+    return {"title": f"{heading} — last {days} completed days", "answer": f"I found {len(items)} reporting flock(s) in your authorised Commercial Layers data. {heading} results are shown below." if items else "No matching data was found for that period.", "scope": scope, "cards": cards, "columns": columns, "rows": rows, "chart": chart, "observations": observations, "capability": intent}
