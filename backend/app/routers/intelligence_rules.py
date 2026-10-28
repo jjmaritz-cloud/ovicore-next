@@ -10,7 +10,7 @@ import re
 
 _RULE_PATH = Path(__file__).resolve().parent.parent / 'intelligence' / 'layers_rules.json'
 SUPPORTED_METRICS = {'opening_birds','closing_birds','mortality_birds','mortality_pct',
-                     'production_pct','feed_g_bird_day','water_ml_bird_day','fcr_kg_dozen'}
+                     'production_pct','feed_g_bird_day','water_ml_bird_day','fcr_kg_dozen','bodyweight_g'}
 
 @lru_cache(maxsize=1)
 def load_rules():

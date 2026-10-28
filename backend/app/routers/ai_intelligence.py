@@ -230,6 +230,91 @@ def _lifecycle_response(db, company_id, user, question, requested_date, metric):
             'chart':None,'observations':[note,'Bird count comes from the recorded daily data, not a sum of daily populations.'],'capability':'population'}
 
 
+def _bodyweight_intelligence(db, current_user, company_id, question, start, end):
+    """Read only actual weigh-ins; compare standards recorded for the same flock/date.
+
+    Bodyweight isn't daily. No interpolated measurements, no zero-filling and
+    no mixing multiple flock ages into a single trend.
+    """
+    query = (db.query(models.CommercialLayerDailyPerformance, models.CommercialLayerFlock)
+        .join(models.CommercialLayerFlock, models.CommercialLayerDailyPerformance.flock_id == models.CommercialLayerFlock.id)
+        .filter(models.CommercialLayerDailyPerformance.company_id == company_id,
+                models.CommercialLayerFlock.company_id == company_id,
+                models.CommercialLayerDailyPerformance.entry_date >= start,
+                models.CommercialLayerDailyPerformance.entry_date <= end,
+                models.CommercialLayerDailyPerformance.bodyweight_g.isnot(None)))
+    if not (current_user.is_global_admin or current_user.is_company_admin):
+        allowed = db.query(models.UserFarmAccess.farm_id).filter(
+            models.UserFarmAccess.user_id == current_user.id)
+        query = query.filter(models.CommercialLayerFlock.farm_id.in_(allowed))
+    qnorm = re.sub(r'[^a-z0-9]+', ' ', question.casefold()).strip()
+    def named(name):
+        candidate = re.sub(r'[^a-z0-9]+', ' ', str(name).casefold()).strip()
+        return bool(candidate and re.search(r'(?<!\w)' + re.escape(candidate) + r'(?!\w)', qnorm))
+    records = query.order_by(models.CommercialLayerDailyPerformance.entry_date).all()
+    farms = {flock.farm.farm_name for _,flock in records if flock.farm}
+    sheds = {flock.shed.shed_name for _,flock in records if flock.shed}
+    codes = {flock.flock_code for _,flock in records if flock.flock_code}
+    match_farms = {name for name in farms if named(name)}
+    match_sheds = {name for name in sheds if named(name)}
+    # A shed explicitly named in the question must not silently select another shed.
+    requested_shed = re.search(r'\bshed\s*(\d+[a-z]?)\b', qnorm)
+    if requested_shed and not match_sheds:
+        match_sheds = {'Shed ' + requested_shed.group(1)}
+    match_codes = {name for name in codes if named(name)}
+    # If a known farm/shed/flock name appears, enforce every matched dimension.
+    records = [(row,flock) for row,flock in records
+        if (not match_farms or (flock.farm and flock.farm.farm_name in match_farms))
+        and (not match_sheds or (flock.shed and flock.shed.shed_name in match_sheds))
+        and (not match_codes or flock.flock_code in match_codes)]
+    distinct = {flock.id for _,flock in records}
+    scope = {'company_id':company_id,'module':'layers','start':start.isoformat(),'end':end.isoformat()}
+    if not records:
+        return {'title':f'Bodyweight — {_au(start)} to {_au(end)}',
+            'answer':'No recorded bodyweight weigh-ins were found for this period and authorised location.',
+            'scope':scope,'cards':[],'columns':[],'rows':[],'chart':None,
+            'observations':['Missing weigh-ins are not treated as zero. Try another period or specify a flock.'],
+            'capability':'bodyweight'}
+    if len(distinct) != 1:
+        raise HTTPException(422, 'Bodyweight trends need one flock to avoid mixing different ages. Please specify a farm, shed or flock code.')
+    flock = records[0][1]
+    # A date can have at most one entry for a specific flock; do not average across flocks.
+    daily = [(row.entry_date,float(row.bodyweight_g),
+              float(row.bodyweight_standard_g) if row.bodyweight_standard_g is not None else None,
+              row.age_days) for row,_ in records]
+    latest_date,latest_bw,latest_std,latest_age = daily[-1]
+    diff = round(latest_bw-latest_std,1) if latest_std is not None else None
+    cards = [_card('Latest bodyweight',round(latest_bw,1),' g'),
+             _card('Last weighed',_au(latest_date)),
+             _card('Weigh-ins',len(daily))]
+    if latest_std is not None:
+        cards.insert(1,_card('Breed standard',round(latest_std,1),' g'))
+        cards.append(_card('Variance from standard',diff,' g'))
+    points = [{'date':dt.isoformat(),'bodyweight_g':bw,'bodyweight_standard_g':std}
+              for dt,bw,std,age in daily]
+    chart = {'title':'Bodyweight vs recorded breed standard', 'metric':'multi',
+        'series':[{'key':'bodyweight_g','label':'Actual bodyweight','unit':'g'},
+                  {'key':'bodyweight_standard_g','label':'Breed standard','unit':'g','dashed':True}],
+        'points':points}
+    observations = ['Only actual bodyweight weigh-ins are plotted; missing dates are not filled or interpolated.',
+        'Standards appear only where a standard was stored on the same flock/date record.']
+    if latest_std is None:
+        observations.append('No breed-standard value was recorded at the latest weigh-in; its variance cannot be calculated.')
+    else:
+        observations.append(f'Latest weigh-in was {abs(diff):g} g {"below" if diff<0 else "above" if diff>0 else "equal to"} the recorded standard.')
+    if latest_age is not None:
+        observations.append(f'Flock age at latest weigh-in: {latest_age} days.')
+    return {'title':f'Bodyweight — {flock.flock_code} — {_au(start)} to {_au(end)}',
+        'answer':f'Latest measured bodyweight: {latest_bw:g} g on {_au(latest_date)} for {flock.flock_code}.',
+        'scope':scope,'cards':cards,'columns':[{'key':'date','label':'Weigh-in date'},
+        {'key':'actual','label':'Actual (g)'},{'key':'standard','label':'Standard (g)'},
+        {'key':'variance','label':'Variance (g)'}],
+        'rows':[{'id':i,'date':_au(dt),'actual':bw,'standard':std,
+            'variance':round(bw-std,1) if std is not None else None}
+            for i,(dt,bw,std,age) in enumerate(daily)],
+        'chart':chart,'observations':observations,'capability':'bodyweight'}
+
+
 def _card(label, value, unit=""):
     return {"label": label, "value": value, "unit": unit}
 
@@ -258,7 +343,7 @@ def ask_intelligence(payload: AskRequest, current_user: models.AppUser = Depends
         if dates and dates[0] != dates[1]:
             raise HTTPException(422, "Bird population is a point-in-time value. Specify one date or ask for the latest recorded stock.")
         return _lifecycle_response(db, company_id, current_user, payload.question, dates[0] if dates else None, metric)
-    if metric is None and plan['intent'] == 'overview' and not re.search(r"\b(?:overview|summary|performance|how\s+(?:are|is)\s+(?:my|the)\s+(?:flock|farm|shed))\b",payload.question,re.I):
+    if metric is None and plan['intent'] == 'overview' and not re.search(r"\b(?:body\s*weight|bodyweight|bird\s*weight|hen\s*weight|weigh[ -]?ins?|bw)\b",payload.question,re.I) and not re.search(r"\b(?:overview|summary|performance|how\s+(?:are|is)\s+(?:my|the)\s+(?:flock|farm|shed))\b",payload.question,re.I):
         raise HTTPException(422, "I haven't connected that type of question yet. Try asking about mortality, feed, water, production, bird numbers or flock placement.")
     if metric == 'closing_birds' or metric == 'opening_birds':
         plan['intent'] = 'population'
@@ -301,7 +386,7 @@ def ask_intelligence(payload: AskRequest, current_user: models.AppUser = Depends
     intent, days, limit = plan["intent"], plan["days"], plan["limit"]
     scope = {"company_id": company_id, "module": "layers"}
     if intent == "capabilities":
-        return {"title": "What OviCore Intelligence can analyse", "answer": "Commercial Layers is connected. I can examine mortality, feed per bird, water per bird, hen-day production, FCR and recent trends, rank sheds or flocks, and highlight changes for on-farm investigation. Rearing, Feed Mill and People Tracker analysis will be added later.", "scope": scope, "cards": [], "columns": [], "rows": [], "chart": None, "observations": ["Try: Which sheds have the highest mortality over the last 10 days?", "Try: Show the production trend for the last 30 days.", "Try: Why has production dropped in Shed 1?"], "capability": "capabilities"}
+        return {"title": "What OviCore Intelligence can analyse", "answer": "Commercial Layers is connected. I can examine mortality, feed per bird, water per bird, hen-day production, FCR, bodyweight and recent trends, rank sheds or flocks, and highlight changes for on-farm investigation. Rearing, Feed Mill and People Tracker analysis will be added later.", "scope": scope, "cards": [], "columns": [], "rows": [], "chart": None, "observations": ["Try: Which sheds have the highest mortality over the last 10 days?", "Try: Show the production trend for the last 30 days.", "Try: Why has production dropped in Shed 1?"], "capability": "capabilities"}
     if explicit_dates:
         start, end = explicit_dates
     elif payload.start_date is not None or payload.end_date is not None:
@@ -314,7 +399,11 @@ def ask_intelligence(payload: AskRequest, current_user: models.AppUser = Depends
             raise HTTPException(422, "Select a date range of 366 days or fewer.")
     else:
         end = datetime.now(TODAY_TZ).date() - timedelta(days=1)
-        start = end - timedelta(days=days - 1)
+        weeks = re.search(r"(?:last|past|previous)\s+(\d{1,2})\s+weeks?\b", payload.question, re.I)
+        period_days = min(366,int(weeks.group(1))*7) if weeks else days
+        start = end - timedelta(days=period_days - 1)
+    if re.search(r"\b(?:body\s*weight|bodyweight|bird\s*weight|hen\s*weight|weigh[ -]?ins?|bw)\b", payload.question, re.I):
+        return _bodyweight_intelligence(db, current_user, company_id, payload.question, start, end)
     days = (end - start).days + 1
     baseline = start - timedelta(days=days)
     scope.update({"start": start.isoformat(), "end": end.isoformat(), "previous_start": baseline.isoformat(), "previous_end": (start - timedelta(days=1)).isoformat()})
