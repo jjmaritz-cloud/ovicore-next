@@ -284,9 +284,18 @@ function ModuleCardView({
   const isGuidedTour = module.name === "Guided Tour";
   const isBiosecurity = module.name === "Biosecurity & People Tracker";
   const isPaperCapture = module.name === "Paper Capture & Templates";
+  const isAiIntelligence = module.name === "OviCore Intelligence";
 
   const content = (
     <>
+      {isAiIntelligence && (
+        <div className="home-ai-orbit" aria-hidden="true">
+          <span className="home-ai-orbit-ring home-ai-orbit-ring-outer" />
+          <span className="home-ai-orbit-ring home-ai-orbit-ring-inner" />
+          <BrainCircuit size={36} strokeWidth={1.5} />
+          <span className="home-ai-orbit-pulse" />
+        </div>
+      )}
       <div className="home-module-card-top">
         <div className={`home-module-icon ${module.iconClass}`}>
           <Icon
@@ -326,7 +335,7 @@ function ModuleCardView({
 
       <div className="home-module-footer">
         <span>
-          {isGuidedTour
+          {isAiIntelligence ? "Launch Intelligence" : isGuidedTour
             ? "Take the tour"
             : module.href
               ? "Open module"
@@ -344,7 +353,7 @@ function ModuleCardView({
       <article
         className={`home-module-card home-module-card-disabled${
           compact ? " home-module-card-compact" : ""
-        }${isGuidedTour ? " home-module-card-tour" : ""}${isBiosecurity ? " home-module-card-biosecurity" : ""}${isPaperCapture ? " home-module-card-paper-capture" : ""}`}
+        }${isGuidedTour ? " home-module-card-tour" : ""}${isBiosecurity ? " home-module-card-biosecurity" : ""}${isPaperCapture ? " home-module-card-paper-capture" : ""}${isAiIntelligence ? " home-module-card-ai" : ""}`}
         aria-disabled="true"
       >
         {content}
@@ -356,7 +365,7 @@ function ModuleCardView({
     <Link
       className={`home-module-card${
         compact ? " home-module-card-compact" : ""
-      }${isGuidedTour ? " home-module-card-tour" : ""}${isBiosecurity ? " home-module-card-biosecurity" : ""}${isPaperCapture ? " home-module-card-paper-capture" : ""}`}
+      }${isGuidedTour ? " home-module-card-tour" : ""}${isBiosecurity ? " home-module-card-biosecurity" : ""}${isPaperCapture ? " home-module-card-paper-capture" : ""}${isAiIntelligence ? " home-module-card-ai" : ""}`}
       href={module.href}
     >
       {content}
@@ -546,6 +555,135 @@ export default function HomePage() {
 
 
       <style jsx global>{`
+        /* OviCore Intelligence: a distinct AI identity within the existing compact module grid. */
+        .home-module-card-ai {
+          position: relative;
+          isolation: isolate;
+          overflow: hidden;
+          border: 1px solid rgba(100, 241, 213, 0.58) !important;
+          background:
+            radial-gradient(ellipse at 82% 45%, rgba(99, 102, 241, .36), transparent 42%),
+            radial-gradient(ellipse at 27% 105%, rgba(14, 165, 233, .25), transparent 55%),
+            linear-gradient(112deg, #061b2a 0%, #102b40 48%, #13204a 100%) !important;
+          box-shadow: 0 10px 28px rgba(5, 28, 46, .22), inset 0 0 0 1px rgba(255,255,255,.07) !important;
+          transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+        }
+        .home-module-card-ai::before {
+          content: "";
+          pointer-events: none;
+          position: absolute;
+          inset: 0;
+          z-index: -1;
+          background-image: radial-gradient(circle, rgba(159,255,241,.30) 1px, transparent 1.5px);
+          background-size: 22px 22px;
+          opacity: .35;
+          mask-image: linear-gradient(90deg, transparent 15%, black 100%);
+        }
+        .home-module-card-ai::after {
+          content: "";
+          pointer-events: none;
+          position: absolute;
+          inset: 0;
+          border-radius: inherit;
+          background: linear-gradient(105deg, transparent 30%, rgba(97, 246, 226, .10) 50%, transparent 70%);
+          transform: translateX(-90%);
+          transition: transform .55s ease;
+        }
+        .home-module-card-ai:hover::after { transform: translateX(90%); }
+        .home-module-card-ai:hover {
+          transform: translateY(-3px);
+          border-color: #6ef8e0 !important;
+          box-shadow: 0 16px 36px rgba(5, 28, 46, .31), 0 0 22px rgba(45, 212, 191, .22) !important;
+        }
+        .home-module-card-ai .home-module-card-top,
+        .home-module-card-ai .home-module-description,
+        .home-module-card-ai .home-module-tags,
+        .home-module-card-ai .home-module-footer { position: relative; z-index: 2; }
+        .home-module-card-ai .home-module-card-top { padding-right: 86px; }
+        .home-module-card-ai .home-module-icon {
+          background: linear-gradient(135deg, #2dd4bf, #38bdf8) !important;
+          color: #08263b !important;
+          box-shadow: 0 0 0 1px rgba(255,255,255,.28), 0 0 22px rgba(45,212,191,.32);
+        }
+        .home-module-card-ai .home-module-heading h2 {
+          color: #fff !important;
+          letter-spacing: -.015em;
+          text-shadow: 0 0 20px rgba(125,249,233,.25);
+        }
+        .home-module-card-ai .home-module-eyebrow {
+          color: #80f9e5 !important;
+          letter-spacing: .12em;
+          font-weight: 900 !important;
+        }
+        .home-module-card-ai .home-module-description { color: #d0e7f2 !important; max-width: 78%; }
+        .home-module-card-ai .home-module-tags span {
+          background: rgba(125, 249, 233, .10) !important;
+          border-color: rgba(125, 249, 233, .30) !important;
+          color: #afffed !important;
+        }
+        .home-module-card-ai .home-module-status {
+          background: rgba(125, 249, 233, .15) !important;
+          color: #b7fff0 !important;
+          border-color: rgba(125, 249, 233, .35) !important;
+          box-shadow: 0 0 12px rgba(45,212,191,.16);
+        }
+        .home-module-card-ai .home-module-footer > span:first-child {
+          color: #8bffeb !important;
+          font-weight: 900 !important;
+        }
+        .home-module-card-ai .home-module-arrow {
+          background: linear-gradient(135deg, #2dd4bf, #38bdf8) !important;
+          color: #062337 !important;
+          box-shadow: 0 0 18px rgba(45,212,191,.4) !important;
+        }
+        .home-ai-orbit {
+          position: absolute;
+          right: 42px;
+          top: 50%;
+          z-index: 1;
+          width: 84px;
+          height: 84px;
+          transform: translateY(-50%);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #a5fff0;
+          filter: drop-shadow(0 0 13px rgba(61,240,222,.48));
+          pointer-events: none;
+        }
+        .home-ai-orbit-ring {
+          position: absolute;
+          inset: 7px;
+          border: 1px solid rgba(99, 236, 224, .60);
+          border-radius: 50%;
+          box-shadow: inset 0 0 16px rgba(45,212,191,.14), 0 0 14px rgba(45,212,191,.17);
+        }
+        .home-ai-orbit-ring-outer { inset: 0; border-style: dashed; opacity: .70; animation: home-ai-spin 22s linear infinite; }
+        .home-ai-orbit-ring-inner { inset: 11px; border-color: rgba(151,173,255,.7); }
+        .home-ai-orbit-pulse {
+          position: absolute;
+          width: 7px;
+          height: 7px;
+          top: 5px;
+          right: 14px;
+          border-radius: 50%;
+          background: #85ffdc;
+          box-shadow: 0 0 10px #85ffdc;
+          animation: home-ai-pulse 2.5s ease-in-out infinite;
+        }
+        @keyframes home-ai-spin { to { transform: rotate(360deg); } }
+        @keyframes home-ai-pulse { 50% { opacity: .45; transform: scale(.65); } }
+        @media (max-width: 650px) {
+          .home-ai-orbit { right: 14px; width: 62px; height: 62px; }
+          .home-ai-orbit svg { width: 25px; height: 25px; }
+          .home-module-card-ai .home-module-card-top { padding-right: 54px; }
+          .home-module-card-ai .home-module-description { max-width: 80%; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .home-ai-orbit-ring-outer, .home-ai-orbit-pulse { animation: none; }
+          .home-module-card-ai, .home-module-card-ai::after { transition: none; }
+        }
+
 
 
         .home-module-card-paper-capture {
