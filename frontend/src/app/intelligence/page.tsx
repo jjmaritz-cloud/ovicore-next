@@ -5,7 +5,7 @@ import OviCoreShell from "@/components/ovicore/OviCoreShell";
 
 type Card = { label:string; value:number|null; unit?:string };
 type Column = {key:string; label:string};
-type Response = {title:string;answer:string;scope:{start?:string;end?:string};cards:Card[];columns:Column[];rows:Record<string,string|number|null>[];chart:{title:string;metric:string;points:{date:string;value?:number|null;feed_g_bird_day?:number|null;water_ml_bird_day?:number|null;[key:string]:string|number|null|undefined}[];additional_charts?:any[];series?:{key:string;label:string;unit:string;dashed?:boolean}[]}|null;observations:string[];capability:string};
+type Response = {title:string;answer:string;scope:{start?:string;end?:string};cards:Card[];columns:Column[];rows:Record<string,string|number|null>[];chart:{title:string;metric:string;points:{date:string;value?:number|null;feed_g_bird_day?:number|null;water_ml_bird_day?:number|null;[key:string]:string|number|null|undefined}[];additional_charts?:any[];aggregation?:"weekly"|"daily";series?:{key:string;label:string;unit:string;dashed?:boolean}[]}|null;observations:string[];capability:string};
 function dateAU(value:string|undefined){if(!value)return "—";const parts=/^(\d{4})-(\d{2})-(\d{2})$/.exec(value);return parts?`${parts[3]}/${parts[2]}/${parts[1]}`:value;}
 const examples = ["What data can you show me?", "Which sheds have the highest mortality over the last 10 days?", "Show production trends over the last 30 days", "Why has production dropped in Shed 1?", "Compare feed intake over the last 14 days"];
 function show(value:string|number|null|undefined){return typeof value === "number"?value.toLocaleString("en-AU",{maximumFractionDigits:2}):value??"—";}
@@ -15,12 +15,12 @@ function Trend({data}:{data:NonNullable<Response["chart"]>}){
     const palette=["#079da4","#a15fda"];
     const valuesByAxis=specs.map(sp=>data.points.map(p=>(p as unknown as Record<string,number|null|undefined>)[sp.key]).filter((v):v is number=>typeof v==='number'&&Number.isFinite(v)));
     if(valuesByAxis.every(v=>v.length<2))return <div className="ai-empty">Not enough valid daily readings to draw the requested metrics.</div>;
-    const sharedAxis=specs.length>1&&specs.every(sp=>sp.unit===specs[0].unit);
+    const sharedAxis=specs.length===1||specs.every(sp=>sp.unit===specs[0].unit);
     const axisValues=sharedAxis?[...valuesByAxis.flat()]:null;
     const ranges=valuesByAxis.map(v=>{const all=axisValues??v;const mn=Math.min(...all),mx=Math.max(...all),pad=Math.max((mx-mn)*.12,1);return [mn-pad,mx+pad];});
     const xx=(i:number)=>68+i*660/Math.max(data.points.length-1,1);
     const yy=(v:number,axis:number)=>188-(v-ranges[axis][0])/(ranges[axis][1]-ranges[axis][0])*142;
-    return <section className="ai-panel ai-chart"><div className="ai-panel-heading"><div><span className="ai-eyebrow">PERFORMANCE SIGNAL</span><h3>{data.title}</h3></div><span className="ai-tag">{sharedAxis?"Daily · Shared axis":"Daily · Dual axis"}</span></div>
+    return <section className="ai-panel ai-chart"><div className="ai-panel-heading"><div><span className="ai-eyebrow">PERFORMANCE SIGNAL</span><h3>{data.title}</h3></div><span className="ai-tag">{`${data.aggregation==="weekly"?"Weekly":"Daily"} · ${sharedAxis?"Shared axis":"Dual axis"}`}</span></div>
       <div style={{display:'flex',gap:18,justifyContent:'center',fontSize:12,fontWeight:700,marginTop:4}}>{specs.map((sp,a)=><span key={sp.key} style={{color:palette[a]}}>● {sp.label} ({sp.unit})</span>)}</div>
       <svg viewBox="0 0 800 242" role="img" aria-label="Daily production metrics, independently labelled axes" className="ai-trend-svg">
       {[0,1,2,3,4].map(i=><g key={i}><line x1="68" x2="728" y1={46+i*35.5} y2={46+i*35.5} stroke="#dfe9ef" strokeDasharray="4 5"/>{specs.map((sp,a)=>{const v=ranges[a][1]-(ranges[a][1]-ranges[a][0])*i/4;return sharedAxis&&a>0?null:<text key={a} x={a===0?57:739} y={50+i*35.5} textAnchor={a===0?'end':'start'} fontSize="11" fill={palette[a]}>{show(Number(v.toFixed(1)))}</text>;})}</g>)}

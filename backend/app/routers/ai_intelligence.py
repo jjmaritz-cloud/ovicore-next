@@ -294,7 +294,7 @@ def _bodyweight_intelligence(db, current_user, company_id, question, start, end)
               for dt,bw,std,age in daily]
     chart = {'title':'Bodyweight vs recorded breed standard', 'metric':'multi',
         'series':[{'key':'bodyweight_g','label':'Actual bodyweight','unit':'g'},
-                  {'key':'bodyweight_standard_g','label':'Breed standard','unit':'g','dashed':True}],
+                  {'key':'bodyweight_standard_g','label':'Breed standard','unit':'g','dashed':True}] if any(std is not None for _,bw,std,age in daily) else [{'key':'bodyweight_g','label':'Actual bodyweight','unit':'g'}],
         'points':points}
     observations = ['Only actual bodyweight weigh-ins are plotted; missing dates are not filled or interpolated.',
         'Standards appear only where a standard was stored on the same flock/date record.']
@@ -313,6 +313,138 @@ def _bodyweight_intelligence(db, current_user, company_id, question, start, end)
             'variance':round(bw-std,1) if std is not None else None}
             for i,(dt,bw,std,age) in enumerate(daily)],
         'chart':chart,'observations':observations,'capability':'bodyweight'}
+
+
+def _combined_bodyweight_intelligence(db, current_user, company_id, question, start, end, requested):
+    """Shared multi-metric path for a single authorised flock containing bodyweight.
+
+    Use actual weigh-in dates only. For long windows, align all requested metrics
+    into calendar-week buckets; other metrics use their valid daily denominators.
+    """
+    q = (db.query(models.CommercialLayerDailyPerformance, models.CommercialLayerFlock)
+         .join(models.CommercialLayerFlock, models.CommercialLayerDailyPerformance.flock_id == models.CommercialLayerFlock.id)
+         .filter(models.CommercialLayerDailyPerformance.company_id == company_id,
+                 models.CommercialLayerFlock.company_id == company_id,
+                 models.CommercialLayerDailyPerformance.entry_date >= start,
+                 models.CommercialLayerDailyPerformance.entry_date <= end))
+    if not (current_user.is_global_admin or current_user.is_company_admin):
+        farms = db.query(models.UserFarmAccess.farm_id).filter(models.UserFarmAccess.user_id == current_user.id)
+        q = q.filter(models.CommercialLayerFlock.farm_id.in_(farms))
+    records = q.order_by(models.CommercialLayerDailyPerformance.entry_date).all()
+    def norm(text):
+        return re.sub(r'[^a-z0-9]+', ' ', str(text).casefold()).strip()
+    question_norm = norm(question)
+    farms = {f.farm.farm_name for _, f in records if f.farm}
+    sheds = {f.shed.shed_name for _, f in records if f.shed}
+    codes = {f.flock_code for _, f in records if f.flock_code}
+    def named(name):
+        return bool(re.search(r'(?<!\w)' + re.escape(norm(name)) + r'(?!\w)', question_norm))
+    selected_farms = {name for name in farms if named(name)}
+    selected_sheds = {name for name in sheds if named(name)}
+    selected_codes = {name for name in codes if named(name)}
+    shed_token = re.search(r'\bshed\s*(\d+[a-z]?)\b', question_norm)
+    if shed_token and not selected_sheds:
+        selected_sheds = {'Shed ' + shed_token.group(1)}
+    records = [(r,f) for r,f in records if
+               (not selected_farms or (f.farm and f.farm.farm_name in selected_farms)) and
+               (not selected_sheds or (f.shed and f.shed.shed_name in selected_sheds)) and
+               (not selected_codes or f.flock_code in selected_codes)]
+    scope = {'company_id':company_id,'module':'layers','start':start.isoformat(),'end':end.isoformat()}
+    if not records:
+        return {'title':'Bodyweight and production metrics','answer':'No authorised records found for the requested flock and period.',
+                'scope':scope,'cards':[],'columns':[],'rows':[],'chart':None,
+                'observations':['Try specifying an existing shed, flock or a different period.'], 'capability':'multi'}
+    flock_ids = {f.id for _,f in records}
+    if len(flock_ids) != 1:
+        raise HTTPException(422,'Bodyweight comparisons need one flock so different biological ages are not mixed. Specify a farm, shed or flock code.')
+    flock = records[0][1]
+    daily = [r for r,_ in records]
+    weekly = (end-start).days >= 28 or bool(re.search(r'\bweeks?\b', question, re.I))
+    buckets = defaultdict(list)
+    for record in daily:
+        bucket = record.entry_date - timedelta(days=record.entry_date.weekday()) if weekly else record.entry_date
+        buckets[bucket].append(record)
+    dates = []
+    cursor = (start-timedelta(days=start.weekday())) if weekly else start
+    step = timedelta(days=7 if weekly else 1)
+    while cursor <= end:
+        dates.append(cursor)
+        cursor += step
+    metadata = {
+        'bodyweight_g':('Bodyweight','g'),
+        'feed_g_bird_day':('Feed intake','g/bird/day'),
+        'water_ml_bird_day':('Water intake','mL/bird/day'),
+        'production_pct':('Hen-day production','%'),
+        'mortality_pct':('Daily mortality rate','% per bird-day'),
+        'fcr_kg_dozen':('FCR','kg/dozen'),
+    }
+    standard_requested = bool(re.search(r'\b(?:breed\s+standard|standard\s+bodyweight|bw\s+standard|weight\s+standard|vs\s+standard)\b', question, re.I))
+    latest_weigh = [r for r in daily if r.bodyweight_g is not None]
+    valid_standard = any(r.bodyweight_g is not None and r.bodyweight_standard_g is not None for r in daily)
+    if standard_requested and valid_standard:
+        metadata['bodyweight_standard_g'] = ('Breed standard','g')
+    keys = list(dict.fromkeys(requested + (['bodyweight_standard_g'] if standard_requested and valid_standard else [])))
+    points = []
+    for d in dates:
+        bucket_rows = sorted(buckets.get(d,[]), key=lambda r:r.entry_date)
+        weights = [r for r in bucket_rows if r.bodyweight_g is not None]
+        # Weekly actual bodyweight is the last recorded weigh-in, never a daily interpolation.
+        last_weight = weights[-1] if weights else None
+        computed = _metrics(bucket_rows) if bucket_rows else {}
+        entry = {'date':d.isoformat()}
+        for metric in keys:
+            if metric=='bodyweight_g':
+                entry[metric] = float(last_weight.bodyweight_g) if last_weight else None
+            elif metric=='bodyweight_standard_g':
+                entry[metric] = float(last_weight.bodyweight_standard_g) if last_weight and last_weight.bodyweight_standard_g is not None else None
+            else:
+                entry[metric] = computed.get(metric)
+        points.append(entry)
+    def make_chart(subkeys):
+        return {'title':('Weekly' if weekly else 'Daily')+' trends — '+' & '.join(metadata[k][0] for k in subkeys),
+                'metric':'multi','aggregation':'weekly' if weekly else 'daily',
+                'series':[{'key':k,'label':metadata[k][0],'unit':metadata[k][1],
+                           **({'dashed':True} if k=='bodyweight_standard_g' else {})} for k in subkeys],
+                'points':[{'date':p['date'], **{k:p[k] for k in subkeys}} for p in points]}
+    # Pair weight and standard on a single grams axis when requested; otherwise
+    # pair weight with first other metric (secondary axis), and split the rest.
+    if 'bodyweight_standard_g' in keys:
+        groups = [['bodyweight_g','bodyweight_standard_g']]
+        remaining=[k for k in keys if k not in groups[0]]
+    else:
+        other=[k for k in keys if k!='bodyweight_g']
+        groups=[['bodyweight_g']+other[:1]]
+        remaining=other[1:]
+    groups += [remaining[i:i+2] for i in range(0,len(remaining),2)]
+    chart=make_chart(groups[0])
+    if len(groups)>1:
+        chart['additional_charts']=[make_chart(group) for group in groups[1:]]
+    cards=[]
+    if latest_weigh:
+        last=latest_weigh[-1]
+        cards.extend([_card('Latest bodyweight',round(float(last.bodyweight_g),1),' g'),
+                      _card('Last weighed',_au(last.entry_date))])
+    else:
+        cards.append(_card('Bodyweight','No weigh-ins'))
+    if standard_requested and valid_standard and latest_weigh:
+        last=latest_weigh[-1]
+        if last.bodyweight_standard_g is not None:
+            cards.append(_card('Variance from standard', round(float(last.bodyweight_g)-float(last.bodyweight_standard_g),1),' g'))
+    m=_metrics(daily)
+    for key in keys:
+        if key not in ('bodyweight_g','bodyweight_standard_g'):
+            cards.append(_card(metadata[key][0],m.get(key),' '+metadata[key][1]))
+    observations=['Bodyweight uses only recorded weigh-ins; other metrics use available daily records and their valid denominators.',
+                  ('Calendar-week points contain the latest measured weight that week and the weighted average/ratio for that week. No missing bodyweights are estimated.' if weekly else 'Daily points retain missing weigh-ins as gaps, not zero or interpolated weight.'),
+                  'Different units use separate axes; more than two metrics are split into compact charts.']
+    if standard_requested and not valid_standard:
+        observations.append('No matching recorded breed-standard bodyweight values exist for these weigh-ins; the standard line is hidden.')
+    columns=[{'key':'date','label':'Week commencing' if weekly else 'Date'}]+[{'key':k,'label':metadata[k][0]+' ('+metadata[k][1]+')'} for k in keys]
+    rows=[{'id':i,'date':_au(date.fromisoformat(p['date'])),**{k:p[k] for k in keys}} for i,p in enumerate(points) if any(p[k] is not None for k in keys)]
+    return {'title':' & '.join(metadata[k][0] for k in requested)+' — '+flock.flock_code+' — '+_au(start)+' to '+_au(end),
+            'answer':f'Combined {"weekly" if weekly else "daily"} comparison for flock {flock.flock_code}. {len(latest_weigh)} actual weigh-in(s) in the period.',
+            'scope':scope,'cards':cards,'columns':columns,'rows':rows,'chart':chart,
+            'observations':observations,'capability':'multi'}
 
 
 def _card(label, value, unit=""):
@@ -402,7 +534,14 @@ def ask_intelligence(payload: AskRequest, current_user: models.AppUser = Depends
         weeks = re.search(r"(?:last|past|previous)\s+(\d{1,2})\s+weeks?\b", payload.question, re.I)
         period_days = min(366,int(weeks.group(1))*7) if weeks else days
         start = end - timedelta(days=period_days - 1)
-    if re.search(r"\b(?:body\s*weight|bodyweight|bird\s*weight|hen\s*weight|weigh[ -]?ins?|bw)\b", payload.question, re.I):
+    # Shared bodyweight path: don't let the old one-metric handler swallow
+    # additional metrics (water/feed/HD%/mortality/FCR).
+    bodyweight_asked = bool(re.search(r"\b(?:body\s*weight|bodyweight|bird\s*weight|hen\s*weight|weigh[ -]?ins?|bw)\b", payload.question, re.I))
+    if bodyweight_asked:
+        requested = ['bodyweight_g'] + [m for m in requested_metrics if m in
+            ('production_pct','feed_g_bird_day','water_ml_bird_day','mortality_pct','fcr_kg_dozen')]
+        if len(requested)>1:
+            return _combined_bodyweight_intelligence(db,current_user,company_id,payload.question,start,end,requested)
         return _bodyweight_intelligence(db, current_user, company_id, payload.question, start, end)
     days = (end - start).days + 1
     baseline = start - timedelta(days=days)
