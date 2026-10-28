@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app import models
 from app.db import get_db
 from app.routers.auth import get_current_user
+from app.routers.intelligence_rules import interpret
 
 router = APIRouter(prefix="/api/intelligence", tags=["Intelligence"])
 TODAY_TZ = ZoneInfo("Australia/Sydney")
@@ -85,10 +86,11 @@ def _question_dates(question: str) -> tuple[date, date] | None:
     tokens = _DATE_PATTERN.findall(question)
     if not tokens:
         return None
-    if len(tokens) != 2:
-        raise HTTPException(422, "For a custom period, enter both start and end dates, for example 01/07/2026 to 10/07/2026.")
+    if len(tokens) > 2:
+        raise HTTPException(422, "Use one date or a start and end date, for example 01/07/2026 to 10/07/2026.")
     try:
-        start, end = (_parse_date_token(token) for token in tokens)
+        parsed = [_parse_date_token(token) for token in tokens]
+        start, end = (parsed[0], parsed[-1])
     except ValueError:
         raise HTTPException(422, "Invalid date. Use DD/MM/YYYY or YYYY-MM-DD and check the day and month.")
     if start > end:
@@ -160,7 +162,25 @@ def ask_intelligence(payload: AskRequest, current_user: models.AppUser = Depends
         raise HTTPException(422, "Only Commercial Layers is connected currently.")
     company_id = _permissions(db, current_user, payload.company_id)
     explicit_dates = _question_dates(payload.question)
-    plan = _fallback_plan(payload.question)  # No paid AI calls.
+    plan = _fallback_plan(payload.question)  # Preserve original fallback and response contract.
+    learned = interpret(payload.question)  # Local approved terminology rules only.
+    metric = learned['metric']
+    # Unsupported advanced questions must not silently return unrelated statistics.
+    if learned['intent'] == 'compare_flocks':
+        raise HTTPException(422, "Same-age flock comparison is not connected yet. Ask about one flock or metric while comparison support is developed.")
+    if metric == 'closing_birds' or metric == 'opening_birds':
+        plan['intent'] = 'population'
+    elif metric in ('mortality_birds', 'mortality_pct'):
+        plan['intent'] = 'mortality'
+    elif metric == 'production_pct':
+        plan['intent'] = 'production'
+    elif metric == 'feed_g_bird_day':
+        plan['intent'] = 'feed'
+    elif metric == 'water_ml_bird_day':
+        plan['intent'] = 'water'
+    elif metric == 'fcr_kg_dozen':
+        plan['intent'] = 'fcr'
+
     # Dates, including those typed in natural language, are parsed deterministically.
     intent, days, limit = plan["intent"], plan["days"], plan["limit"]
     scope = {"company_id": company_id, "module": "layers"}
@@ -196,6 +216,20 @@ def ask_intelligence(payload: AskRequest, current_user: models.AppUser = Depends
         slot = grouped[flock.id]
         slot["flock"] = flock
         slot["current" if record.entry_date >= start else "previous"].append(record)
+    # Resolve farm, shed and flock names only against the already authorised records.
+    # Prefer longest recognised entity name, then require shed+farm qualification if ambiguous.
+    authorised = [d['flock'] for d in grouped.values()]
+    qnorm = re.sub(r'[^a-z0-9]+', ' ', payload.question.casefold()).strip()
+    def present(name):
+        val = re.sub(r'[^a-z0-9]+', ' ', str(name).casefold()).strip()
+        return bool(val and re.search(r'(?<!\w)' + re.escape(val) + r'(?!\w)', qnorm))
+    farm_names = {f.farm.farm_name for f in authorised if f.farm and f.farm.farm_name}
+    shed_names = {f.shed.shed_name for f in authorised if f.shed and f.shed.shed_name}
+    flock_names = {f.flock_code for f in authorised if f.flock_code}
+    matched_farms = {n for n in farm_names if present(n)}
+    matched_sheds = {n for n in shed_names if present(n)}
+    matched_flocks = {n for n in flock_names if present(n)}
+    # Short references such as 'Shed 1' match the known shed name; avoid matching 'Shed 10'.
     items = []
     for data in grouped.values():
         if not data["current"]:
@@ -203,6 +237,12 @@ def ask_intelligence(payload: AskRequest, current_user: models.AppUser = Depends
         flock = data["flock"]
         farm = flock.farm.farm_name if flock.farm else f"Farm {flock.farm_id}"
         shed = flock.shed.shed_name if flock.shed else f"Shed {flock.shed_id}"
+        if matched_farms and farm not in matched_farms:
+            continue
+        if matched_sheds and shed not in matched_sheds:
+            continue
+        if matched_flocks and flock.flock_code not in matched_flocks:
+            continue
         location = plan.get("location")
         if location and location.casefold() not in f"{farm} {shed} {flock.flock_code}".casefold():
             continue
@@ -211,8 +251,36 @@ def ask_intelligence(payload: AskRequest, current_user: models.AppUser = Depends
                       "current": current, "previous": previous,
                       "changes": {k: _delta(current[k], previous[k]) for k in ("mortality_pct", "production_pct", "feed_g_bird_day", "water_ml_bird_day", "fcr_kg_dozen")},
                       "daily": sorted(data["current"], key=lambda r: r.entry_date)})
-    key_by_intent = {"mortality": "mortality_pct", "feed": "feed_g_bird_day", "water": "water_ml_bird_day", "production": "production_pct", "fcr": "fcr_kg_dozen", "investigate": "production_pct", "overview": "production_pct"}
+    key_by_intent = {"population": "production_pct", "mortality": "mortality_pct", "feed": "feed_g_bird_day", "water": "water_ml_bird_day", "production": "production_pct", "fcr": "fcr_kg_dozen", "investigate": "production_pct", "overview": "production_pct"}
     key = key_by_intent[intent]
+    if intent == 'population':
+        # End-of-day population is a point-in-time reading, not a summable daily metric.
+        target = metric or 'closing_birds'
+        unique_dates = sorted({r.entry_date for i in items for r in i['daily']})
+        if len(unique_dates) != 1:
+            raise HTTPException(422, "For bird population, specify one date (DD/MM/YYYY) and a farm/shed or flock.")
+        if len(items) != 1:
+            raise HTTPException(422, "For bird population, specify one flock or a farm and shed. Multiple flocks cannot be silently combined.")
+        selected = items[0]
+        readings = [r for r in selected['daily'] if getattr(r, target) is not None]
+        if len(readings) != 1:
+            raise HTTPException(422, "There is no unambiguous recorded bird population for this flock and date.")
+        record = readings[0]
+        value = int(getattr(record, target))
+        unit = ' birds'
+        label = 'Closing birds' if target == 'closing_birds' else 'Opening birds'
+        info = f"{label}: {value:,} birds at {selected['farm']} / {selected['shed']} / {selected['flock']} on {_au(record.entry_date)}."
+        cols = [{'key':'farm','label':'Farm'}, {'key':'shed','label':'Shed'}, {'key':'flock','label':'Flock'},
+                {'key':'date','label':'Date'}, {'key':'opening_birds','label':'Opening birds'},
+                {'key':'mortality_birds','label':'Morts'}, {'key':'cull_birds','label':'Culls'},
+                {'key':'closing_birds','label':'Closing birds'}]
+        rr = {'id':selected['flock_id'],'farm':selected['farm'],'shed':selected['shed'], 'flock':selected['flock'],
+              'date':_au(record.entry_date),'opening_birds':record.opening_birds,
+              'mortality_birds':record.mortality_birds,'cull_birds':record.cull_birds,'closing_birds':record.closing_birds}
+        return {'title':f"{label} — {_au(record.entry_date)}", 'answer':info, 'scope':scope,
+                'cards':[_card(label,value,unit)],'columns':cols,'rows':[rr], 'chart':None,
+                'observations':['Population is read directly from the recorded daily entry, not estimated or summed over time.'],
+                'capability':'population'}
     descending = intent in {"mortality", "fcr"} or "highest" in payload.question.lower() or "top" in payload.question.lower()
     if intent in {"production", "feed", "water", "investigate", "overview"} and ("worst" in payload.question.lower() or "drop" in payload.question.lower() or "lowest" in payload.question.lower()):
         descending = False
@@ -266,7 +334,18 @@ def ask_intelligence(payload: AskRequest, current_user: models.AppUser = Depends
         observations = ["No matching, authorised Commercial Layers records were found for the selected period or named location. Try a broader question or another date range."]
     if intent == "mortality":
         total = sum(item["current"]["mortality_birds"] for item in items)
-        answer = f"{total:,} mortality birds recorded across {len(items)} authorised reporting flock(s) for {_au(start)} – {_au(end)}." if items else f"No mortality records found for {_au(start)} – {_au(end)} in your authorised Commercial Layers data."
+        if metric == 'mortality_pct':
+            # Existing metric is deaths / opening bird-DAYS (daily exposure rate).
+            # Recompute across all matched rows rather than use the first/ranked flock.
+            allrows = [r for item in items for r in item['daily']]
+            measured = _metrics(allrows)
+            rate = measured['mortality_pct']
+            answer = (f"Mortality was {rate:.3f}% per bird-day across {len(items)} authorised flock(s) "
+                      f"for {_au(start)} – {_au(end)} ({total:,} birds died). This is a bird-day based daily "
+                      f"mortality rate, not total period mortality as a percentage of opening flock size.") if rate is not None else "No valid opening-bird denominator was recorded for mortality percentage."
+            cards = [_card('Daily mortality rate',rate,'%'),_card('Mortality birds',total,' birds'),_card('Reporting flocks',len(items))]
+        else:
+            answer = f"{total:,} mortality birds recorded across {len(items)} authorised reporting flock(s) for {_au(start)} – {_au(end)}." if items else f"No mortality records found for {_au(start)} – {_au(end)} in your authorised Commercial Layers data."
     else:
         answer = f"I found {len(items)} reporting flock(s) in your authorised Commercial Layers data. {heading} results are shown below." if items else f"No matching data was found for {_au(start)} – {_au(end)}."
     return {"title": f"{heading} — {_au(start)} to {_au(end)}", "answer": answer, "scope": scope, "cards": cards, "columns": columns, "rows": rows, "chart": chart, "observations": observations, "capability": intent}
