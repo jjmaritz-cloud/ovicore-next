@@ -180,18 +180,19 @@ const modules: ModuleCard[] = [
     iconClass: "home-icon-planning",
     group: "Planning & Operations",
   },
-  {
-    name: "Feed Mill Management",
-    eyebrow: "Feed manufacturing",
-    description:
-      "Raw materials, formulations, batching, production, quality, inventory, dispatch and mill performance.",
-    tags: ["Production", "Quality", "Traceability"],
-    status: "Planned",
-    statusClass: "home-status-planned",
-    icon: Factory,
-    iconClass: "home-icon-processing",
-    group: "Planning & Operations",
-  },
+	{
+		name: "Feed Operations",
+		eyebrow: "Feed management & supply",
+		description:
+			"Mill management, ration pricing, shed-based feed ordering, receiving and feed inventory.",
+		tags: ["Mill management", "Feed ordering", "Receiving"],
+		href: "/feed-operations",
+		status: "Core",
+		statusClass: "home-status-core",
+		icon: Factory,
+		iconClass: "home-icon-processing",
+		group: "Planning & Operations",
+	},
   {
     name: "Biosecurity & People Tracker",
     eyebrow: "People movement & site protection",
