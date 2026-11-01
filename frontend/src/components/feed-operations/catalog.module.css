@@ -1,1 +1,52 @@
 .root{min-height:100vh;background:linear-gradient(135deg,#d7ece7 0%,#f3faf8 38%,#e9f6f1 100%);color:#063a33;padding:16px 22px 64px;font-family:Arial,Helvetica,sans-serif}.wrap{max-width:1390px;margin:auto}.header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 22px;border-radius:12px;background:linear-gradient(110deg,#06392f,#00816a);color:white;box-shadow:0 5px 15px #08433420}.eyebrow{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;font-weight:800;opacity:.8}.title{font-size:25px;font-weight:800;margin:6px 0}.sub{font-size:12px;opacity:.88}.nav{display:flex;gap:8px;flex-wrap:wrap}.nav a{color:#fff;text-decoration:none;border:1px solid #ffffff65;padding:9px 12px;border-radius:7px;font-size:12px;font-weight:700}.nav a:hover{background:#ffffff20}.section{border:1px solid #c7e2d9;background:#f3faf7;border-radius:12px;padding:14px;margin-top:13px}.heading{display:flex;justify-content:space-between;gap:12px;align-items:center;margin:0 0 12px}.heading h2{font-size:15px;margin:0}.muted{font-size:12px;color:#52776e}.notice{margin-top:12px;border:1px solid #f0d69c;background:#fff9eb;border-radius:8px;padding:11px 13px;color:#6f561c;font-size:12px}.cols{display:grid;grid-template-columns:minmax(300px,430px) minmax(0,1fr);gap:13px}.card{background:#fff;border:1px solid #cbded8;border-radius:10px;padding:15px;box-shadow:0 2px 6px #06392f0d}.card h3{margin:0 0 12px;font-size:14px}.form{display:grid;grid-template-columns:1fr 1fr;gap:10px}.wide{grid-column:1/-1}.field{display:flex;flex-direction:column;gap:5px;font-size:11px;font-weight:700;color:#315c53}.field input,.field select,.field textarea,.search{box-sizing:border-box;width:100%;border:1px solid #bed4cd;border-radius:7px;padding:9px 10px;color:#113f35;background:#fff;font:inherit;font-size:12px}.field textarea{min-height:55px;resize:vertical}.field input:focus,.field select:focus,.field textarea:focus,.search:focus{outline:2px solid #078b71;outline-offset:0}.controls{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:12px}.button{border:1px solid #087b64;background:#007c65;color:#fff;border-radius:7px;padding:9px 12px;font-weight:700;font-size:12px;cursor:pointer}.button:disabled{opacity:.4;cursor:not-allowed}.secondary{border:1px solid #bcdcd2;background:#f2fbf7;color:#075847}.danger{border:1px solid #e5c3c3;background:#fff5f4;color:#a42b28}.tableWrap{overflow-x:auto}.table{width:100%;border-collapse:collapse;font-size:12px;text-align:left}.table th{background:#e9f5ef;color:#245749;text-transform:uppercase;font-size:10px;letter-spacing:.5px}.table th,.table td{border-bottom:1px solid #e3eeea;padding:10px 8px;vertical-align:middle}.table tr:hover td{background:#f7fcfa}.action{background:none;border:0;color:#00735d;font-size:12px;font-weight:700;cursor:pointer;text-decoration:underline}.pill{display:inline-block;background:#e5f5ec;border-radius:30px;padding:3px 7px;font-size:10px;color:#06674e;font-weight:800}.warn{background:#fff0dd;color:#9b5d00}.error{font-size:12px;color:#a52e25;margin-top:8px}.good{font-size:12px;color:#007357;margin-top:8px}.tabs{display:flex;gap:8px;align-items:center;margin-bottom:10px}.tabs a{font-size:11px;background:#e3f2eb;padding:8px 10px;border-radius:7px;text-decoration:none;color:#075a47;font-weight:800}.tabs a[aria-current=page]{background:#007e66;color:white}.lineGrid{display:grid;grid-template-columns:minmax(0,1fr) 110px 65px;gap:8px;align-items:end;margin:7px 0}.foot{margin:15px auto;text-align:center;font-size:11px;color:#4e8176}@media(max-width:920px){.cols{grid-template-columns:1fr}.header{align-items:flex-start;flex-direction:column}}@media(max-width:580px){.root{padding:10px}.form{grid-template-columns:1fr}.wide{grid-column:auto}.lineGrid{grid-template-columns:minmax(0,1fr) 78px 35px}.header{padding:16px}}
+
+/* ============================================================
+   OVICORE FEED OPERATIONS — STANDARD SIDEBAR LAYOUT
+   Match the existing Commercial Layers page behaviour.
+   ============================================================ */
+
+/* Match the collapsed OviCore sidebar width. */
+.root {
+  box-sizing: border-box;
+  width: calc(100% - 52px);
+  min-height: 100vh;
+  margin-left: 52px;
+  padding: 12px 16px 40px;
+}
+
+/* Use the entire available content area. */
+.wrap {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
+
+/* Keep the mill and ingredient forms compact. */
+.cols {
+  grid-template-columns: minmax(300px, 430px) minmax(0, 1fr);
+}
+
+/* Ensure tables and their containing cards can shrink safely. */
+.cols > * {
+  min-width: 0;
+}
+
+.tableWrap {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* Responsive layout. */
+@media (max-width: 920px) {
+  .cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 580px) {
+  .root {
+    width: calc(100% - 48px);
+    margin-left: 48px;
+    padding: 10px;
+  }
+}
