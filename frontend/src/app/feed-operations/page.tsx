@@ -1,112 +1,97 @@
+"use client";
+
 import Link from "next/link";
+import { useMemo, useState } from "react";
+import {
+  ArrowUpRight,
+  BookOpen, CheckCircle2, ClipboardList, Factory,
+  PackageCheck, Search, Sprout, Warehouse, Wheat,
+} from "lucide-react";
 import styles from "./page.module.css";
 
-const primarySections = [
-  {
-    number: "01",
-    title: "Mill Management",
-    description: "Mill register, mill-specific ration SKUs, descriptions and pricing.",
-    href: "/feed-operations/mills",
-    label: "MILL NETWORK",
-  },
-  {
-    number: "02",
-    title: "Feed Ordering",
-    description: "Shed and flock orders using the mill assigned during flock setup.",
-    href: "/feed-operations/orders",
-    label: "FLOCK-BASED ORDERS",
-  },
-  {
-    number: "03",
-    title: "Feed Receiving",
-    description: "Delivery dockets, actual tonnes, batches and silo allocation.",
-    href: "/feed-operations/receiving",
-    label: "DELIVERY CONTROL",
-  },
-];
+/** Visual styling deliberately uses CSS modules, matching the OviCore homepage
+ *  without depending on global Tailwind configuration. All links remain existing routes.
+ *  No sample live figures, data calls or duplicated auth/navigation are introduced. */
+const modules = [
+  { title: "Mill Management", eyebrow: "MILL NETWORK & PRICING", description: "Mill register, approved mill rations, supplier SKUs, descriptions and pricing.", tags: ["MILLS", "SKU MAPPING", "PRICING"], href: "/feed-operations/mills", icon: Factory, category: "Core Operations" },
+  { title: "Feed Ordering", eyebrow: "SHED & FLOCK ORDERS", description: "Raise feed orders by shed and flock using the mill assigned during flock setup.", tags: ["FLOCK", "RATIONS", "ORDERS"], href: "/feed-operations/orders", icon: ClipboardList, category: "Core Operations" },
+  { title: "Feed Receiving", eyebrow: "DELIVERY CONTROL", description: "Record delivered tonnes, delivery dockets, batches and silo allocations.", tags: ["RECEIPTS", "DOCKETS", "SILOS"], href: "/feed-operations/receiving", icon: PackageCheck, category: "Core Operations" },
+  { title: "Ration Library", eyebrow: "DIET MANAGEMENT", description: "Manage standard rations, production phases and approved medicated variants.", tags: ["BASE DIETS", "MEDICATED", "PHASES"], href: "/feed-operations/rations", icon: BookOpen, category: "Feed Data & Controls" },
+  { title: "Diet Ingredients", eyebrow: "NUTRITION & COSTING", description: "Manage feed ingredients, nutrient specifications and inclusion rates.", tags: ["INGREDIENTS", "NUTRITION", "COSTS"], href: "/feed-operations/ingredients", icon: Sprout, category: "Feed Data & Controls" },
+  { title: "Feed Inventory", eyebrow: "STOCK & CONSUMPTION", description: "Track silo stock, feed usage and reconciliation between deliveries and consumption.", tags: ["SILO STOCK", "USAGE", "VARIANCES"], href: "/feed-operations/inventory", icon: Warehouse, category: "Feed Data & Controls" },
+] as const;
 
-const supportingSections = [
-  {
-    number: "04",
-    title: "Ration Library",
-    description: "Approved diets, life stages, base and medicated variants.",
-    href: "/feed-operations/rations",
-  },
-  {
-    number: "05",
-    title: "Diet Ingredients",
-    description: "Ingredient catalogue, nutritional specifications and inclusion rates.",
-    href: "/feed-operations/ingredients",
-  },
-  {
-    number: "06",
-    title: "Feed Inventory",
-    description: "Silo balances, usage and stock reconciliation.",
-    href: "/feed-operations/inventory",
-  },
-];
+const categories = ["All", "Core Operations", "Feed Data & Controls"] as const;
 
 export default function FeedOperationsPage() {
+  const [category, setCategory] = useState<string>("All");
+  const [search, setSearch] = useState("");
+  const filtered = useMemo(() => modules.filter((item) => {
+    const matchesCategory = category === "All" || item.category === category;
+    const term = search.trim().toLowerCase();
+    return matchesCategory && (!term || [item.title, item.eyebrow, item.description, ...item.tags].join(" ").toLowerCase().includes(term));
+  }), [category, search]);
+
   return (
     <main className={styles.page}>
       <div className={styles.container}>
         <header className={styles.hero}>
-          <div>
-            <p className={styles.eyebrow}>OVICORE ECOSYSTEM / PLANNING &amp; OPERATIONS</p>
-            <h1 className={styles.title}>Feed Operations</h1>
-            <p className={styles.subtitle}>
-              Mill management, shed-based feed ordering and feed receiving in one place.
-            </p>
+          <div className={styles.heroText}>
+            <p className={styles.kicker}>OVICORE ECOSYSTEM / PLANNING & OPERATIONS</p>
+            <h1>Feed Operations</h1>
+            <p>Manage your feed supply, from mills and rations to shed-based ordering, receiving and inventory.</p>
           </div>
-          <Link className={styles.backLink} href="/home">Back to Modules <span aria-hidden="true">↗</span></Link>
+          <div className={styles.heroTools}>
+            <Link className={styles.backLink} href="/home">Back to modules <ArrowUpRight size={14} aria-hidden="true" /></Link>
+            <label className={styles.search}>
+              <Search size={17} aria-hidden="true" />
+              <span className={styles.srOnly}>Search Feed Operations</span>
+              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search Feed Operations..." />
+            </label>
+          </div>
         </header>
 
-        <section aria-labelledby="core-heading" className={styles.section}>
-          <div className={styles.sectionHeading}>
-            <h2 id="core-heading">Core Operations</h2>
-            <span>3 workspaces</span>
-          </div>
-          <div className={styles.primaryGrid}>
-            {primarySections.map((section) => (
-              <Link key={section.href} href={section.href} className={styles.primaryCard}>
-                <div className={styles.cardTop}>
-                  <span className={styles.cardNumber}>{section.number}</span>
-                  <span className={styles.cardLabel}>{section.label}</span>
-                </div>
-                <h3>{section.title}</h3>
-                <p>{section.description}</p>
-                <span className={styles.openText}>Open workspace <span aria-hidden="true">→</span></span>
-              </Link>
-            ))}
-          </div>
-        </section>
+        <nav className={styles.filters} aria-label="Filter Feed Operations modules">
+          {categories.map((name) => (
+            <button key={name} type="button" aria-pressed={category === name} className={category === name ? styles.filterActive : styles.filter} onClick={() => setCategory(name)}>{name}</button>
+          ))}
+        </nav>
 
-        <section aria-labelledby="support-heading" className={styles.section}>
-          <div className={styles.sectionHeading}>
-            <h2 id="support-heading">Feed Data &amp; Controls</h2>
-            <span>3 supporting areas</span>
-          </div>
-          <div className={styles.supportGrid}>
-            {supportingSections.map((section) => (
-              <Link key={section.href} href={section.href} className={styles.supportCard}>
-                <span className={styles.smallNumber}>{section.number}</span>
-                <div className={styles.supportContent}>
-                  <h3>{section.title}</h3>
-                  <p>{section.description}</p>
-                </div>
-                <span className={styles.arrow} aria-hidden="true">→</span>
-              </Link>
-            ))}
-          </div>
-        </section>
-
-        <aside className={styles.rule}>
-          <strong>Ordering rule</strong>
-          <span>
-            Every feed order belongs to a shed and flock. The supplying mill is assigned during flock
-            setup; different sheds on the same farm may have different mills.
-          </span>
-        </aside>
+        {categories.slice(1).map((section) => {
+          const sectionItems = filtered.filter((item) => item.category === section);
+          if (!sectionItems.length) return null;
+          return (
+            <section className={styles.section} key={section} aria-label={section}>
+              <div className={styles.sectionHeading}>
+                <div><div className={styles.overline}>BUSINESS AREA</div><h2>{section}</h2></div>
+                <span>{sectionItems.length} {sectionItems.length === 1 ? "module" : "modules"}</span>
+              </div>
+              <div className={styles.cardGrid}>
+                {sectionItems.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <Link key={item.href} href={item.href} className={styles.card}>
+                      <div className={styles.cardTop}>
+                        <span className={styles.icon}><Icon size={22} strokeWidth={1.8} aria-hidden="true" /></span>
+                        <div className={styles.cardHeading}>
+                          <div className={styles.eyebrow}>{item.eyebrow}</div>
+                          <h3>{item.title}</h3>
+                        </div>
+                        <span className={styles.status}>CORE</span>
+                      </div>
+                      <p className={styles.description}>{item.description}</p>
+                      <div className={styles.tags}>{item.tags.map((tag) => <span key={tag}>{tag}</span>)}</div>
+                      <div className={styles.cardFooter}><span>Open module</span><span className={styles.arrow}><ArrowUpRight size={14} aria-hidden="true" /></span></div>
+                    </Link>
+                  );
+                })}
+              </div>
+            </section>
+          );
+        })}
+        {!filtered.length && <div className={styles.empty}>No Feed Operations modules match your search.</div>}
+        <aside className={styles.rule}><CheckCircle2 size={17} aria-hidden="true"/><p><strong>Ordering rule</strong> Feed orders are always shed/flock-based. The assigned mill comes from flock setup; different sheds on the same farm may have different mills.</p></aside>
+        <footer className={styles.footer}><Wheat size={15} aria-hidden="true"/> OviCore Ecosystem · Intelligence That Drives Performance.</footer>
       </div>
     </main>
   );
