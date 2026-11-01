@@ -4,6 +4,9 @@ import json
 import re
 import urllib.error
 import urllib.request
+from .routers.auth import get_current_user
+from .feed_catalog.models import declare_models
+from .feed_catalog.router import make_feed_catalog_router
 from datetime import date, datetime, timedelta
 from io import BytesIO
 from fastapi import Body, Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
@@ -23,11 +26,13 @@ from app.routers import flock_purge
 from app.routers import company_deletion
 from app.routers import daily_data_import
 from app.routers.standards import PerformanceStandard
-from app.routers.auth import get_current_user
 from app import models
 from app.routers import ai_intelligence
 
 from .db import Base, engine, SessionLocal, get_db
+# Register Feed Operations models with the existing OviCore database.
+FeedMill, FeedIngredient, FeedRation = declare_models(Base)
+
 from .models import (
     Company,
     BroilerFarm,
@@ -78,6 +83,26 @@ from .schemas import (
 from .calculations import build_plan_response
 from .seed import seed_demo_data
 
+def require_feed_editor(
+    current_user: models.AppUser = Depends(get_current_user),
+):
+    if not (
+        current_user.is_global_admin
+        or current_user.is_company_admin
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Feed catalogue editing permission required",
+        )
+
+    if not current_user.is_global_admin and current_user.company_id is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Your account is not assigned to a company",
+        )
+
+    return current_user
+
 app = FastAPI(title="OviCore Broiler Module API", version="0.1.0")
 app.include_router(broiler_processing.router)
 app.include_router(ai_intelligence.router)
@@ -90,6 +115,15 @@ app.include_router(standards.router)
 app.include_router(daily_data_import.router)
 app.include_router(flock_purge.router)
 app.include_router(company_deletion.router)
+
+app.include_router(
+    make_feed_catalog_router(
+        get_db=get_db,
+        get_current_user=get_current_user,
+        models=(FeedMill, FeedIngredient, FeedRation),
+        require_feed_editor=require_feed_editor,
+    )
+)
 
 origins = [
     "http://localhost:3000",
