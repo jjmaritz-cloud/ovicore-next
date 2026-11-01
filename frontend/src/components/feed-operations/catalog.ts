@@ -68,11 +68,9 @@ export type Catalog = {
   mills: Mill[];
 };
 
-const API_BASE = (
-  process.env.NEXT_PUBLIC_API_BASE_URL || ""
-).replace(/\/$/, "");
-
-const ENDPOINT = `${API_BASE}/api/feed-operations/catalog`;
+// Use OviCore's same-origin API proxy.
+// This preserves the existing authenticated cookie flow.
+const ENDPOINT = "/api/feed-operations/catalog";
 
 const EMPTY: Catalog = {
   ingredients: [],
