@@ -1,3 +1,4 @@
+
 export type OviCoreModule =
   | "admin"
   | "planning"
@@ -5,7 +6,8 @@ export type OviCoreModule =
   | "broilers"
   | "hatchery"
   | "layers"
-  | "processing";
+  | "processing"
+  | "feed-operations";
 
 export type OviCoreUserRole =
   | "global_admin"

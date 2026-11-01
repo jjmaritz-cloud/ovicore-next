@@ -1,3 +1,4 @@
+
 import { adminMenu } from "./menus/admin.menu";
 import { breedersMenu } from "./menus/breeders.menu";
 import { broilersMenu } from "./menus/broilers.menu";
@@ -5,6 +6,7 @@ import { hatcheryMenu } from "./menus/hatchery.menu";
 import { layersMenu } from "./menus/layers.menu";
 import { planningMenu } from "./menus/planning.menu";
 import { processingMenu } from "./menus/processing.menu";
+import { feedOperationsMenu } from "./menus/feed-operations.menu";
 
 import type {
   OviCoreModule,
@@ -22,6 +24,7 @@ export const sidebarMenuRegistry: Record<
   hatchery: hatcheryMenu,
   layers: layersMenu,
   processing: processingMenu,
+  "feed-operations": feedOperationsMenu,
 };
 
 export function getSidebarMenu(
