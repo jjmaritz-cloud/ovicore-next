@@ -9,14 +9,14 @@ type MillForm = Omit<Mill, "id">;
 const BLANK: MillForm = {code:"",name:"",location:"",contact:"",email:"",phone:"",kind:"External Mill",status:"Active",notes:""};
 
 export default function MillsPage() {
-  const { catalog, save, ready } = useCatalog();
+  const { catalog, save, ready, error } = useCatalog();
   const [form,setForm] = useState<MillForm>({...BLANK});
   const [edit,setEdit] = useState("");
   const [search,setSearch] = useState("");
   const [message,setMessage] = useState("");
   const change = <K extends keyof MillForm>(key:K,value:MillForm[K]) => setForm(p=>({...p,[key]:value}));
   const reset = () => {setForm({...BLANK});setEdit("");setMessage("");};
-  const submit = (e:React.FormEvent<HTMLFormElement>) => {
+  const submit = async (e:React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();setMessage("");
     const code=form.code.trim().toUpperCase();const name=form.name.trim();
     if(!code||!name){setMessage("Mill code and name are required.");return;}
@@ -24,13 +24,14 @@ export default function MillsPage() {
     if(form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())){setMessage("Enter a valid contact email.");return;}
     const item:Mill={...form,code,name,email:form.email.trim(),id:edit||newId()};
     const next={...catalog,mills:edit?catalog.mills.map(m=>m.id===edit?item:m):[...catalog.mills,item]};
-    if(save(next)){reset();setMessage("Mill saved in this browser only.");}else setMessage("Unable to save browser data.");
+    if(await save(next)){reset();setMessage("Mill saved in OviCore.");}else setMessage("Unable to save. Check API permissions or connection.");
   };
   const choose=(m:Mill)=>{setEdit(m.id);setForm({code:m.code,name:m.name,location:m.location,contact:m.contact,email:m.email,phone:m.phone,kind:m.kind||"External Mill",status:m.status,notes:m.notes});setMessage("");window.scrollTo({top:0,behavior:"smooth"});};
   const visible=catalog.mills.filter(m=>`${m.code} ${m.name} ${m.location} ${m.contact}`.toLowerCase().includes(search.toLowerCase())).sort((a,b)=>a.name.localeCompare(b.name));
   return <main className={s.root}><div className={s.wrap}>
     <header className={s.header}><div><div className={s.eyebrow}>OVICORE ECOSYSTEM / FEED OPERATIONS</div><h1 className={s.title}>Mill Management</h1><div className={s.sub}>Mill register, contacts and mill-specific ration catalogue</div></div><nav className={s.nav}><Link href="/feed-operations">Feed Operations</Link><Link href="/feed-operations/rations">Ration Library →</Link></nav></header>
-    <div className={s.notice}><strong>Prototype:</strong> Mill records are saved in this browser only. They are not shared with other users or connected to the OviCore database. Mill names and codes below are entered by you, not preloaded.</div>
+    <div className={s.notice}><strong>Prototype:</strong> Mill records are saved in OviCore. They are not shared with other users or connected to the OviCore database. Mill names and codes below are entered by you, not preloaded.</div>
+    {error&&<div role="alert" className={s.error}>API: {error}. No changes have been saved.</div>}
     <section className={s.section}><div className={s.heading}><h2>Mill Register</h2><span className={s.muted}>{ready?`${catalog.mills.length} mills` : "Loading"}</span></div>
       <div className={s.cols}>
         <div className={s.card}><h3>{edit?"Edit Mill":"Add Feed Mill"}</h3><form className={s.form} onSubmit={submit}>

@@ -5,23 +5,24 @@ import {Ingredient,newId,useCatalog} from "../../../components/feed-operations/c
 import s from "../../../components/feed-operations/catalog.module.css";
 const BLANK={code:"",name:"",category:"Grain",price:"",protein:"",energy:"",status:"Active" as const,notes:""};
 export default function IngredientsPage(){
-  const {catalog,save,ready}=useCatalog();
-  const [form,setForm]=useState<Omit<Ingredient, "id" | "price"> & {price:string}>({...BLANK}); const [edit,setEdit]=useState("");const [search,setSearch]=useState("");const [message,setMessage]=useState("");
+  const {catalog,save,ready,error}=useCatalog();
+  const [form,setForm]=useState<Omit<Ingredient,"id"|"price"> & {price:string}>({...BLANK}); const [edit,setEdit]=useState("");const [search,setSearch]=useState("");const [message,setMessage]=useState("");
   const set=(key:keyof typeof BLANK,value:string)=>setForm(prev=>({...prev,[key]:value}));
   const reset=()=>{setForm({...BLANK});setEdit("");setMessage("");};
-  const submit=(e:React.FormEvent)=>{
+  const submit=async (e:React.FormEvent)=>{
     e.preventDefault();setMessage("");const code=form.code.trim().toUpperCase();const name=form.name.trim();const price=Number(form.price);
     if(!code||!name||!form.price.trim()||!Number.isFinite(price)||price<0){setMessage("Enter code, name and a valid price per tonne (zero is allowed).");return;}
     if(catalog.ingredients.some(x=>x.code.toUpperCase()===code&&x.id!==edit)){setMessage("Ingredient code must be unique.");return;}
     const item:Ingredient={id:edit||newId(),code,name,category:form.category,price,protein:form.protein,energy:form.energy,status:form.status,notes:form.notes};
     const next={...catalog,ingredients:edit?catalog.ingredients.map(i=>i.id===edit?item:i):[...catalog.ingredients,item]};
-    if(save(next)){reset();setMessage("Ingredient saved in this browser only.");}else setMessage("Could not save in browser storage.");
+    if(await save(next)){reset();setMessage("Ingredient saved in OviCore.");}else setMessage("Unable to save. Check API permissions or connection.");
   };
   const choose=(i:Ingredient)=>{setEdit(i.id);setForm({code:i.code,name:i.name,category:i.category,price:String(i.price),protein:i.protein,energy:i.energy,status:i.status,notes:i.notes});setMessage("");window.scrollTo({top:0,behavior:"smooth"});};
   const visible=catalog.ingredients.filter(i=>`${i.code} ${i.name} ${i.category}`.toLowerCase().includes(search.toLowerCase())).sort((a,b)=>a.code.localeCompare(b.code));
   return <main className={s.root}><div className={s.wrap}>
     <header className={s.header}><div><div className={s.eyebrow}>OVICORE ECOSYSTEM / FEED OPERATIONS</div><h1 className={s.title}>Diet Ingredients</h1><div className={s.sub}>Ingredient register, cost inputs and nutritional specifications</div></div><nav className={s.nav}><Link href="/feed-operations">Feed Operations</Link><Link href="/feed-operations/rations">Ration Library →</Link></nav></header>
-    <div className={s.notice}><strong>Prototype:</strong> Changes are stored only in this browser, not in the OviCore database. No company sharing, server permissions or financial posting is active.</div>
+    <div className={s.notice}><strong>Database mode:</strong> Records are saved to the authenticated, company-scoped OviCore feed API. No financial posting is active.</div>
+    {error&&<div role="alert" className={s.error}>API: {error}. No changes have been saved.</div>}
     <section className={s.section}><div className={s.heading}><h2>Ingredient Management</h2><span className={s.muted}>{ready?`${catalog.ingredients.length} ingredients` : "Loading"}</span></div>
       <div className={s.cols}><div className={s.card}><h3>{edit?"Edit Ingredient":"Add Ingredient"}</h3><form onSubmit={submit} className={s.form}>
         <label className={s.field}>Ingredient Code *<input value={form.code} maxLength={32} onChange={e=>set("code",e.target.value)} placeholder="e.g. WHEAT" required/></label>

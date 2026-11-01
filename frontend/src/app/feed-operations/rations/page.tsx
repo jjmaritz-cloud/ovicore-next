@@ -6,13 +6,13 @@ import s from "../../../components/feed-operations/catalog.module.css";
 type Line={ingredientId:string;percent:number};
 const BLANK={millId:"",code:"",name:"",supplierCode:"",supplierName:"",phase:"Layer 1",type:"Base" as "Base"|"Medicated",baseId:"",status:"Draft" as "Draft"|"Approved"|"Inactive",notes:"",lines:[] as Line[]};
 export default function RationsPage(){
-  const {catalog,save,ready}=useCatalog();const [form,setForm]=useState({...BLANK});const [edit,setEdit]=useState("");const [search,setSearch]=useState("");const [message,setMessage]=useState("");
+  const {catalog,save,ready,error}=useCatalog();const [form,setForm]=useState({...BLANK});const [edit,setEdit]=useState("");const [search,setSearch]=useState("");const [message,setMessage]=useState("");
   const set=<K extends keyof typeof BLANK>(key:K,value:(typeof BLANK)[K])=>setForm(p=>({...p,[key]:value}));
   const reset=()=>{setForm({...BLANK,lines:[]});setEdit("");setMessage("");};
   const addLine=()=>{const next=catalog.ingredients.find(i=>i.status==="Active"&&!form.lines.some(l=>l.ingredientId===i.id));if(next)set("lines",[...form.lines,{ingredientId:next.id,percent:0}]);};
   const changeLine=(index:number,patch:Partial<Line>)=>set("lines",form.lines.map((l,j)=>index===j?{...l,...patch}:l));
   const baseChoices=catalog.rations.filter(r=>r.millId===form.millId&&r.type==="Base"&&r.id!==edit&&r.status==="Approved");
-  const submit=(e:React.FormEvent)=>{
+  const submit=async (e:React.FormEvent)=>{
     e.preventDefault();setMessage("");const code=form.code.trim().toUpperCase();const name=form.name.trim();const supplierCode=form.supplierCode.trim().toUpperCase();const supplierName=form.supplierName.trim();const sum=form.lines.reduce((a,l)=>a+l.percent,0);
     if(!catalog.mills.some(m=>m.id===form.millId&&m.status==="Active")){setMessage("Select an active feed mill before saving a ration.");return;}
     if(!code||!name||!supplierCode||!supplierName){setMessage("Company ration code/description and supplier SKU/description are all required.");return;}
@@ -23,14 +23,15 @@ export default function RationsPage(){
     if(form.status==="Approved"&&(form.lines.length===0||Math.abs(sum-100)>0.001)){setMessage("Approved ration inclusions must total exactly 100%.");return;}
     if(sum>100.001){setMessage("Ingredient inclusions cannot exceed 100%.");return;}
     const item:Ration={...form,id:edit||newId(),code,name,supplierCode,supplierName,baseId:form.type==="Base"?"":form.baseId};
-    if(save({...catalog,rations:edit?catalog.rations.map(r=>r.id===edit?item:r):[...catalog.rations,item]})){reset();setMessage("Ration saved in this browser only.");}else setMessage("Could not save in browser storage.");
+    if(await save({...catalog,rations:edit?catalog.rations.map(r=>r.id===edit?item:r):[...catalog.rations,item]})){reset();setMessage("Ration saved in OviCore.");}else setMessage("Unable to save. Check API permissions or connection.");
   };
   const choose=(r:Ration)=>{setEdit(r.id);setForm({millId:r.millId||"",code:r.code,name:r.name,supplierCode:r.supplierCode||"",supplierName:r.supplierName||"",phase:r.phase,type:r.type,baseId:r.baseId,status:r.status,notes:r.notes,lines:r.lines.map(l=>({...l}))});setMessage("");window.scrollTo({top:0,behavior:"smooth"});};
   const [millFilter,setMillFilter]=useState("all");
   const visible=catalog.rations.filter(r=>(millFilter==="all"||r.millId===millFilter)&&`${r.code} ${r.name} ${r.supplierCode||""} ${r.supplierName||""} ${r.phase} ${r.type}`.toLowerCase().includes(search.toLowerCase())).sort((a,b)=>a.code.localeCompare(b.code));
   const cost=knownCost({...form,id:""},catalog.ingredients);
   return <main className={s.root}><div className={s.wrap}><header className={s.header}><div><div className={s.eyebrow}>OVICORE ECOSYSTEM / FEED OPERATIONS</div><h1 className={s.title}>Ration Library</h1><div className={s.sub}>Company ration naming, mill supplier SKUs and ingredient composition</div></div><nav className={s.nav}><Link href="/feed-operations">Feed Operations</Link><Link href="/feed-operations/mills">Mill Management</Link><Link href="/feed-operations/ingredients">Diet Ingredients →</Link></nav></header>
-    <div className={s.notice}><strong>Prototype:</strong> Saves in this browser only. An “Approved” label here is a draft workflow status, not clinical, veterinary or nutritional approval. Older local rations may need a mill and supplier code/description assigned. Do not use prototype diets for feed manufacturing or medication instructions.</div>
+    <div className={s.notice}><strong>Database mode:</strong> Requires an authenticated OviCore feed API. An “Approved” label here is a draft workflow status, not clinical, veterinary or nutritional approval. Review existing browser prototype records separately; they are not migrated automatically. Do not use prototype diets for feed manufacturing or medication instructions.</div>
+    {error&&<div role="alert" className={s.error}>API: {error}. No changes have been saved.</div>}
     <section className={s.section}><div className={s.heading}><h2>Ration Management</h2><span className={s.muted}>{ready?`${catalog.rations.length} rations` : "Loading"}</span></div><div className={s.cols}>
       <div className={s.card}><h3>{edit?"Edit Ration":"Create Ration"}</h3><form className={s.form} onSubmit={submit}>
         <label className={`${s.field} ${s.wide}`}>Supplying Mill *<select required value={form.millId} onChange={e=>setForm(p=>({...p,millId:e.target.value,baseId:""}))}><option value="">Select feed mill</option>{catalog.mills.filter(m=>m.status==="Active"||m.id===form.millId).map(m=><option key={m.id} value={m.id}>{m.name} ({m.code})</option>)}</select></label>
