@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import styles from "./page.module.css";
+import { reconcileStock, planReplenishment, type FeedMovement, type FeedMovementType } from "@/components/feed-operations/stockEngine";
 
 type FeedRow = { code: string; name: string; actual: number; standard: number; medicated?: boolean };
 const FEEDS: FeedRow[] = [
@@ -62,15 +63,35 @@ export default function FeedOrderingPage() {
   const [leadDays, setLeadDays] = useState(4);
   const [bufferDays, setBufferDays] = useState(2);
   const [dailyUse, setDailyUse] = useState(2.02);
+  const [verifiedStock, setVerifiedStock] = useState(18.4);
+  const [movementValues, setMovementValues] = useState({delivery:32, transfer_in:10, transfer_out:0, disposal:1.3, consumption:39.5, adjustment:0});
+  const [targetDays, setTargetDays] = useState(14);
+  const [confirmedInbound, setConfirmedInbound] = useState(0);
   const [price, setPrice] = useState(550);
   const [showMedicated, setShowMedicated] = useState(true);
   const [activeTab, setActiveTab] = useState<"tonnes" | "cost">("tonnes");
 
-  const opening = 18.4, delivered = 32, transferredIn = 10, transferredOut = 0, disposed = 1.3, consumed = 39.5;
-  const currentStock = opening + delivered + transferredIn - transferredOut - disposed - consumed;
-  const cover = dailyUse > 0 ? currentStock / dailyUse : null;
-  const leadTime = leadDays + bufferDays;
-  const orderIn = cover === null ? null : Math.max(0, cover - leadTime);
+  // Demonstration inputs. In Stage 2, these will be replaced with authenticated,
+  // company-scoped stock snapshots and movements from PostgreSQL.
+  const snapshot = {closedThrough:"2026-11-01", tonnes:verifiedStock};
+  const movementEntries: FeedMovement[] = (Object.entries(movementValues) as [FeedMovementType,number][])
+    .map(([type,tonnes])=>({id:`DEMO-${type}`,movementDate:"2026-11-02",type,tonnes}));
+  const stockResult = reconcileStock(snapshot,movementEntries,"2026-11-02");
+  const opening = verifiedStock;
+  const delivered = movementValues.delivery;
+  const transferredIn = movementValues.transfer_in;
+  const transferredOut = movementValues.transfer_out;
+  const disposed = movementValues.disposal;
+  const consumed = movementValues.consumption;
+  const currentStock = stockResult.tonnes;
+  const forecast = planReplenishment({
+    stockTonnes:Math.max(0,currentStock),dailyConsumptionTonnes:dailyUse,
+    millLeadDays:leadDays,safetyBufferDays:bufferDays,targetCoverDays:targetDays,
+    asOf:"2026-11-02",
+    confirmedDeliveries: confirmedInbound > 0 ? [{id:"DEMO-INBOUND",deliveryDate:"2026-11-04",tonnesOutstanding:confirmedInbound,confirmed:true}]:[],
+  });
+  const cover = forecast.coverDays;
+  const orderIn = forecast.orderInDays;
   const totalActual = FEEDS.reduce((sum, item) => sum + item.actual, 0);
   const totalStandard = FEEDS.reduce((sum, item) => sum + item.standard, 0);
   const totalVariance = totalActual - totalStandard;
@@ -107,11 +128,16 @@ export default function FeedOrderingPage() {
         <div className={styles.twoCols}>
           <section className={styles.panel}>
             <div className={styles.sectionHeader}><div><span className={styles.overline}>STOCK RECONCILIATION</span><h2>Feed Stock & Movement</h2></div><span className={styles.tag}>Sample: week ending 01 Nov 2026</span></div>
+            <p className={styles.help}><strong>Editable scenario:</strong> Enter the last verified closing stock and movements since that closing date. These inputs are not saved or submitted.</p>
+            <div className={styles.stockEditGrid}>
+              <label>Verified closing (t)<input type="number" min="0" step="0.1" value={verifiedStock} onChange={e=>setVerifiedStock(Math.max(0,Number(e.target.value)||0))}/></label>
+              {(Object.keys(movementValues) as FeedMovementType[]).map(type=><label key={type}>{({delivery:"Delivered",transfer_in:"Transfers in",transfer_out:"Transfers out",disposal:"Disposed",consumption:"Bird consumption",adjustment:"Signed adjustment"} as Record<FeedMovementType,string>)[type]} (t)<input type="number" step="0.1" min={type==="adjustment"?undefined:"0"} value={movementValues[type]} onChange={e=>setMovementValues(prev=>({...prev,[type]:type==="adjustment"?(Number(e.target.value)||0):Math.max(0,Number(e.target.value)||0)}))}/></label>)}
+            </div>
             <div className={styles.movementTable}>
-              {[["Previous week closing stock",opening],["Feed delivered", delivered],["Transfers in",transferredIn],["Transfers out",-transferredOut],["Disposed / adjustments out",-disposed],["Feed consumed by birds",-consumed]].map(([label,v]) => <div className={styles.movementRow} key={String(label)}><span>{label}</span><strong>{Number(v) > 0 && label !== "Previous week closing stock" ? "+" : ""}{nf(Number(v))} t</strong></div>)}
+              {[["Previous week closing stock",opening],["Feed delivered", delivered],["Transfers in",transferredIn],["Transfers out",-transferredOut],["Disposed / adjustments out",-disposed],["Feed consumed by birds",-consumed],["Signed stock adjustment",movementValues.adjustment]].map(([label,v]) => <div className={styles.movementRow} key={String(label)}><span>{label}</span><strong>{Number(v) > 0 && label !== "Previous week closing stock" ? "+" : ""}{nf(Number(v))} t</strong></div>)}
               <div className={styles.movementTotal}><span>Calculated current stock</span><strong>{nf(currentStock)} t</strong></div>
             </div>
-            <p className={styles.help}>Opening stock + deliveries + transfers in − transfers out − disposals − bird consumption.</p>
+            <p className={styles.help}>Verified stock + post-close deliveries + transfers in − transfers out − disposals − bird consumption ± adjustments. {stockResult.negativeStockWarning ? "WARNING: negative calculated stock—investigate missing receipts or overstated consumption." : ""}</p>
           </section>
 
           <section className={styles.panel}>
@@ -120,9 +146,11 @@ export default function FeedOrderingPage() {
               <label>Daily usage (t/day)<input type="number" min="0.01" step="0.01" value={dailyUse} onChange={e => setDailyUse(Math.max(0,Number(e.target.value) || 0))}/></label>
               <label>Mill lead time (days)<input type="number" min="0" max="60" value={leadDays} onChange={e=>setLeadDays(Math.max(0,Number(e.target.value)||0))}/></label>
               <label>Safety buffer (days)<input type="number" min="0" max="30" value={bufferDays} onChange={e=>setBufferDays(Math.max(0,Number(e.target.value)||0))}/></label>
+              <label>Target cover (days)<input type="number" min="0" max="90" value={targetDays} onChange={e=>setTargetDays(Math.max(0,Number(e.target.value)||0))}/></label>
+              <label>Confirmed incoming (t)<input type="number" min="0" step="0.1" value={confirmedInbound} onChange={e=>setConfirmedInbound(Math.max(0,Number(e.target.value)||0))}/></label>
             </div>
             <div className={styles.forecastResult}><div><span>Stock cover remaining</span><strong>{cover === null ? "—" : `${nf(cover)} days`}</strong></div><div><span>Recommended order timing</span><strong>{orderIn === null ? "Set feed rate" : orderIn <= 0 ? "Order now" : `Within ${nf(orderIn)} days`}</strong></div></div>
-            <p className={styles.help}>Planning illustration only. The calculation excludes confirmed incoming orders and requires live stock data before operational use.</p>
+            <div className={styles.forecastResult}><div><span>Suggested replenishment to target</span><strong>{forecast.targetOrderTonnes===null?"—":`${nf(forecast.targetOrderTonnes)} t`}</strong></div><div><span>Confirmed inbound (scenario)</span><strong>{nf(forecast.confirmedIncomingTonnes)} t</strong></div></div><p className={styles.help}>Scenario only. Current cover excludes deliveries not yet received; the target quantity deducts confirmed incoming tonnes. The order-by calculation is conservative and does not model delivery timing or changing flock consumption yet.</p>
           </section>
         </div>
 
