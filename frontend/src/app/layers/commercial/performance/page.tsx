@@ -1956,13 +1956,14 @@ function ProfessionalLayerChart({
 
         {/* Compact in-graph tooltip: same actual / standard / variance as the former top hover bar. */}
         {activeHoverX !== null && (nearestPoint || nearestStandardPoint) ? (() => {
-          const tooltipWidth = 316;
-          const tooltipHeight = 60 + activeMetrics.length * 27;
+          const tooltipWidth = 246;
+          const tooltipHeight = 49 + activeMetrics.length * 20;
           const hoverPixelX = x(activeHoverX);
-          const tooltipX = hoverPixelX + tooltipWidth + 20 > left + plotWidth
-            ? Math.max(left + 8, hoverPixelX - tooltipWidth - 16)
-            : hoverPixelX + 16;
-          const tooltipY = top + 14;
+          // Dock away from the hovered age rather than covering the data underneath it.
+          const tooltipX = hoverPixelX < left + plotWidth / 2
+            ? left + plotWidth - tooltipWidth - 12
+            : left + 12;
+          const tooltipY = top + 12;
           const ageWeeks = nearestPoint
             ? (nearestPoint.row.age_weeks ?? nearestPoint.x / (showDaily ? 7 : 1))
             : (nearestStandardPoint?.standard.ageWeeks ?? activeHoverX / (showDaily ? 7 : 1));
@@ -1977,21 +1978,21 @@ function ProfessionalLayerChart({
             >
               <div style={{
                 boxSizing: "border-box", width: "100%", height: "100%",
-                background: "rgba(255,255,255,0.97)",
-                border: "1px solid #dbe7e1", borderRadius: 12,
-                boxShadow: "0 10px 30px rgba(15,50,36,0.15)",
-                padding: "10px 12px", fontFamily: "system-ui, sans-serif",
+                background: "rgba(255,255,255,0.94)",
+                border: "1px solid #dbe7e1", borderRadius: 8,
+                boxShadow: "0 3px 10px rgba(15,50,36,0.08)",
+                padding: "6px 8px", fontFamily: "system-ui, sans-serif",
                 color: "#173f2d", overflow: "hidden",
               }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: 7 }}>
-                  <strong style={{ fontSize: 13 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 5, marginBottom: 3 }}>
+                  <strong style={{ fontSize: 11 }}>
                     {showDaily ? `Day ${Math.round(activeHoverX)}` : `Week ${Math.round(activeHoverX)}`}
                   </strong>
-                  <span style={{ color: "#73877d", fontSize: 10 }}>
+                  <span style={{ color: "#73877d", fontSize: 9 }}>
                     {nearestPoint?.row.entry_date ?? "ISA Brown Alternative"}
                   </span>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 66px 58px 57px", gap: 5, fontSize: 9, color: "#778a80", marginBottom: 4 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 45px 43px 44px", gap: 3, fontSize: 8, color: "#778a80", marginBottom: 2 }}>
                   <span>Metric</span><span style={{ textAlign: "right" }}>Actual</span>
                   <span style={{ textAlign: "right" }}>Std</span><span style={{ textAlign: "right" }}>Δ</span>
                 </div>
@@ -2001,9 +2002,9 @@ function ProfessionalLayerChart({
                     (metric.key === "water" ? null : isaStandardValue(metric.key, nearestIsaStandard(ageWeeks)));
                   const delta = actual !== null && standard !== null ? actual - standard : null;
                   return (
-                    <div key={metric.key} style={{ display: "grid", gridTemplateColumns: "1fr 66px 58px 57px", alignItems: "center", gap: 5, minHeight: 27, fontSize: 10, borderTop: "1px solid #f0f4f2" }}>
-                      <span style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0, fontWeight: 650, whiteSpace: "nowrap" }}>
-                        <i style={{ width: 7, height: 7, flexShrink: 0, background: metric.colour, borderRadius: "50%" }} />
+                    <div key={metric.key} style={{ display: "grid", gridTemplateColumns: "1fr 45px 43px 44px", alignItems: "center", gap: 3, minHeight: 20, fontSize: 9, borderTop: "1px solid #f0f4f2" }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0, fontWeight: 600, whiteSpace: "nowrap" }}>
+                        <i style={{ width: 6, height: 6, flexShrink: 0, background: metric.colour, borderRadius: "50%" }} />
                         {metric.shortLabel}
                       </span>
                       <strong style={{ textAlign: "right", color: metric.colour, whiteSpace: "nowrap" }}>
