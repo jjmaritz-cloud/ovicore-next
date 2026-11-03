@@ -585,8 +585,6 @@ function CommercialLayerPerformanceContent() {
     );
   }, [ageRange, rows]);
 
-  const latest = filteredRows.at(-1);
-
   const toggleMetric = (key: MetricKey) => {
     setSelectedMetrics((current) => {
       if (current.includes(key)) {
@@ -713,45 +711,6 @@ function CommercialLayerPerformanceContent() {
         </p>
       </section>
 
-      <section
-        className="compact-kpi-strip"
-        aria-label="Latest flock performance"
-      >
-        {METRICS.map((metric) => {
-          const actual = latest ? metric.actual(latest) : null;
-          const apiStandard = latest ? metric.standard(latest) : null;
-          const fallbackStandard =
-            latest?.age_weeks != null && latest.age_weeks >= 18 && metric.key !== "water"
-              ? isaStandardValue(
-                  metric.key,
-                  nearestIsaStandard(latest.age_weeks),
-                )
-              : null;
-          const standard = apiStandard ?? fallbackStandard;
-
-          const variance =
-            actual !== null && standard !== null
-              ? actual - standard
-              : null;
-
-          const history = filteredRows
-            .slice(-18)
-            .map((row) => metric.actual(row))
-            .filter((value): value is number => value !== null);
-
-          return (
-            <CompactMetricCard
-              key={metric.key}
-              metric={metric}
-              value={actual}
-              standard={standard}
-              variance={variance}
-              history={history}
-            />
-          );
-        })}
-      </section>
-
       <section className="comparison-controls" aria-label="Compare flock performance">
         <label className="compare-field">Compare flock
           <select value={compareId} onChange={e=>setCompareId(e.target.value ? Number(e.target.value) : "")}>
@@ -825,6 +784,7 @@ function CommercialLayerPerformanceContent() {
         ) : (
           <>
             <ProfessionalLayerChart
+              key={`${selectedFlockId}-${ageRange}-${showDaily}`}
               rows={filteredRows}
               comparisonRows={filteredComparisonRows}
               comparisonLabel={comparisonFlock?.flock_code ?? "Comparison flock"}
@@ -867,6 +827,7 @@ function CommercialLayerPerformanceContent() {
 
             <div className="chart-expanded-body">
               <ProfessionalLayerChart
+                key={`${selectedFlockId}-${ageRange}-${showDaily}-expanded`}
                 rows={filteredRows}
                 comparisonRows={filteredComparisonRows}
                 comparisonLabel={comparisonFlock?.flock_code ?? "Comparison flock"}
@@ -890,7 +851,7 @@ function CommercialLayerPerformanceContent() {
           padding: 7px 10px 8px;
           box-sizing: border-box;
           display: grid;
-          grid-template-rows: auto auto auto auto auto;
+          grid-template-rows: auto auto auto auto;
           align-content: start;
           gap: 6px;
           overflow-x: hidden;
@@ -953,13 +914,6 @@ function CommercialLayerPerformanceContent() {
           margin: 5px 0 0;
           color: #718078;
           font-size: 10px;
-        }
-
-        .compact-kpi-strip {
-          display: grid;
-          grid-template-columns: repeat(7, minmax(0, 1fr));
-          gap: 6px;
-          margin: 0;
         }
 
         .chart-card {
@@ -1169,16 +1123,6 @@ function CommercialLayerPerformanceContent() {
           padding: 8px 12px 12px;
         }
 
-        @media (max-width: 1280px) {
-          .compact-kpi-strip {
-            grid-template-columns: repeat(7, minmax(0, 1fr));
-          }
-
-          .metric-card {
-            min-width: 0;
-          }
-        }
-
         @media (max-width: 1100px) {
           .chart-card-head {
             align-items: center;
@@ -1230,10 +1174,6 @@ function CommercialLayerPerformanceContent() {
         }
 
         @media (max-width: 680px) {
-          .compact-kpi-strip {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-          }
-
           .selector-grid,
           .range-row {
             grid-template-columns: 1fr;
@@ -1246,171 +1186,6 @@ function CommercialLayerPerformanceContent() {
       `}</style>
       </div>
     </OviCoreShell>
-  );
-}
-
-function CompactMetricCard({
-  metric,
-  value,
-  standard,
-  variance,
-  history,
-}: {
-  metric: MetricDefinition;
-  value: number | null;
-  standard: number | null;
-  variance: number | null;
-  history: number[];
-}) {
-  const sparkWidth = 86;
-  const sparkHeight = 22;
-
-  const sparkPoints = useMemo(() => {
-    if (history.length < 2) return "";
-
-    const min = Math.min(...history);
-    const max = Math.max(...history);
-    const span = Math.max(max - min, 1);
-
-    return history
-      .map((item, index) => {
-        const px =
-          (index / (history.length - 1)) * sparkWidth;
-        const py =
-          sparkHeight -
-          3 -
-          ((item - min) / span) * (sparkHeight - 6);
-
-        return `${px.toFixed(1)},${py.toFixed(1)}`;
-      })
-      .join(" ");
-  }, [history]);
-
-  const varianceText =
-    variance === null
-      ? "No standard"
-      : `${variance > 0 ? "+" : ""}${variance.toFixed(
-          metric.decimals,
-        )}${metric.unit ? ` ${metric.unit}` : ""}`;
-
-  return (
-    <article className="metric-card">
-      <div className="metric-top">
-        <span
-          className="dot"
-          style={{ background: metric.colour }}
-        />
-        <span>{metric.label}</span>
-      </div>
-
-      <div className="metric-main">
-        <strong>
-          {value === null
-            ? "—"
-            : `${value.toFixed(metric.decimals)}${
-                metric.unit ? ` ${metric.unit}` : ""
-              }`}
-        </strong>
-
-        <svg
-          viewBox={`0 0 ${sparkWidth} ${sparkHeight}`}
-          aria-hidden="true"
-        >
-          {sparkPoints ? (
-            <polyline
-              points={sparkPoints}
-              fill="none"
-              stroke={metric.colour}
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          ) : null}
-        </svg>
-      </div>
-
-      <div className="metric-foot">
-        <span>vs Standard</span>
-        <b>{varianceText}</b>
-      </div>
-
-      <style jsx>{`
-        .metric-card {
-          min-width: 0;
-          min-height: 66px;
-          padding: 7px 9px 6px;
-          border: 1px solid #dce8e2;
-          border-radius: 12px;
-          background: #ffffff;
-          box-shadow: 0 6px 16px rgba(19, 70, 51, 0.05);
-        }
-
-        .metric-top,
-        .metric-main,
-        .metric-foot {
-          display: flex;
-          align-items: center;
-        }
-
-        .metric-top {
-          gap: 6px;
-          min-width: 0;
-        }
-
-        .dot {
-          width: 7px;
-          height: 7px;
-          flex: 0 0 auto;
-          border-radius: 50%;
-        }
-
-        .metric-top span:last-child {
-          overflow: hidden;
-          color: #486157;
-          font-size: 9.5px;
-          font-weight: 900;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-
-        .metric-main {
-          justify-content: space-between;
-          gap: 7px;
-          margin-top: 6px;
-        }
-
-        .metric-main strong {
-          color: #143f2d;
-          font-size: 19px;
-          line-height: 1;
-          letter-spacing: -0.035em;
-          white-space: nowrap;
-        }
-
-        .metric-main svg {
-          width: 66px;
-          height: 17px;
-          overflow: visible;
-          flex: 0 1 auto;
-        }
-
-        .metric-foot {
-          justify-content: space-between;
-          gap: 6px;
-          margin-top: 5px;
-          color: #7a8a82;
-          font-size: 8.5px;
-        }
-
-        .metric-foot b {
-          overflow: hidden;
-          color: #456358;
-          font-size: 8.5px;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-      `}</style>
-    </article>
   );
 }
 
@@ -1884,6 +1659,9 @@ function ProfessionalLayerChart({
         }}
       >
         <defs>
+          <clipPath id={expanded ? "performance-flow-expanded" : "performance-flow"}>
+            <rect className="performance-flow-reveal" x={left} y={top - 3} width={plotWidth} height={plotHeight + 6} />
+          </clipPath>
           <filter id="tooltip-shadow">
             <feDropShadow
               dx="0"
@@ -1985,7 +1763,8 @@ function ProfessionalLayerChart({
               y1={yPos}
               y2={yPos}
               stroke="#dfe8e3"
-              strokeDasharray="4 5"
+              strokeDasharray="3 7"
+               opacity="0.60"
             />
           );
         })}
@@ -2169,11 +1948,12 @@ function ProfessionalLayerChart({
                   points={standardLinePoints}
                   fill="none"
                   stroke={metric.colour}
-                  strokeWidth="1.4"
-                  strokeDasharray="7 6"
+                  strokeWidth="0.9"
+                  strokeDasharray="3 6"
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  opacity="0.82"
+                  opacity="0.48"
+                  clipPath={`url(#${expanded ? "performance-flow-expanded" : "performance-flow"})`}
                 />
               ) : null}
 
@@ -2182,7 +1962,8 @@ function ProfessionalLayerChart({
                   points={actualPoints}
                   fill="none"
                   stroke={metric.colour}
-                  strokeWidth="2.0"
+                  strokeWidth="2.15"
+                  clipPath={`url(#${expanded ? "performance-flow-expanded" : "performance-flow"})`}
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 />
@@ -2204,7 +1985,7 @@ function ProfessionalLayerChart({
           }
           if (current.length > 1)segments.push(current);
           return <g aria-label={`Comparison ${comparisonLabel}`}>
-            {segments.map((seg,i)=><polyline key={i} points={seg.join(" ")} fill="none" stroke="#008b86" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" opacity="0.95" pointerEvents="none" />)}
+            {segments.map((seg,i)=><polyline key={i} points={seg.join(" ")} fill="none" stroke="#008b86" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" opacity="0.88" clipPath={`url(#${expanded ? "performance-flow-expanded" : "performance-flow"})`} pointerEvents="none" />)}
           </g>;
         })()}
         {nearestPoint
@@ -2360,6 +2141,18 @@ function ProfessionalLayerChart({
       </div>
 
       <style jsx>{`
+        .performance-flow-reveal {
+          transform-box: fill-box;
+          transform-origin: left center;
+          animation: ovicore-chart-flow 1.05s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        @keyframes ovicore-chart-flow {
+          from { transform: scaleX(0); }
+          to { transform: scaleX(1); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .performance-flow-reveal { animation: none; }
+        }
         .comparison-legend{display:flex;flex-wrap:wrap;gap:14px;align-items:center;font-size:11px;font-weight:800;color:#34594b;padding:5px 8px;background:#f3faf8;border-radius:7px}
         .chart-wrap {
           width: 100%;
