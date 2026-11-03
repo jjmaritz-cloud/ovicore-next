@@ -1975,7 +1975,7 @@ function ProfessionalLayerChart({
               pointerEvents="none"
               style={{ overflow: "visible" }}
             >
-              <div xmlns="http://www.w3.org/1999/xhtml" style={{
+              <div style={{
                 boxSizing: "border-box", width: "100%", height: "100%",
                 background: "rgba(255,255,255,0.97)",
                 border: "1px solid #dbe7e1", borderRadius: 12,
