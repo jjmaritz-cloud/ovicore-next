@@ -1,0 +1,2342 @@
+"use client";
+
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { useSearchParams } from "next/navigation";
+
+import OviCorePageHeader from "@/components/ovicore/OviCorePageHeader";
+import OviCoreShell from "@/components/ovicore/OviCoreShell";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+
+const API_BASE = "";
+
+type Flock = {
+  id: number;
+  source_rearing_flock_id?: number | null;
+  source_rearing_flock_code?: string | null;
+  farm_id: number;
+  shed_id: number;
+  farm_name: string;
+  shed_name: string;
+  flock_code: string;
+  breed?: string | null;
+  hatch_date?: string | null;
+  housed_date?: string | null;
+  birds_housed?: number | null;
+  status: string;
+};
+
+type PerformanceRow = {
+  id: number;
+  flock_id: number;
+  entry_date: string;
+  age_days?: number | null;
+  age_weeks?: number | null;
+
+  production_pct?: number | null;
+  cumulative_mortality_pct?: number | null;
+  egg_weight_g?: number | null;
+  feed_g_bird_day?: number | null;
+  eggs_per_bird_cumulative?: number | null;
+  bodyweight_g?: number | null;
+
+  // Water aliases supported so the page is ready for whichever API field
+  // is currently exposed. L/bird/day is converted to mL/bird/day.
+  water_ml_bird_day?: number | null;
+  water_intake_ml_bird_day?: number | null;
+  water_l_bird_day?: number | null;
+
+  production_standard_pct?: number | null;
+  mortality_standard_pct?: number | null;
+  egg_weight_standard_g?: number | null;
+  feed_standard_g_bird_day?: number | null;
+  eggs_per_bird_standard?: number | null;
+  bodyweight_standard_g?: number | null;
+  water_standard_ml_bird_day?: number | null;
+  water_standard_l_bird_day?: number | null;
+
+  // Daily Data Entry comment aliases. The first populated field is used.
+  // Once the backend field name is locked, these can be reduced to one field.
+  comment?: string | null;
+  comments?: string | null;
+  daily_comment?: string | null;
+  notes?: string | null;
+};
+
+type MetricKey =
+  | "production"
+  | "mortality"
+  | "eggWeight"
+  | "feed"
+  | "water"
+  | "eggsPerBird"
+  | "bodyweight";
+
+type MetricDefinition = {
+  key: MetricKey;
+  label: string;
+  shortLabel: string;
+  unit: string;
+  decimals: number;
+  colour: string;
+  actual: (row: PerformanceRow) => number | null;
+  standard: (row: PerformanceRow) => number | null;
+};
+
+function finite(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : null;
+}
+function dailyComment(row: PerformanceRow) {
+  const candidates = [
+    row.comment,
+    row.comments,
+    row.daily_comment,
+    row.notes,
+  ];
+
+  const comment = candidates.find(
+    (value) =>
+      typeof value === "string" &&
+      value.trim().length > 0,
+  );
+
+  return typeof comment === "string"
+    ? comment.trim()
+    : null;
+}
+
+
+function waterActual(row: PerformanceRow) {
+  const direct =
+    finite(row.water_ml_bird_day) ??
+    finite(row.water_intake_ml_bird_day);
+
+  if (direct !== null) return direct;
+
+  const litres = finite(row.water_l_bird_day);
+  return litres === null ? null : litres * 1000;
+}
+
+function waterStandard(row: PerformanceRow) {
+  const direct = finite(row.water_standard_ml_bird_day);
+  if (direct !== null) return direct;
+
+  const litres = finite(row.water_standard_l_bird_day);
+  return litres === null ? null : litres * 1000;
+}
+
+const METRICS: MetricDefinition[] = [
+  {
+    key: "production",
+    label: "Production %",
+    shortLabel: "Production",
+    unit: "%",
+    decimals: 1,
+    colour: "#1677d2",
+    actual: (row) => finite(row.production_pct),
+    standard: (row) => finite(row.production_standard_pct),
+  },
+  {
+    key: "mortality",
+    label: "Mortality % cum",
+    shortLabel: "Mortality",
+    unit: "%",
+    decimals: 2,
+    colour: "#ef4444",
+    actual: (row) => finite(row.cumulative_mortality_pct),
+    standard: (row) => finite(row.mortality_standard_pct),
+  },
+  {
+    key: "eggWeight",
+    label: "Egg weight",
+    shortLabel: "Egg weight",
+    unit: "g",
+    decimals: 1,
+    colour: "#16a34a",
+    actual: (row) => finite(row.egg_weight_g),
+    standard: (row) => finite(row.egg_weight_standard_g),
+  },
+  {
+    key: "feed",
+    label: "Feed intake/day",
+    shortLabel: "Feed intake",
+    unit: "g",
+    decimals: 1,
+    colour: "#f97316",
+    actual: (row) => finite(row.feed_g_bird_day),
+    standard: (row) => finite(row.feed_standard_g_bird_day),
+  },
+  {
+    key: "water",
+    label: "Water intake/bird",
+    shortLabel: "Water intake",
+    unit: "mL",
+    decimals: 0,
+    colour: "#0891b2",
+    actual: waterActual,
+    standard: waterStandard,
+  },
+  {
+    key: "eggsPerBird",
+    label: "Eggs/bird cumulative",
+    shortLabel: "Eggs/bird",
+    unit: "",
+    decimals: 1,
+    colour: "#7c3aed",
+    actual: (row) => finite(row.eggs_per_bird_cumulative),
+    standard: (row) => finite(row.eggs_per_bird_standard),
+  },
+  {
+    key: "bodyweight",
+    label: "Bodyweight",
+    shortLabel: "Bodyweight",
+    unit: "g",
+    decimals: 0,
+    colour: "#9a5b42",
+    actual: (row) => finite(row.bodyweight_g),
+    standard: (row) => finite(row.bodyweight_standard_g),
+  },
+];
+
+const LIFE_STAGES = [
+  { start: 0, end: 3, label: "Starter", sublabel: "0–3 wks", fill: "#fff7e6" },
+  { start: 3, end: 8, label: "Grower", sublabel: "3–8 wks", fill: "#eef9ef" },
+  { start: 8, end: 16, label: "Developer", sublabel: "8–16 wks", fill: "#eaf8f5" },
+  { start: 17, end: 36, label: "Layer 1", sublabel: "17–36 wks", fill: "#edf4ff" },
+  { start: 36, end: 56, label: "Layer 2", sublabel: "37–56 wks", fill: "#f7efff" },
+  { start: 56, end: 72, label: "Layer 3", sublabel: "57–72 wks", fill: "#fff4e5" },
+  { start: 72, end: 96, label: "Layer 4", sublabel: "73+ wks", fill: "#edf4ff" },
+];
+
+type IsaAlternativeStandard = {
+  ageWeeks: number;
+  productionPct: number;
+  eggWeightG: number;
+  feedGBirdDay: number;
+  eggsPerBirdCum: number;
+  bodyweightG: number;
+  mortalityCumPct: number;
+};
+
+const ISA_ALT_STANDARD_LABEL = "ISA Brown Alternative";
+
+// Temporary locked reference for the Commercial Layers graph.
+// Source: ISA Brown Product Guide – Alternative Housing.
+// Water is intentionally excluded because the guide does not provide a
+// weekly water-intake standard.
+const ISA_ALT_STANDARDS: IsaAlternativeStandard[] = [
+  { ageWeeks: 18, productionPct: 1.0, eggWeightG: 41.6, feedGBirdDay: 95, eggsPerBirdCum: 0, bodyweightG: 1485, mortalityCumPct: 0.1 },
+  { ageWeeks: 19, productionPct: 17.1, eggWeightG: 44.0, feedGBirdDay: 101, eggsPerBirdCum: 1, bodyweightG: 1585, mortalityCumPct: 0.2 },
+  { ageWeeks: 20, productionPct: 40.5, eggWeightG: 46.9, feedGBirdDay: 107, eggsPerBirdCum: 4, bodyweightG: 1655, mortalityCumPct: 0.3 },
+  { ageWeeks: 21, productionPct: 64.4, eggWeightG: 49.5, feedGBirdDay: 111, eggsPerBirdCum: 9, bodyweightG: 1715, mortalityCumPct: 0.4 },
+  { ageWeeks: 22, productionPct: 82.9, eggWeightG: 51.7, feedGBirdDay: 115, eggsPerBirdCum: 14, bodyweightG: 1770, mortalityCumPct: 0.5 },
+  { ageWeeks: 23, productionPct: 93.1, eggWeightG: 53.6, feedGBirdDay: 118, eggsPerBirdCum: 21, bodyweightG: 1810, mortalityCumPct: 0.5 },
+  { ageWeeks: 24, productionPct: 95.4, eggWeightG: 55.3, feedGBirdDay: 120, eggsPerBirdCum: 27, bodyweightG: 1840, mortalityCumPct: 0.6 },
+  { ageWeeks: 25, productionPct: 95.9, eggWeightG: 56.6, feedGBirdDay: 122, eggsPerBirdCum: 34, bodyweightG: 1865, mortalityCumPct: 0.7 },
+  { ageWeeks: 26, productionPct: 96.1, eggWeightG: 57.6, feedGBirdDay: 123, eggsPerBirdCum: 41, bodyweightG: 1883, mortalityCumPct: 0.8 },
+  { ageWeeks: 27, productionPct: 96.2, eggWeightG: 58.5, feedGBirdDay: 124, eggsPerBirdCum: 47, bodyweightG: 1895, mortalityCumPct: 0.8 },
+  { ageWeeks: 28, productionPct: 96.3, eggWeightG: 59.2, feedGBirdDay: 125, eggsPerBirdCum: 54, bodyweightG: 1907, mortalityCumPct: 0.9 },
+  { ageWeeks: 29, productionPct: 96.4, eggWeightG: 59.8, feedGBirdDay: 125, eggsPerBirdCum: 61, bodyweightG: 1917, mortalityCumPct: 1.0 },
+  { ageWeeks: 30, productionPct: 96.5, eggWeightG: 60.4, feedGBirdDay: 125, eggsPerBirdCum: 68, bodyweightG: 1925, mortalityCumPct: 1.0 },
+  { ageWeeks: 31, productionPct: 96.5, eggWeightG: 60.7, feedGBirdDay: 125, eggsPerBirdCum: 74, bodyweightG: 1933, mortalityCumPct: 1.1 },
+  { ageWeeks: 32, productionPct: 96.5, eggWeightG: 61.0, feedGBirdDay: 125, eggsPerBirdCum: 81, bodyweightG: 1937, mortalityCumPct: 1.2 },
+  { ageWeeks: 33, productionPct: 96.5, eggWeightG: 61.2, feedGBirdDay: 125, eggsPerBirdCum: 88, bodyweightG: 1940, mortalityCumPct: 1.2 },
+  { ageWeeks: 34, productionPct: 96.4, eggWeightG: 61.4, feedGBirdDay: 125, eggsPerBirdCum: 94, bodyweightG: 1942, mortalityCumPct: 1.3 },
+  { ageWeeks: 35, productionPct: 96.3, eggWeightG: 61.6, feedGBirdDay: 125, eggsPerBirdCum: 101, bodyweightG: 1943, mortalityCumPct: 1.4 },
+  { ageWeeks: 36, productionPct: 96.2, eggWeightG: 61.7, feedGBirdDay: 125, eggsPerBirdCum: 108, bodyweightG: 1944, mortalityCumPct: 1.4 },
+  { ageWeeks: 37, productionPct: 96.0, eggWeightG: 61.9, feedGBirdDay: 125, eggsPerBirdCum: 114, bodyweightG: 1945, mortalityCumPct: 1.5 },
+  { ageWeeks: 38, productionPct: 95.9, eggWeightG: 62.1, feedGBirdDay: 125, eggsPerBirdCum: 121, bodyweightG: 1946, mortalityCumPct: 1.6 },
+  { ageWeeks: 39, productionPct: 95.7, eggWeightG: 62.2, feedGBirdDay: 125, eggsPerBirdCum: 127, bodyweightG: 1948, mortalityCumPct: 1.7 },
+  { ageWeeks: 40, productionPct: 95.5, eggWeightG: 62.3, feedGBirdDay: 125, eggsPerBirdCum: 134, bodyweightG: 1949, mortalityCumPct: 1.7 },
+  { ageWeeks: 41, productionPct: 95.4, eggWeightG: 62.4, feedGBirdDay: 125, eggsPerBirdCum: 140, bodyweightG: 1950, mortalityCumPct: 1.8 },
+  { ageWeeks: 42, productionPct: 95.1, eggWeightG: 62.6, feedGBirdDay: 125, eggsPerBirdCum: 147, bodyweightG: 1950, mortalityCumPct: 1.9 },
+  { ageWeeks: 43, productionPct: 94.8, eggWeightG: 62.7, feedGBirdDay: 125, eggsPerBirdCum: 153, bodyweightG: 1950, mortalityCumPct: 2.0 },
+  { ageWeeks: 44, productionPct: 94.6, eggWeightG: 62.7, feedGBirdDay: 125, eggsPerBirdCum: 160, bodyweightG: 1950, mortalityCumPct: 2.0 },
+  { ageWeeks: 45, productionPct: 94.3, eggWeightG: 62.8, feedGBirdDay: 125, eggsPerBirdCum: 166, bodyweightG: 1950, mortalityCumPct: 2.1 },
+  { ageWeeks: 46, productionPct: 94.2, eggWeightG: 62.9, feedGBirdDay: 125, eggsPerBirdCum: 173, bodyweightG: 1950, mortalityCumPct: 2.2 },
+  { ageWeeks: 47, productionPct: 93.8, eggWeightG: 63.0, feedGBirdDay: 125, eggsPerBirdCum: 179, bodyweightG: 1950, mortalityCumPct: 2.3 },
+  { ageWeeks: 48, productionPct: 93.6, eggWeightG: 63.1, feedGBirdDay: 125, eggsPerBirdCum: 186, bodyweightG: 1950, mortalityCumPct: 2.4 },
+  { ageWeeks: 49, productionPct: 93.4, eggWeightG: 63.2, feedGBirdDay: 125, eggsPerBirdCum: 192, bodyweightG: 1950, mortalityCumPct: 2.5 },
+  { ageWeeks: 50, productionPct: 93.1, eggWeightG: 63.2, feedGBirdDay: 125, eggsPerBirdCum: 198, bodyweightG: 1950, mortalityCumPct: 2.6 },
+  { ageWeeks: 51, productionPct: 92.8, eggWeightG: 63.3, feedGBirdDay: 125, eggsPerBirdCum: 205, bodyweightG: 1950, mortalityCumPct: 2.7 },
+  { ageWeeks: 52, productionPct: 92.5, eggWeightG: 63.3, feedGBirdDay: 125, eggsPerBirdCum: 211, bodyweightG: 1950, mortalityCumPct: 2.8 },
+  { ageWeeks: 53, productionPct: 92.2, eggWeightG: 63.3, feedGBirdDay: 125, eggsPerBirdCum: 217, bodyweightG: 1950, mortalityCumPct: 2.9 },
+  { ageWeeks: 54, productionPct: 91.9, eggWeightG: 63.4, feedGBirdDay: 125, eggsPerBirdCum: 224, bodyweightG: 1950, mortalityCumPct: 3.0 },
+  { ageWeeks: 55, productionPct: 91.5, eggWeightG: 63.4, feedGBirdDay: 125, eggsPerBirdCum: 230, bodyweightG: 1950, mortalityCumPct: 3.1 },
+  { ageWeeks: 56, productionPct: 91.2, eggWeightG: 63.5, feedGBirdDay: 125, eggsPerBirdCum: 236, bodyweightG: 1950, mortalityCumPct: 3.2 },
+  { ageWeeks: 57, productionPct: 90.9, eggWeightG: 63.5, feedGBirdDay: 125, eggsPerBirdCum: 242, bodyweightG: 1950, mortalityCumPct: 3.3 },
+  { ageWeeks: 58, productionPct: 90.5, eggWeightG: 63.5, feedGBirdDay: 125, eggsPerBirdCum: 248, bodyweightG: 1950, mortalityCumPct: 3.4 },
+  { ageWeeks: 59, productionPct: 90.2, eggWeightG: 63.6, feedGBirdDay: 125, eggsPerBirdCum: 254, bodyweightG: 1950, mortalityCumPct: 3.5 },
+  { ageWeeks: 60, productionPct: 89.8, eggWeightG: 63.6, feedGBirdDay: 125, eggsPerBirdCum: 260, bodyweightG: 1950, mortalityCumPct: 3.6 },
+  { ageWeeks: 61, productionPct: 89.4, eggWeightG: 63.7, feedGBirdDay: 125, eggsPerBirdCum: 266, bodyweightG: 1950, mortalityCumPct: 3.8 },
+  { ageWeeks: 62, productionPct: 89.0, eggWeightG: 63.7, feedGBirdDay: 125, eggsPerBirdCum: 272, bodyweightG: 1950, mortalityCumPct: 3.9 },
+  { ageWeeks: 63, productionPct: 88.6, eggWeightG: 63.7, feedGBirdDay: 125, eggsPerBirdCum: 278, bodyweightG: 1950, mortalityCumPct: 4.0 },
+  { ageWeeks: 64, productionPct: 88.2, eggWeightG: 63.8, feedGBirdDay: 125, eggsPerBirdCum: 284, bodyweightG: 1950, mortalityCumPct: 4.1 },
+  { ageWeeks: 65, productionPct: 87.8, eggWeightG: 63.8, feedGBirdDay: 125, eggsPerBirdCum: 290, bodyweightG: 1950, mortalityCumPct: 4.2 },
+  { ageWeeks: 66, productionPct: 87.4, eggWeightG: 63.9, feedGBirdDay: 125, eggsPerBirdCum: 296, bodyweightG: 1950, mortalityCumPct: 4.3 },
+  { ageWeeks: 67, productionPct: 87.0, eggWeightG: 63.9, feedGBirdDay: 125, eggsPerBirdCum: 302, bodyweightG: 1950, mortalityCumPct: 4.4 },
+  { ageWeeks: 68, productionPct: 86.6, eggWeightG: 63.9, feedGBirdDay: 125, eggsPerBirdCum: 308, bodyweightG: 1950, mortalityCumPct: 4.5 },
+  { ageWeeks: 69, productionPct: 86.1, eggWeightG: 64.0, feedGBirdDay: 125, eggsPerBirdCum: 313, bodyweightG: 1950, mortalityCumPct: 4.6 },
+  { ageWeeks: 70, productionPct: 85.7, eggWeightG: 64.0, feedGBirdDay: 125, eggsPerBirdCum: 319, bodyweightG: 1950, mortalityCumPct: 4.7 },
+  { ageWeeks: 71, productionPct: 85.2, eggWeightG: 64.1, feedGBirdDay: 125, eggsPerBirdCum: 325, bodyweightG: 1950, mortalityCumPct: 4.9 },
+  { ageWeeks: 72, productionPct: 84.8, eggWeightG: 64.1, feedGBirdDay: 125, eggsPerBirdCum: 330, bodyweightG: 1950, mortalityCumPct: 5.0 },
+  { ageWeeks: 73, productionPct: 84.3, eggWeightG: 64.1, feedGBirdDay: 125, eggsPerBirdCum: 336, bodyweightG: 1950, mortalityCumPct: 5.1 },
+  { ageWeeks: 74, productionPct: 83.8, eggWeightG: 64.2, feedGBirdDay: 125, eggsPerBirdCum: 342, bodyweightG: 1950, mortalityCumPct: 5.2 },
+  { ageWeeks: 75, productionPct: 83.3, eggWeightG: 64.2, feedGBirdDay: 125, eggsPerBirdCum: 347, bodyweightG: 1950, mortalityCumPct: 5.3 },
+  { ageWeeks: 76, productionPct: 82.8, eggWeightG: 64.3, feedGBirdDay: 125, eggsPerBirdCum: 353, bodyweightG: 1950, mortalityCumPct: 5.4 },
+  { ageWeeks: 77, productionPct: 82.3, eggWeightG: 64.3, feedGBirdDay: 125, eggsPerBirdCum: 358, bodyweightG: 1950, mortalityCumPct: 5.5 },
+  { ageWeeks: 78, productionPct: 81.8, eggWeightG: 64.3, feedGBirdDay: 125, eggsPerBirdCum: 363, bodyweightG: 1950, mortalityCumPct: 5.6 },
+  { ageWeeks: 79, productionPct: 81.2, eggWeightG: 64.4, feedGBirdDay: 125, eggsPerBirdCum: 369, bodyweightG: 1950, mortalityCumPct: 5.7 },
+  { ageWeeks: 80, productionPct: 80.7, eggWeightG: 64.4, feedGBirdDay: 125, eggsPerBirdCum: 374, bodyweightG: 1950, mortalityCumPct: 5.8 },
+  { ageWeeks: 81, productionPct: 80.2, eggWeightG: 64.5, feedGBirdDay: 125, eggsPerBirdCum: 379, bodyweightG: 1950, mortalityCumPct: 6.0 },
+  { ageWeeks: 82, productionPct: 79.6, eggWeightG: 64.5, feedGBirdDay: 125, eggsPerBirdCum: 385, bodyweightG: 1950, mortalityCumPct: 6.1 },
+  { ageWeeks: 83, productionPct: 79.0, eggWeightG: 64.5, feedGBirdDay: 125, eggsPerBirdCum: 390, bodyweightG: 1950, mortalityCumPct: 6.2 },
+  { ageWeeks: 84, productionPct: 78.4, eggWeightG: 64.6, feedGBirdDay: 125, eggsPerBirdCum: 395, bodyweightG: 1950, mortalityCumPct: 6.3 },
+  { ageWeeks: 85, productionPct: 77.8, eggWeightG: 64.6, feedGBirdDay: 125, eggsPerBirdCum: 400, bodyweightG: 1950, mortalityCumPct: 6.4 },
+  { ageWeeks: 86, productionPct: 77.2, eggWeightG: 64.7, feedGBirdDay: 125, eggsPerBirdCum: 405, bodyweightG: 1950, mortalityCumPct: 6.5 },
+  { ageWeeks: 87, productionPct: 76.5, eggWeightG: 64.7, feedGBirdDay: 125, eggsPerBirdCum: 410, bodyweightG: 1950, mortalityCumPct: 6.6 },
+  { ageWeeks: 88, productionPct: 75.9, eggWeightG: 64.7, feedGBirdDay: 125, eggsPerBirdCum: 415, bodyweightG: 1950, mortalityCumPct: 6.7 },
+  { ageWeeks: 89, productionPct: 75.2, eggWeightG: 64.8, feedGBirdDay: 125, eggsPerBirdCum: 420, bodyweightG: 1950, mortalityCumPct: 6.8 },
+  { ageWeeks: 90, productionPct: 74.5, eggWeightG: 64.8, feedGBirdDay: 125, eggsPerBirdCum: 425, bodyweightG: 1950, mortalityCumPct: 6.9 },
+  { ageWeeks: 91, productionPct: 73.8, eggWeightG: 64.9, feedGBirdDay: 125, eggsPerBirdCum: 430, bodyweightG: 1950, mortalityCumPct: 7.1 },
+  { ageWeeks: 92, productionPct: 73.1, eggWeightG: 64.9, feedGBirdDay: 125, eggsPerBirdCum: 434, bodyweightG: 1950, mortalityCumPct: 7.2 },
+  { ageWeeks: 93, productionPct: 72.3, eggWeightG: 64.9, feedGBirdDay: 125, eggsPerBirdCum: 439, bodyweightG: 1950, mortalityCumPct: 7.3 },
+  { ageWeeks: 94, productionPct: 71.6, eggWeightG: 65.0, feedGBirdDay: 125, eggsPerBirdCum: 444, bodyweightG: 1950, mortalityCumPct: 7.4 },
+  { ageWeeks: 95, productionPct: 70.8, eggWeightG: 65.0, feedGBirdDay: 125, eggsPerBirdCum: 448, bodyweightG: 1950, mortalityCumPct: 7.5 },
+  { ageWeeks: 96, productionPct: 70.0, eggWeightG: 65.1, feedGBirdDay: 125, eggsPerBirdCum: 453, bodyweightG: 1950, mortalityCumPct: 7.6 },
+  { ageWeeks: 97, productionPct: 69.1, eggWeightG: 65.1, feedGBirdDay: 125, eggsPerBirdCum: 457, bodyweightG: 1950, mortalityCumPct: 7.7 },
+  { ageWeeks: 98, productionPct: 68.3, eggWeightG: 65.1, feedGBirdDay: 125, eggsPerBirdCum: 462, bodyweightG: 1950, mortalityCumPct: 7.8 },
+  { ageWeeks: 99, productionPct: 67.4, eggWeightG: 65.2, feedGBirdDay: 125, eggsPerBirdCum: 466, bodyweightG: 1950, mortalityCumPct: 7.9 },
+  { ageWeeks: 100, productionPct: 66.4, eggWeightG: 65.2, feedGBirdDay: 125, eggsPerBirdCum: 470, bodyweightG: 1950, mortalityCumPct: 8.0 },
+];
+
+function isaStandardValue(
+  metricKey: MetricKey,
+  standard: IsaAlternativeStandard,
+): number | null {
+  switch (metricKey) {
+    case "production":
+      return standard.productionPct;
+    case "mortality":
+      return standard.mortalityCumPct;
+    case "eggWeight":
+      return standard.eggWeightG;
+    case "feed":
+      return standard.feedGBirdDay;
+    case "eggsPerBird":
+      return standard.eggsPerBirdCum;
+    case "bodyweight":
+      return standard.bodyweightG;
+    case "water":
+      return null;
+    default:
+      return null;
+  }
+}
+
+function nearestIsaStandard(ageWeeks: number) {
+  return ISA_ALT_STANDARDS.reduce((best, item) =>
+    Math.abs(item.ageWeeks - ageWeeks) <
+    Math.abs(best.ageWeeks - ageWeeks)
+      ? item
+      : best,
+  );
+}
+
+
+async function authenticatedFetch(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+) {
+  const response = await fetch(input, {
+    ...init,
+    credentials: "include",
+  });
+
+  if (response.status === 401) {
+    const nextPath =
+      `${window.location.pathname}${window.location.search}`;
+
+    window.location.href =
+      `/login?next=${encodeURIComponent(nextPath)}`;
+
+    throw new Error("Your login session has expired.");
+  }
+
+  return response;
+}
+
+function CommercialLayerPerformanceContent() {
+  const searchParams = useSearchParams();
+  const { currentUser, loadingUser, userError } = useCurrentUser();
+
+  const companyId = useMemo(() => {
+    const parsed = Number(searchParams.get("company_id"));
+
+    if (currentUser?.is_global_admin) {
+      return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+    }
+
+    return currentUser?.company_id ?? null;
+  }, [
+    currentUser?.company_id,
+    currentUser?.is_global_admin,
+    searchParams,
+  ]);
+
+  const [flocks, setFlocks] = useState<Flock[]>([]);
+  const [rows, setRows] = useState<PerformanceRow[]>([]);
+  const [selectedFarmId, setSelectedFarmId] =
+    useState<number | "">("");
+  const [selectedShedId, setSelectedShedId] =
+    useState<number | "">("");
+  const [selectedFlockId, setSelectedFlockId] =
+    useState<number | "">("");
+  const [ageRange, setAgeRange] =
+    useState<"laying" | "full">("laying");
+  const [showDaily, setShowDaily] = useState(false);
+  const [showComments, setShowComments] = useState(false);
+  const [compareId, setCompareId] = useState<number | "">("");
+  const [comparisonRows, setComparisonRows] = useState<PerformanceRow[]>([]);
+  const [compareMetric, setCompareMetric] = useState<MetricKey>("production");
+  const [comparisonError, setComparisonError] = useState("");
+  const [selectedMetrics, setSelectedMetrics] =
+    useState<MetricKey[]>([
+      "production",
+      "mortality",
+      "eggWeight",
+      "feed",
+      "eggsPerBird",
+      "bodyweight",
+    ]);
+  const [chartExpanded, setChartExpanded] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadFlocks = useCallback(async () => {
+    if (!companyId || loadingUser) return;
+
+    const response = await authenticatedFetch(
+      `${API_BASE}/api/layers/commercial/flocks?company_id=${companyId}`,
+      { cache: "no-store" },
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `Could not load Commercial Layer flocks: ${response.status}`,
+      );
+    }
+
+    const data: Flock[] = await response.json();
+    setFlocks(data);
+
+    const first = data[0];
+    if (first) {
+      setSelectedFarmId(first.farm_id);
+      setSelectedShedId(first.shed_id);
+      setSelectedFlockId(first.id);
+    }
+  }, [companyId, loadingUser]);
+
+  const loadPerformance = useCallback(async () => {
+    if (!companyId || !selectedFlockId) {
+      setRows([]);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await authenticatedFetch(
+        `${API_BASE}/api/layers/commercial/performance?company_id=${companyId}&flock_id=${selectedFlockId}&include_rearing=${ageRange === "full"}`,
+        { cache: "no-store" },
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          `Could not load layer performance: ${response.status}`,
+        );
+      }
+
+      setRows(await response.json());
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Could not load layer performance.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [companyId, selectedFlockId, ageRange]);
+
+  useEffect(() => {
+    async function initialise() {
+      if (!companyId || loadingUser) return;
+
+      try {
+        await loadFlocks();
+      } catch (loadError) {
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Could not load Commercial Layer flocks.",
+        );
+        setLoading(false);
+      }
+    }
+
+    void initialise();
+  }, [companyId, loadFlocks, loadingUser]);
+
+  useEffect(() => {
+    void loadPerformance();
+  }, [loadPerformance]);
+
+  const farms = useMemo(() => {
+    const map = new Map<number, string>();
+    flocks.forEach((flock) =>
+      map.set(flock.farm_id, flock.farm_name),
+    );
+
+    return Array.from(map, ([id, name]) => ({ id, name }));
+  }, [flocks]);
+
+  const sheds = useMemo(() => {
+    const map = new Map<number, string>();
+
+    flocks
+      .filter((flock) => flock.farm_id === selectedFarmId)
+      .forEach((flock) =>
+        map.set(flock.shed_id, flock.shed_name),
+      );
+
+    return Array.from(map, ([id, name]) => ({ id, name }));
+  }, [flocks, selectedFarmId]);
+
+  const availableFlocks = useMemo(
+    () =>
+      flocks.filter(
+        (flock) =>
+          flock.farm_id === selectedFarmId &&
+          flock.shed_id === selectedShedId,
+      ),
+    [flocks, selectedFarmId, selectedShedId],
+  );
+
+  const selectedFlock = flocks.find(
+    (flock) => flock.id === selectedFlockId,
+  );
+
+  // Identify the nearest earlier flock in the SAME shed using flock start dates.
+  // If start dates are unavailable, ask the user to select a historical flock.
+  const previousFlock = useMemo(() => {
+    if (!selectedFlock) return null;
+    const start = (f: Flock) => f.housed_date || f.hatch_date || "";
+    const currentDate = start(selectedFlock);
+    if (!currentDate) return null;
+    return flocks.filter(f => f.id !== selectedFlock.id &&
+      f.shed_id === selectedFlock.shed_id && f.farm_id === selectedFlock.farm_id &&
+      start(f) && start(f) < currentDate)
+      .sort((a,b) => start(b).localeCompare(start(a)))[0] ?? null;
+  }, [flocks, selectedFlock]);
+
+  useEffect(() => { setCompareId(""); setComparisonRows([]); setComparisonError(""); }, [selectedFlockId]);
+  useEffect(() => {
+    if (!companyId || !compareId || compareId === selectedFlockId) {
+      setComparisonRows([]); setComparisonError(""); return;
+    }
+    const controller = new AbortController();
+    setComparisonRows([]); setComparisonError("");
+    void (async () => {
+      try {
+        const res = await authenticatedFetch(
+          `${API_BASE}/api/layers/commercial/performance?company_id=${companyId}&flock_id=${compareId}&include_rearing=${ageRange === "full"}`,
+          {cache:"no-store", signal:controller.signal}
+        );
+        if (!res.ok) throw new Error(`Comparison flock unavailable (${res.status})`);
+        const data: PerformanceRow[] = await res.json();
+        if (!controller.signal.aborted) setComparisonRows(data);
+      } catch (e) {
+        if (!controller.signal.aborted) setComparisonError(e instanceof Error ? e.message : "Could not load comparison flock");
+      }
+    })();
+    return () => controller.abort();
+  }, [companyId, compareId, selectedFlockId, ageRange]);
+  const comparisonFlock = flocks.find(f => f.id === compareId);
+  const filteredComparisonRows = useMemo(() => comparisonRows.filter(r =>
+    (r.age_days ?? ((r.age_weeks ?? 0) * 7)) >= (ageRange === "laying" ? 119 : 0)
+  ), [comparisonRows, ageRange]);
+
+  const filteredRows = useMemo(() => {
+    const minimumAge = ageRange === "laying" ? 17 * 7 : 0;
+
+    return rows.filter(
+      (row) => (row.age_days ?? 0) >= minimumAge,
+    );
+  }, [ageRange, rows]);
+
+  const toggleMetric = (key: MetricKey) => {
+    setSelectedMetrics((current) => {
+      if (current.includes(key)) {
+        return current.length === 1
+          ? current
+          : current.filter((item) => item !== key);
+      }
+
+      return [...current, key];
+    });
+  };
+
+  return (
+    <OviCoreShell module="layers">
+      <div className="commercial-performance-page">
+      <OviCorePageHeader
+        title="Commercial Layers Performance"
+        subtitle="Actual-versus-standard flock performance across production, mortality, egg quality, feed, water and bodyweight."
+      />
+
+      <section className="selector-card">
+        <div className="selector-grid">
+          <label>
+            Farm
+            <select
+              value={selectedFarmId}
+              onChange={(event) => {
+                const farmId = Number(event.target.value);
+                const firstFlock = flocks.find(
+                  (flock) => flock.farm_id === farmId,
+                );
+
+                setSelectedFarmId(farmId);
+                setSelectedShedId(firstFlock?.shed_id ?? "");
+                setSelectedFlockId(firstFlock?.id ?? "");
+              }}
+            >
+              {farms.map((farm) => (
+                <option key={farm.id} value={farm.id}>
+                  {farm.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Shed
+            <select
+              value={selectedShedId}
+              onChange={(event) => {
+                const shedId = Number(event.target.value);
+                const firstFlock = flocks.find(
+                  (flock) =>
+                    flock.farm_id === selectedFarmId &&
+                    flock.shed_id === shedId,
+                );
+
+                setSelectedShedId(shedId);
+                setSelectedFlockId(firstFlock?.id ?? "");
+              }}
+            >
+              {sheds.map((shed) => (
+                <option key={shed.id} value={shed.id}>
+                  {shed.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Flock
+            <select
+              value={selectedFlockId}
+              onChange={(event) =>
+                setSelectedFlockId(Number(event.target.value))
+              }
+            >
+              {availableFlocks.map((flock) => (
+                <option key={flock.id} value={flock.id}>
+                  {flock.flock_code}
+                  {flock.housed_date ? ` / ${flock.housed_date}` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <div className="range-row">
+          <label>
+            Graph age range
+            <select
+              value={ageRange}
+              onChange={(event) =>
+                setAgeRange(
+                  event.target.value as "laying" | "full",
+                )
+              }
+            >
+              <option value="laying">
+                Laying default (17-depletion)
+              </option>
+              <option value="full">
+                Full flock (0-90+)
+              </option>
+            </select>
+          </label>
+
+          <label className="daily-toggle">
+            <input
+              type="checkbox"
+              checked={showDaily}
+              onChange={(event) =>
+                setShowDaily(event.target.checked)
+              }
+            />
+            Show daily
+          </label>
+        </div>
+
+        <p className="selection-caption">
+          {selectedFlock
+            ? `Showing ${selectedFlock.farm_name} / ${selectedFlock.shed_name} / ${selectedFlock.flock_code}${selectedFlock.source_rearing_flock_code ? ` · Reared as: ${selectedFlock.source_rearing_flock_code}` : ""}`
+            : "No Commercial Layer flock is available yet."}
+        </p>
+      </section>
+
+      <section className="comparison-controls" aria-label="Compare flock performance">
+        <label className="compare-field">Compare flock
+          <select value={compareId} onChange={e=>setCompareId(e.target.value ? Number(e.target.value) : "")}>
+            <option value="">No comparison</option>
+            {previousFlock && <option value={previousFlock.id}>Previous flock · {previousFlock.flock_code}</option>}
+            {flocks.filter(f => f.id !== selectedFlockId && f.id !== previousFlock?.id)
+              .map(f => <option key={f.id} value={f.id}>{f.farm_name} / {f.shed_name} / {f.flock_code}</option>)}
+          </select>
+        </label>
+        {compareId !== "" && <label className="compare-field">Compare metric
+          <select value={compareMetric} onChange={e => setCompareMetric(e.target.value as MetricKey)}>
+            {METRICS.map(m => <option key={m.key} value={m.key}>{m.shortLabel}</option>)}
+          </select>
+        </label>}
+        {compareId !== "" && <span className="comparison-key">● Current: {selectedFlock?.flock_code} &nbsp; <span style={{color:"#008b86"}}>━ Previous/selected: {comparisonFlock?.flock_code}</span></span>}
+        {comparisonError && <span role="alert" style={{color:"#ad342c"}}>{comparisonError}</span>}
+      </section>
+      <style jsx>{` .comparison-controls{display:flex;align-items:end;gap:12px;flex-wrap:wrap;border:1px solid #dce8e2;border-radius:12px;background:white;padding:9px 12px}.compare-field{display:grid;gap:3px;min-width:210px;font-size:11px;font-weight:800;color:#315846}.compare-field select{min-height:32px;border:1px solid #cbd8d1;border-radius:8px;background:white;padding:4px 8px;max-width:420px}.comparison-key{font-size:11px;font-weight:800;color:#1677d2;padding-bottom:7px}`}</style>
+      <section className="chart-card">
+        <div className="chart-card-head">
+          <div className="chart-title-block">
+            <p className="eyebrow">Flock performance</p>
+            <div className="chart-title-line">
+              <h2>Actual versus standard</h2>
+              {filteredRows.length === 0 ? (
+                <span className="standards-only-inline">
+                  Standards only
+                </span>
+              ) : null}
+            </div>
+            <p>
+              Solid lines show actual performance. Dashed lines show
+              the applicable standard.
+            </p>
+          </div>
+
+          <div className="chart-head-actions">
+            <label className="comments-toggle" title="Show or hide daily comment markers on the graph">
+              <input
+                type="checkbox"
+                checked={showComments}
+                onChange={(event) => setShowComments(event.target.checked)}
+              />
+              Show comments
+            </label>
+            <span className="standard-pill">
+              Standard: {ISA_ALT_STANDARD_LABEL}
+            </span>
+            <span className="age-pill">
+              Age in {showDaily ? "days" : "weeks"}
+            </span>
+
+            <button
+              type="button"
+              className="expand-button"
+              onClick={() => setChartExpanded(true)}
+              aria-label="Enlarge performance chart"
+              title="Enlarge chart"
+            >
+              ⛶
+            </button>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="empty-state">Loading performance…</div>
+        ) : error || userError ? (
+          <div className="empty-state error">
+            {error || userError}
+          </div>
+        ) : (
+          <>
+            <ProfessionalLayerChart
+              key={`${selectedFlockId}-${ageRange}-${showDaily}`}
+              rows={filteredRows}
+              comparisonRows={filteredComparisonRows}
+              comparisonLabel={comparisonFlock?.flock_code ?? "Comparison flock"}
+              comparisonMetric={compareId !== "" ? compareMetric : null}
+              selectedMetrics={selectedMetrics}
+              showDaily={showDaily}
+              showComments={showComments}
+              onToggleMetric={toggleMetric}
+            />
+          </>
+        )}
+      </section>
+
+      {chartExpanded ? (
+        <div className="chart-expanded-overlay">
+          <div className="chart-expanded-shell">
+            <div className="chart-expanded-head">
+              <div>
+                <strong>
+                  Commercial Layers · Flock Performance
+                </strong>
+                <span>
+                  {selectedFlock
+                    ? `${selectedFlock.farm_name} / ${selectedFlock.shed_name} / ${selectedFlock.flock_code}`
+                    : ""}
+                </span>
+              </div>
+
+              <label className="comments-toggle" style={{ marginLeft: "auto" }}>
+                <input type="checkbox" checked={showComments} onChange={(event) => setShowComments(event.target.checked)} />
+                Show comments
+              </label>
+              <button
+                type="button"
+                onClick={() => setChartExpanded(false)}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="chart-expanded-body">
+              <ProfessionalLayerChart
+                key={`${selectedFlockId}-${ageRange}-${showDaily}-expanded`}
+                rows={filteredRows}
+                comparisonRows={filteredComparisonRows}
+                comparisonLabel={comparisonFlock?.flock_code ?? "Comparison flock"}
+                comparisonMetric={compareId !== "" ? compareMetric : null}
+                selectedMetrics={selectedMetrics}
+                showDaily={showDaily}
+                showComments={showComments}
+                onToggleMetric={toggleMetric}
+                expanded
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <style jsx>{`
+        .commercial-performance-page {
+          width: 100%;
+          min-width: 0;
+          min-height: calc(100vh - 58px);
+          padding: 7px 10px 8px;
+          box-sizing: border-box;
+          display: grid;
+          grid-template-rows: auto auto auto auto;
+          align-content: start;
+          gap: 6px;
+          overflow-x: hidden;
+        }
+
+        .selector-card,
+        .chart-card {
+          border: 1px solid #dce8e2;
+          border-radius: 15px;
+          background: #ffffff;
+          box-shadow: 0 8px 24px rgba(19, 70, 51, 0.055);
+        }
+
+        .selector-card {
+          margin-bottom: 0;
+          padding: 8px 10px;
+        }
+
+        .selector-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr 1.45fr;
+          gap: 10px;
+        }
+
+        label {
+          display: grid;
+          gap: 5px;
+          color: #405148;
+          font-size: 10.5px;
+          font-weight: 850;
+        }
+
+        select {
+          min-height: 32px;
+          padding: 0 10px;
+          border: 1px solid #cbd8d1;
+          border-radius: 9px;
+          background: #ffffff;
+          color: #173c2b;
+          font-size: 12px;
+        }
+
+        .range-row {
+          display: grid;
+          grid-template-columns: minmax(260px, 1fr) auto;
+          align-items: end;
+          gap: 10px;
+          margin-top: 4px;
+        }
+
+        .daily-toggle {
+          display: flex;
+          align-items: center;
+          gap: 7px;
+          min-height: 32px;
+          white-space: nowrap;
+        }
+
+        .selection-caption {
+          margin: 5px 0 0;
+          color: #718078;
+          font-size: 10px;
+        }
+
+        .chart-card {
+          position: relative;
+          z-index: 1;
+          min-height: 0;
+          padding: 9px 10px 7px;
+          display: grid;
+          grid-template-rows: auto auto;
+          align-content: start;
+          overflow: hidden;
+        }
+
+        .chart-card-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 12px;
+          margin-bottom: 4px;
+        }
+
+        .chart-title-block {
+          min-width: 0;
+        }
+
+        .chart-title-line {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          min-width: 0;
+        }
+
+        .chart-title-line h2 {
+          min-width: 0;
+        }
+
+        .standards-only-inline {
+          flex: 0 0 auto;
+          padding: 3px 7px;
+          border: 1px solid #e6dcfb;
+          border-radius: 999px;
+          background: #faf7ff;
+          color: #7046b7;
+          font-size: 8.5px;
+          font-weight: 850;
+          white-space: nowrap;
+        }
+
+        .eyebrow {
+          margin: 0;
+          color: #0f6b43;
+          font-size: 8.5px;
+          font-weight: 950;
+          letter-spacing: 0.13em;
+          text-transform: uppercase;
+        }
+
+        .chart-card-head h2 {
+          margin: 2px 0;
+          color: #153f2d;
+          font-size: 17px;
+        }
+
+        .chart-card-head p {
+          margin: 0;
+          color: #718078;
+          font-size: 10px;
+        }
+
+         .comments-toggle {
+           display: inline-flex;
+           align-items: center;
+           gap: 6px;
+           padding: 5px 9px;
+           border: 1px solid #d8e5dd;
+           border-radius: 999px;
+           background: #fff;
+           color: #264d39;
+           font-size: 10px;
+           font-weight: 800;
+           white-space: nowrap;
+           cursor: pointer;
+         }
+        .comments-toggle input { accent-color: #16805a; margin: 0; }
+        .chart-head-actions {
+          display: flex;
+          align-items: center;
+          justify-content: flex-end;
+          gap: 6px;
+          flex-wrap: wrap;
+          flex: 0 0 auto;
+        }
+
+        .standard-pill,
+        .age-pill {
+          padding: 6px 9px;
+          border-radius: 999px;
+          font-size: 10px;
+          font-weight: 850;
+          white-space: nowrap;
+        }
+
+        .standard-pill {
+          border: 1px solid #e5d9ff;
+          background: #f7f2ff;
+          color: #6d3cc7;
+        }
+
+        .age-pill {
+          background: #edf7f1;
+          color: #0f6b43;
+        }
+
+
+        .expand-button {
+          width: 32px;
+          height: 32px;
+          display: inline-grid;
+          place-items: center;
+          border: 1px solid #d6e3dc;
+          border-radius: 9px;
+          background: #ffffff;
+          color: #174a34;
+          font-size: 16px;
+          font-weight: 900;
+          cursor: pointer;
+        }
+
+        .empty-state {
+          min-height: 0;
+          height: 100%;
+          display: grid;
+          place-items: center;
+          color: #718078;
+        }
+
+        .empty-state.error {
+          color: #a13b30;
+        }
+
+        .chart-expanded-overlay {
+          position: fixed;
+          inset: 0;
+          z-index: 5000;
+          display: grid;
+          place-items: center;
+          padding: 16px;
+          background: rgba(7, 25, 19, 0.72);
+          backdrop-filter: blur(8px);
+        }
+
+        .chart-expanded-shell {
+          width: min(98vw, 1820px);
+          height: min(94vh, 1120px);
+          display: grid;
+          grid-template-rows: auto 1fr;
+          overflow: hidden;
+          border-radius: 18px;
+          background: #ffffff;
+          box-shadow: 0 28px 80px rgba(0, 0, 0, 0.34);
+        }
+
+        .chart-expanded-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 18px;
+          padding: 11px 15px;
+          border-bottom: 1px solid #e5eee9;
+          background: #fbfdfc;
+        }
+
+        .chart-expanded-head div {
+          min-width: 0;
+          display: grid;
+          gap: 2px;
+        }
+
+        .chart-expanded-head strong {
+          color: #153f2d;
+          font-size: 13px;
+        }
+
+        .chart-expanded-head span {
+          overflow: hidden;
+          color: #74847c;
+          font-size: 10px;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .chart-expanded-head button {
+          min-height: 32px;
+          padding: 0 11px;
+          border: 1px solid #d6e3dc;
+          border-radius: 9px;
+          background: #ffffff;
+          color: #174a34;
+          font-size: 10px;
+          font-weight: 900;
+          cursor: pointer;
+        }
+
+        .chart-expanded-body {
+          min-height: 0;
+          overflow: auto;
+          padding: 8px 12px 12px;
+        }
+
+        @media (max-width: 1100px) {
+          .chart-card-head {
+            align-items: center;
+          }
+
+          .chart-card-head p {
+            display: none;
+          }
+
+          .chart-card-head h2 {
+            font-size: 16px;
+          }
+
+          .standard-pill {
+            max-width: 170px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          }
+
+          .age-pill {
+            display: none;
+          }
+
+        }
+
+        @media (max-width: 900px) {
+          .chart-card-head {
+            gap: 8px;
+          }
+
+          .standard-pill {
+            max-width: 135px;
+            font-size: 8.5px;
+          }
+
+          .standards-only-inline {
+            display: none;
+          }
+        }
+
+        @media (max-width: 980px) {
+          .selector-grid {
+            grid-template-columns: 1fr 1fr;
+          }
+
+          .selector-grid label:last-child {
+            grid-column: 1 / -1;
+          }
+        }
+
+        @media (max-width: 680px) {
+          .selector-grid,
+          .range-row {
+            grid-template-columns: 1fr;
+          }
+
+          .chart-card-head {
+            flex-direction: column;
+          }
+        }
+      `}</style>
+      </div>
+    </OviCoreShell>
+  );
+}
+
+function ProfessionalLayerChart({
+  rows,
+  comparisonRows,
+  comparisonLabel,
+  comparisonMetric,
+  selectedMetrics,
+  showDaily,
+  showComments,
+  onToggleMetric,
+  expanded = false,
+}: {
+  rows: PerformanceRow[];
+  comparisonRows: PerformanceRow[];
+  comparisonLabel: string;
+  comparisonMetric: MetricKey | null;
+  selectedMetrics: MetricKey[];
+  showDaily: boolean;
+  showComments: boolean;
+  onToggleMetric: (key: MetricKey) => void;
+  expanded?: boolean;
+}) {
+  const [hoverX, setHoverX] = useState<number | null>(null);
+  const [openedCommentKey, setOpenedCommentKey] = useState<string | null>(null);
+
+  // Each secondary metric can be vertically offset for visual comparison.
+  // This never changes the underlying values. Double-clicking its scale resets it.
+  const [axisOffsets, setAxisOffsets] = useState<Record<MetricKey, number>>({
+    production: 0,
+    mortality: 0,
+    eggWeight: 0,
+    feed: 0,
+    water: 0,
+    eggsPerBird: 0,
+    bodyweight: 0,
+  });
+  const [draggingAxis, setDraggingAxis] = useState<{
+    key: MetricKey;
+    startClientY: number;
+    startOffset: number;
+  } | null>(null);
+
+  const activeMetrics = METRICS.filter((metric) =>
+    selectedMetrics.includes(metric.key) || metric.key === comparisonMetric,
+  );
+
+  const width = expanded ? 1600 : 1400;
+  const height = expanded ? 660 : 455;
+  const left = 72;
+  const right = 160;
+  const top = 38;
+  const bottom = 58;
+  const plotWidth = width - left - right;
+  const plotHeight = height - top - bottom;
+
+  // Weekly mode groups observations into biological age weeks, instead of
+  // plotting every daily record at fractional-week positions.
+  // Flow measurements use the mean of recorded days; cumulative measures
+  // use the latest observation in each week. Missing values stay missing.
+  const displayRows = useMemo(() => {
+    if (showDaily) return rows;
+
+    const byWeek = new Map<number, PerformanceRow[]>();
+    for (const row of rows) {
+      const age = finite(row.age_days) ??
+        (finite(row.age_weeks) !== null ? Number(row.age_weeks) * 7 : null);
+      if (age === null) continue;
+      const week = Math.floor(age / 7);
+      const group = byWeek.get(week) ?? [];
+      group.push(row);
+      byWeek.set(week, group);
+    }
+
+    const average = (
+      group: PerformanceRow[],
+      key: keyof PerformanceRow,
+    ): number | null => {
+      const values = group.map((row) => finite(row[key]));
+      const valid = values.filter((value): value is number => value !== null);
+      return valid.length ? valid.reduce((a, b) => a + b, 0) / valid.length : null;
+    };
+
+    const lastValue = (
+      group: PerformanceRow[],
+      key: keyof PerformanceRow,
+    ): number | null => {
+      for (let i = group.length - 1; i >= 0; i--) {
+        const value = finite(group[i][key]);
+        if (value !== null) return value;
+      }
+      return null;
+    };
+
+    return [...byWeek.entries()].sort(([a], [b]) => a - b).map(([week, group]) => {
+      const sorted = [...group].sort((a, b) =>
+        Number(a.age_days ?? a.age_weeks ?? 0) - Number(b.age_days ?? b.age_weeks ?? 0),
+      );
+      const last = sorted[sorted.length - 1];
+      return {
+        ...last,
+        age_weeks: week,
+        age_days: week * 7,
+        production_pct: average(sorted, "production_pct"),
+        egg_weight_g: average(sorted, "egg_weight_g"),
+        feed_g_bird_day: average(sorted, "feed_g_bird_day"),
+        water_ml_bird_day: average(sorted, "water_ml_bird_day"),
+        water_intake_ml_bird_day: average(sorted, "water_intake_ml_bird_day"),
+        water_l_bird_day: average(sorted, "water_l_bird_day"),
+        bodyweight_g: average(sorted, "bodyweight_g"),
+        cumulative_mortality_pct: lastValue(sorted, "cumulative_mortality_pct"),
+        eggs_per_bird_cumulative: lastValue(sorted, "eggs_per_bird_cumulative"),
+        production_standard_pct: average(sorted, "production_standard_pct"),
+        egg_weight_standard_g: average(sorted, "egg_weight_standard_g"),
+        feed_standard_g_bird_day: average(sorted, "feed_standard_g_bird_day"),
+        bodyweight_standard_g: average(sorted, "bodyweight_standard_g"),
+        mortality_standard_pct: lastValue(sorted, "mortality_standard_pct"),
+        eggs_per_bird_standard: lastValue(sorted, "eggs_per_bird_standard"),
+      };
+    });
+  }, [rows, showDaily]);
+
+  // Use identical biological age bins for the comparison flock.
+  const comparisonPoints = useMemo(() => {
+    if (!comparisonMetric) return [] as {row:PerformanceRow;x:number}[];
+    if (showDaily) return comparisonRows.map(row => ({row, x: Number(row.age_days ?? (row.age_weeks ?? 0)*7)}));
+    const groups = new Map<number, PerformanceRow[]>();
+    for (const row of comparisonRows) {
+      const age = finite(row.age_days) ?? (finite(row.age_weeks) !== null ? Number(row.age_weeks)*7 : null);
+      if (age === null) continue;
+      const week = Math.floor(age/7);
+      groups.set(week, [...(groups.get(week) ?? []), row]);
+    }
+    const def = METRICS.find(m => m.key === comparisonMetric)!;
+    const cumulative = comparisonMetric === "mortality" || comparisonMetric === "eggsPerBird" || comparisonMetric === "bodyweight";
+    return Array.from(groups, ([x, group]) => {
+      const sorted = group.slice().sort((a,b) => (a.age_days ?? a.age_weeks!*7) - (b.age_days ?? b.age_weeks!*7));
+      const valid = sorted.map(r => def.actual(r)).filter((v):v is number => v !== null);
+      const value = valid.length ? (cumulative ? valid[valid.length-1] : valid.reduce((a,b)=>a+b,0)/valid.length) : null;
+      const row: PerformanceRow = {...sorted[sorted.length-1]};
+      if (comparisonMetric === "production") row.production_pct = value;
+      if (comparisonMetric === "mortality") row.cumulative_mortality_pct = value;
+      if (comparisonMetric === "eggWeight") row.egg_weight_g = value;
+      if (comparisonMetric === "feed") row.feed_g_bird_day = value;
+      if (comparisonMetric === "water") {row.water_ml_bird_day = value; row.water_intake_ml_bird_day = value;row.water_l_bird_day = null;}
+      if (comparisonMetric === "eggsPerBird") row.eggs_per_bird_cumulative = value;
+      if (comparisonMetric === "bodyweight") row.bodyweight_g = value;
+      return {row, x};
+    }).sort((a,b)=>a.x-b.x);
+  }, [comparisonRows, comparisonMetric, showDaily]);
+
+  const points = displayRows.map((row) => ({
+    row,
+    x: showDaily
+      ? Number(row.age_days ?? 0)
+      : Number(row.age_weeks ?? 0),
+  }));
+
+  const standardPoints = ISA_ALT_STANDARDS.map((standard) => ({
+    standard,
+    x: showDaily
+      ? standard.ageWeeks * 7
+      : standard.ageWeeks,
+  }));
+
+  const actualX = points.map((point) => point.x);
+  const standardX = standardPoints.map((point) => point.x);
+  const allX = [...actualX, ...standardX, ...comparisonPoints.map(p=>p.x)];
+
+  const minX = allX.length ? Math.min(...allX) : 17;
+  const maxX = allX.length ? Math.max(...allX, minX + 1) : 100;
+
+  const ranges = new Map<
+    MetricKey,
+    { min: number; max: number }
+  >();
+
+  activeMetrics.forEach((metric) => {
+    const values = [
+      ...points.flatMap(({ row }) => [
+        metric.actual(row),
+        metric.standard(row),
+      ]),
+      ...(metric.key === comparisonMetric ? comparisonPoints.map(p => metric.actual(p.row)) : []),
+      ...standardPoints.map(({ standard }) =>
+        isaStandardValue(metric.key, standard),
+      ),
+    ].filter((value): value is number => value !== null);
+
+    const min = Math.min(...values, 0);
+    const max = Math.max(...values, 1);
+    const pad = Math.max(
+      (max - min) * 0.12,
+      max * 0.04,
+      1,
+    );
+
+    ranges.set(metric.key, {
+      min: Math.max(0, min - pad),
+      max: max + pad,
+    });
+  });
+
+  const x = (value: number) =>
+    left +
+    ((value - minX) / (maxX - minX)) * plotWidth;
+
+  const y = (
+    metric: MetricDefinition,
+    value: number,
+  ) => {
+    const range =
+      ranges.get(metric.key) ?? { min: 0, max: 1 };
+
+    const baseY =
+      top +
+      plotHeight -
+      ((value - range.min) /
+        (range.max - range.min)) *
+        plotHeight;
+
+    return baseY + (axisOffsets[metric.key] ?? 0);
+  };
+
+  const nearestPoint =
+    hoverX === null || points.length === 0
+      ? null
+      : points.reduce((best, point) =>
+          Math.abs(point.x - hoverX) <
+          Math.abs(best.x - hoverX)
+            ? point
+            : best,
+        );
+  // Standards-only mode still needs a hover target.
+  // When there are no flock actuals, hover follows the nearest ISA standard week.
+  const nearestStandardPoint =
+    hoverX === null || standardPoints.length === 0
+      ? null
+      : standardPoints.reduce((best, point) =>
+          Math.abs(point.x - hoverX) <
+          Math.abs(best.x - hoverX)
+            ? point
+            : best,
+        );
+
+  const activeHoverX =
+    nearestPoint?.x ??
+    nearestStandardPoint?.x ??
+    null;
+  // Comments are kept as separate daily entries even when the plotted values
+  // are aggregated into biological-age weeks.
+  const commentGroups = useMemo(() => {
+    const groups = new Map<string, { pointX: number; comments: { date: string; text: string }[] }>();
+    rows.forEach((row) => {
+      const text = dailyComment(row);
+      const age = finite(row.age_days) ??
+        (finite(row.age_weeks) !== null ? Number(row.age_weeks) * 7 : null);
+      if (!text || age === null) return;
+      const pointX = showDaily ? age : Math.floor(age / 7);
+      const key = String(pointX);
+      const group = groups.get(key) ?? { pointX, comments: [] };
+      group.comments.push({ date: row.entry_date, text });
+      groups.set(key, group);
+    });
+    return [...groups.entries()].map(([key, group]) => ({ key, ...group }))
+      .sort((a, b) => a.pointX - b.pointX);
+  }, [rows, showDaily]);
+
+  const commentMarkers = commentGroups.flatMap((group) => {
+    const point = points.find((p) => p.x === group.pointX);
+    const production = point ? finite(point.row.production_pct) : null;
+    if (production === null || group.pointX < minX || group.pointX > maxX) return [];
+    return [{ ...group, px: x(group.pointX), py: y(METRICS[0], production) }];
+  });
+  const openedComment = showComments
+    ? commentMarkers.find((marker) => marker.key === openedCommentKey)
+    : undefined;
+
+  const handleMove = (
+    event: React.MouseEvent<SVGRectElement>,
+  ) => {
+    const svg =
+      event.currentTarget.ownerSVGElement;
+
+    if (!svg) return;
+
+    const bounds = svg.getBoundingClientRect();
+    const svgX =
+      (event.clientX - bounds.left) *
+      (width / bounds.width);
+
+    const clamped = Math.max(
+      left,
+      Math.min(left + plotWidth, svgX),
+    );
+
+    setHoverX(
+      minX +
+        ((clamped - left) / plotWidth) *
+          (maxX - minX),
+    );
+  };
+
+  const handleSvgMove = (event: React.MouseEvent<SVGSVGElement>) => {
+    if (!draggingAxis) return;
+
+    const delta = event.clientY - draggingAxis.startClientY;
+    const limit = plotHeight * 0.32;
+
+    setAxisOffsets((current) => ({
+      ...current,
+      [draggingAxis.key]: Math.max(
+        -limit,
+        Math.min(limit, draggingAxis.startOffset + delta),
+      ),
+    }));
+  };
+
+  const xTicks = Array.from(
+    { length: 10 },
+    (_, index) =>
+      minX + ((maxX - minX) / 9) * index,
+  );
+
+  return (
+    <div className="chart-wrap">
+      <div
+        className={
+          activeHoverX !== null
+            ? "hover-banner visible"
+            : "hover-banner"
+        }
+        aria-live="polite"
+      >
+        {activeHoverX !== null ? (
+          <>
+            <div className="hover-banner-age">
+              <strong>
+                {showDaily
+                  ? `Day ${activeHoverX.toFixed(0)}`
+                  : `Week ${Math.round(
+                      activeHoverX / (showDaily ? 7 : 1),
+                    )}`}
+              </strong>
+              <span>
+                {nearestPoint
+                  ? nearestPoint.row.entry_date
+                  : "ISA Brown Alternative"}
+              </span>
+            </div>
+
+            <div className="hover-banner-metrics">
+              {activeMetrics.map((metric) => {
+                const actual = nearestPoint
+                  ? metric.actual(nearestPoint.row)
+                  : null;
+
+                const ageWeeks = nearestPoint
+                  ? nearestPoint.row.age_weeks ??
+                    nearestPoint.x /
+                      (showDaily ? 7 : 1)
+                  : nearestStandardPoint?.standard.ageWeeks ??
+                    activeHoverX /
+                      (showDaily ? 7 : 1);
+
+                const apiStandard = nearestPoint
+                  ? metric.standard(nearestPoint.row)
+                  : null;
+
+                const standard = apiStandard ??
+                  (metric.key !== "water"
+                    ? isaStandardValue(
+                        metric.key,
+                        nearestIsaStandard(ageWeeks),
+                      )
+                    : null);
+
+                const variance =
+                  actual !== null &&
+                  standard !== null
+                    ? actual - standard
+                    : null;
+
+                return (
+                  <span
+                    key={metric.key}
+                    className="hover-metric"
+                  >
+                    <i
+                      style={{
+                        background: metric.colour,
+                      }}
+                    />
+                    <b>{metric.shortLabel}</b>
+
+                    {nearestPoint ? (
+                      <>
+                        <em>
+                          {actual === null
+                            ? "—"
+                            : `${actual.toFixed(
+                                metric.decimals,
+                              )}${
+                                metric.unit
+                                  ? ` ${metric.unit}`
+                                  : ""
+                              }`}
+                        </em>
+                        {standard !== null ? (
+                          <small>
+                            Std{" "}
+                            {standard.toFixed(
+                              metric.decimals,
+                            )}
+                          </small>
+                        ) : null}
+                        {variance !== null ? (
+                          <small
+                            className={
+                              variance > 0
+                                ? "variance positive"
+                                : variance < 0
+                                  ? "variance negative"
+                                  : "variance"
+                            }
+                          >
+                            {variance > 0 ? "+" : ""}
+                            {variance.toFixed(
+                              metric.decimals,
+                            )}
+                          </small>
+                        ) : null}
+                      </>
+                    ) : (
+                      <em>
+                        {standard === null
+                          ? "No standard"
+                          : `${standard.toFixed(
+                              metric.decimals,
+                            )}${
+                              metric.unit
+                                ? ` ${metric.unit}`
+                                : ""
+                            }`}
+                      </em>
+                    )}
+                  </span>
+                );
+              })}
+            </div>
+
+          </>
+        ) : (
+          <span className="hover-banner-placeholder">
+            Hover over the graph for flock values
+          </span>
+        )}
+      </div>
+
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="xMidYMin meet"
+        role="img"
+        aria-label="Commercial layer actual versus standard performance chart"
+        onMouseMove={handleSvgMove}
+        onMouseUp={() => setDraggingAxis(null)}
+        onMouseLeave={() => {
+          setHoverX(null);
+          setDraggingAxis(null);
+        }}
+      >
+        <defs>
+          <clipPath id={expanded ? "performance-flow-expanded" : "performance-flow"}>
+            <rect className="performance-flow-reveal" x={left} y={top - 3} width={plotWidth} height={plotHeight + 6} />
+          </clipPath>
+          <filter id="tooltip-shadow">
+            <feDropShadow
+              dx="0"
+              dy="8"
+              stdDeviation="8"
+              floodOpacity="0.18"
+            />
+          </filter>
+        </defs>
+
+        <rect
+          x={left}
+          y={top}
+          width={plotWidth}
+          height={plotHeight}
+          rx="12"
+          fill="#fbfdfc"
+        />
+
+        {!showDaily &&
+          LIFE_STAGES.map((band) => {
+            const bandStart = Math.max(
+              band.start,
+              minX,
+            );
+            const bandEnd = Math.min(
+              band.end,
+              maxX,
+            );
+
+            if (bandEnd <= bandStart) {
+              return null;
+            }
+
+            const bandX = x(bandStart);
+            const bandWidth =
+              x(bandEnd) - x(bandStart);
+
+            return (
+              <g key={band.label}>
+                <rect
+                  x={bandX}
+                  y={top}
+                  width={bandWidth}
+                  height={plotHeight}
+                  fill={band.fill}
+                  opacity="0.68"
+                />
+
+                <rect
+                  x={bandX + 2}
+                  y={8}
+                  width={Math.max(0, bandWidth - 4)}
+                  height="24"
+                  rx="6"
+                  fill={band.fill}
+                  stroke="#dce8e2"
+                />
+
+                <text
+                  x={bandX + bandWidth / 2}
+                  y={18}
+                  textAnchor="middle"
+                  fill="#3f5d4f"
+                  fontSize={bandWidth < 90 ? "7.5" : "9"}
+                  fontWeight="800"
+                >
+                  {band.label}
+                </text>
+
+                {bandWidth >= 105 ? (
+                  <text
+                    x={bandX + bandWidth / 2}
+                    y={27}
+                    textAnchor="middle"
+                    fill="#72857b"
+                    fontSize="7"
+                    fontWeight="700"
+                  >
+                    {band.sublabel}
+                  </text>
+                ) : null}
+              </g>
+            );
+          })}
+
+        {Array.from(
+          { length: 6 },
+          (_, index) => index,
+        ).map((index) => {
+          const yPos =
+            top + (plotHeight / 5) * index;
+
+          return (
+            <line
+              key={index}
+              x1={left}
+              x2={left + plotWidth}
+              y1={yPos}
+              y2={yPos}
+              stroke="#dfe8e3"
+              strokeDasharray="3 7"
+               opacity="0.60"
+            />
+          );
+        })}
+
+        {xTicks.map((tick) => (
+          <g key={tick}>
+            <line
+              x1={x(tick)}
+              x2={x(tick)}
+              y1={top}
+              y2={top + plotHeight}
+              stroke="#edf2ef"
+            />
+
+            <text
+              x={x(tick)}
+              y={top + plotHeight + 24}
+              textAnchor="middle"
+              fill="#687970"
+              fontSize="10"
+            >
+              {showDaily
+                ? Math.round(tick)
+                : tick.toFixed(0)}
+            </text>
+          </g>
+        ))}
+
+        {activeMetrics.map(
+          (metric, metricIndex) => {
+            const range =
+              ranges.get(metric.key) ?? {
+                min: 0,
+                max: 1,
+              };
+
+            const axisX =
+              left +
+              plotWidth +
+              20 +
+              metricIndex * 29;
+
+            const offset = axisOffsets[metric.key] ?? 0;
+            const isSecondary = metricIndex > 0;
+
+            return (
+              <g key={metric.key}>
+                <line
+                  x1={axisX}
+                  x2={axisX}
+                  y1={top}
+                  y2={top + plotHeight}
+                  stroke={metric.colour}
+                  strokeWidth="1"
+                  opacity="0.75"
+                />
+
+                {[0, 0.25, 0.5, 0.75, 1].map(
+                  (ratio) => {
+                    const value =
+                      range.min +
+                      (range.max - range.min) *
+                        (1 - ratio);
+
+                    const yPos =
+                      top + plotHeight * ratio + offset;
+
+                    return (
+                      <g key={ratio}>
+                        <line
+                          x1={axisX}
+                          x2={axisX + 4}
+                          y1={yPos}
+                          y2={yPos}
+                          stroke={metric.colour}
+                        />
+
+                        <text
+                          x={axisX + 6}
+                          y={yPos + 3}
+                          fill={metric.colour}
+                          fontSize="7.7"
+                        >
+                          {value.toFixed(metric.decimals)}
+                        </text>
+                      </g>
+                    );
+                  },
+                )}
+
+                {isSecondary ? (
+                  <>
+                    <rect
+                      x={axisX - 5}
+                      y={top}
+                      width="27"
+                      height={plotHeight}
+                      fill="transparent"
+                      style={{ cursor: "ns-resize" }}
+                      onMouseDown={(event) => {
+                        event.stopPropagation();
+                        setDraggingAxis({
+                          key: metric.key,
+                          startClientY: event.clientY,
+                          startOffset: offset,
+                        });
+                      }}
+                      onDoubleClick={(event) => {
+                        event.stopPropagation();
+                        setAxisOffsets((current) => ({
+                          ...current,
+                          [metric.key]: 0,
+                        }));
+                      }}
+                    />
+                    <text
+                      x={axisX + 2}
+                      y={top - 6}
+                      textAnchor="middle"
+                      fill={metric.colour}
+                      fontSize="8"
+                      fontWeight="800"
+                      pointerEvents="none"
+                    >
+                      ↕
+                    </text>
+                  </>
+                ) : null}
+              </g>
+            );
+          },
+        )}
+
+        {activeMetrics.map((metric) => {
+          const actualPoints = points
+            .map(({ row, x: pointX }) => {
+              const value = metric.actual(row);
+
+              return value === null
+                ? null
+                : `${x(pointX)},${y(
+                    metric,
+                    value,
+                  )}`;
+            })
+            .filter(Boolean)
+            .join(" ");
+
+          const apiStandardPoints = points
+            .map(({ row, x: pointX }) => {
+              const value = metric.standard(row);
+
+              return value === null
+                ? null
+                : `${x(pointX)},${y(metric, value)}`;
+            })
+            .filter(Boolean)
+            .join(" ");
+
+          const isaStandardPoints = standardPoints
+            .map(({ standard, x: pointX }) => {
+              const value = isaStandardValue(
+                metric.key,
+                standard,
+              );
+
+              return value === null
+                ? null
+                : `${x(pointX)},${y(metric, value)}`;
+            })
+            .filter(Boolean)
+            .join(" ");
+
+          const standardLinePoints =
+            apiStandardPoints || isaStandardPoints;
+
+          return (
+            <g key={metric.key}>
+              {standardLinePoints ? (
+                <polyline
+                  points={standardLinePoints}
+                  fill="none"
+                  stroke={metric.colour}
+                  strokeWidth="0.9"
+                  strokeDasharray="3 6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  opacity="0.48"
+                  clipPath={`url(#${expanded ? "performance-flow-expanded" : "performance-flow"})`}
+                />
+              ) : null}
+
+              {actualPoints ? (
+                <polyline
+                  points={actualPoints}
+                  fill="none"
+                  stroke={metric.colour}
+                  strokeWidth="2.15"
+                  clipPath={`url(#${expanded ? "performance-flow-expanded" : "performance-flow"})`}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              ) : null}
+
+              {/* Keep the trends clean: only the hovered point is marked.
+                  Rendering a circle for every daily observation was cluttered. */}
+            </g>
+          );
+        })}
+
+        {comparisonMetric && comparisonPoints.length > 0 && (() => {
+          const metric = METRICS.find(m => m.key === comparisonMetric)!;
+          const segments: string[][] = []; let current: string[] = [];
+          for (const p of comparisonPoints) {
+            const value = metric.actual(p.row);
+            if (value === null) {if(current.length > 1)segments.push(current);current=[];continue;}
+            current.push(`${x(p.x)},${y(metric,value)}`);
+          }
+          if (current.length > 1)segments.push(current);
+          return <g aria-label={`Comparison ${comparisonLabel}`}>
+            {segments.map((seg,i)=><polyline key={i} points={seg.join(" ")} fill="none" stroke="#008b86" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" opacity="0.88" clipPath={`url(#${expanded ? "performance-flow-expanded" : "performance-flow"})`} pointerEvents="none" />)}
+          </g>;
+        })()}
+        {nearestPoint
+          ? activeMetrics.map((metric) => {
+              const value =
+                metric.actual(
+                  nearestPoint.row,
+                );
+
+              return value === null ? null : (
+                <circle
+                  key={`hover-${metric.key}`}
+                  cx={x(nearestPoint.x)}
+                  cy={y(metric, value)}
+                  r="5.5"
+                  fill="#ffffff"
+                  stroke={metric.colour}
+                  strokeWidth="2.5"
+                  pointerEvents="none"
+                />
+              );
+            })
+          : null}
+        {!nearestPoint && nearestStandardPoint
+          ? activeMetrics.map((metric) => {
+              const value = isaStandardValue(
+                metric.key,
+                nearestStandardPoint.standard,
+              );
+
+              return value === null ? null : (
+                <circle
+                  key={`hover-standard-${metric.key}`}
+                  cx={x(nearestStandardPoint.x)}
+                  cy={y(metric, value)}
+                  r="4.8"
+                  fill="#ffffff"
+                  stroke={metric.colour}
+                  strokeWidth="2.2"
+                  pointerEvents="none"
+                />
+              );
+            })
+          : null}
+
+
+        <rect
+          x={left}
+          y={top}
+          width={plotWidth}
+          height={plotHeight}
+          fill="transparent"
+          style={{ cursor: "crosshair" }}
+          onMouseMove={handleMove}
+          onClick={handleMove}
+        />
+
+        {/* Annotation markers sit above the hover hit-area and therefore remain clickable. */}
+        {showComments && commentMarkers.map((marker) => (
+          <g key={`comment-${marker.key}`} role="button" tabIndex={0}
+            aria-label={`${marker.comments.length} comment${marker.comments.length === 1 ? "" : "s"} at ${showDaily ? "day" : "week"} ${marker.pointX}`}
+            onClick={(event) => { event.stopPropagation(); setOpenedCommentKey(current => current === marker.key ? null : marker.key); }}
+            onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setOpenedCommentKey(current => current === marker.key ? null : marker.key); } }}
+            style={{ cursor: "pointer" }}>
+            <circle cx={marker.px} cy={marker.py} r="10" fill="#f5ad29" stroke="#ffffff" strokeWidth="2.5" />
+            <text x={marker.px} y={marker.py + 3.4} fontSize="10" fontWeight="900" fill="#563600" textAnchor="middle" pointerEvents="none">
+              {marker.comments.length > 1 ? marker.comments.length : "!"}
+            </text>
+            <circle cx={marker.px} cy={marker.py} r="16" fill="transparent" />
+          </g>
+        ))}
+        {openedComment ? (() => {
+          const popupWidth = 310;
+          const popupHeight = 132;
+          const popupX = Math.min(width - popupWidth - 5, Math.max(5, openedComment.px + 14));
+          const popupY = Math.min(height - popupHeight - 8, Math.max(7, openedComment.py - popupHeight - 14));
+          return <foreignObject x={popupX} y={popupY} width={popupWidth} height={popupHeight}>
+            <div style={{ width: "100%", height: "100%", boxSizing: "border-box", padding: "10px", border: "1px solid #e9cb7f", borderRadius: "10px", background: "#fffdf5", boxShadow: "0 8px 24px #0002", fontSize: "12px", color: "#294336", overflow: "auto" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", marginBottom: "5px" }}>
+                <b>{showDaily ? `Day ${openedComment.pointX}` : `Week ${openedComment.pointX}`} · {openedComment.comments.length} comment(s)</b>
+                <button type="button" onClick={() => setOpenedCommentKey(null)} aria-label="Close comments" style={{ background: "none", border: "none", cursor: "pointer", fontWeight: 800 }}>×</button>
+              </div>
+              {openedComment.comments.map((comment, index) => <div key={`${comment.date}-${index}`} style={{ marginBottom: "7px", borderTop: "1px solid #eee4ca", paddingTop: "4px" }}>
+                <b>{comment.date}</b><div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{comment.text}</div>
+              </div>)}
+            </div>
+          </foreignObject>;
+        })() : null}
+
+        {activeHoverX !== null ? (
+          <line
+            x1={x(activeHoverX)}
+            x2={x(activeHoverX)}
+            y1={top}
+            y2={top + plotHeight}
+            stroke="#5f7168"
+            strokeDasharray="4 5"
+            pointerEvents="none"
+          />
+        ) : null}
+
+        <text
+          x={left + plotWidth / 2}
+          y={height - 18}
+          textAnchor="middle"
+          fill="#50645a"
+          fontSize="11"
+          fontWeight="750"
+        >
+          Age in {showDaily ? "days" : "weeks"}
+        </text>
+      </svg>
+
+      {comparisonMetric && <div className="comparison-legend" aria-live="polite">
+        <span style={{color:"#1677d2"}}>━━ Current flock</span>
+        <span style={{color:"#008b86"}}>━━ {comparisonLabel}</span>
+        <span>Metric: {METRICS.find(m=>m.key===comparisonMetric)?.shortLabel}</span>
+        {activeHoverX !== null && (()=>{
+          const metric = METRICS.find(m=>m.key===comparisonMetric)!;
+          const nearest = comparisonPoints.length ? comparisonPoints.reduce((best,p)=>Math.abs(p.x-activeHoverX)<Math.abs(best.x-activeHoverX)?p:best) : null;
+          const other = nearest ? metric.actual(nearest.row) : null;
+          const current = nearestPoint ? metric.actual(nearestPoint.row) : null;
+          return <span>{`Current ${current === null ? "—" : current.toFixed(metric.decimals)} | ${comparisonLabel} ${other === null ? "—" : other.toFixed(metric.decimals)} | Δ ${current===null||other===null?"—":(current-other).toFixed(metric.decimals)} ${metric.unit}`}</span>;
+        })()}
+      </div>}
+      <div className="legend" aria-label="Graph metric controls">
+        {METRICS.map((metric) => {
+          const active = selectedMetrics.includes(metric.key);
+
+          return (
+            <button
+              key={metric.key}
+              type="button"
+              className={active ? "active" : "inactive"}
+              onClick={() => onToggleMetric(metric.key)}
+              title={`${active ? "Hide" : "Show"} ${metric.shortLabel}`}
+            >
+              <span
+                className="solid"
+                style={{ background: metric.colour }}
+              />
+              {metric.shortLabel} actual
+              <span
+                className="dashed"
+                style={{ borderColor: metric.colour }}
+              />
+              {metric.key === "water"
+                ? "standard unavailable"
+                : "standard"}
+            </button>
+          );
+        })}
+      </div>
+
+      <style jsx>{`
+        .performance-flow-reveal {
+          transform-box: fill-box;
+          transform-origin: left center;
+          animation: ovicore-chart-flow 1.05s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        @keyframes ovicore-chart-flow {
+          from { transform: scaleX(0); }
+          to { transform: scaleX(1); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .performance-flow-reveal { animation: none; }
+        }
+        .comparison-legend{display:flex;flex-wrap:wrap;gap:14px;align-items:center;font-size:11px;font-weight:800;color:#34594b;padding:5px 8px;background:#f3faf8;border-radius:7px}
+        .chart-wrap {
+          width: 100%;
+          min-height: 0;
+          display: grid;
+          grid-template-rows: auto auto auto;
+          align-content: start;
+          gap: 4px;
+          overflow: hidden;
+        }
+
+        .hover-banner {
+          min-height: 39px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 5px 8px;
+          border: 1px solid #e0e9e4;
+          border-radius: 9px;
+          background: #fbfdfc;
+          color: #607269;
+          overflow: hidden;
+        }
+
+        .hover-banner.visible {
+          border-color: #cfe2d7;
+          background: #f8fcfa;
+          box-shadow: 0 3px 10px rgba(19, 70, 51, 0.05);
+        }
+
+        .hover-banner-placeholder {
+          color: #8a9891;
+          font-size: 11px;
+          font-weight: 700;
+        }
+
+        .hover-banner-age {
+          flex: 0 0 auto;
+          display: grid;
+          gap: 1px;
+          padding-right: 9px;
+          border-right: 1px solid #e2ebe6;
+        }
+
+        .hover-banner-age strong {
+          color: #173f2d;
+          font-size: 12px;
+          line-height: 1.1;
+        }
+
+        .hover-banner-age span {
+          color: #7a8981;
+          font-size: 10px;
+          line-height: 1.1;
+        }
+
+        .hover-banner-metrics {
+          min-width: 0;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex: 1 1 auto;
+          overflow-x: auto;
+        }
+
+        .hover-metric {
+          min-width: 0;
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+          white-space: nowrap;
+        }
+
+        .hover-metric i {
+          width: 6px;
+          height: 6px;
+          flex: 0 0 auto;
+          border-radius: 50%;
+        }
+
+        .hover-metric b {
+          color: #486157;
+          font-size: 10px;
+        }
+
+        .hover-metric em {
+          color: #173f2d;
+          font-size: 11px;
+          font-style: normal;
+          font-weight: 850;
+        }
+
+        .hover-metric small {
+          color: #84928b;
+          font-size: 9px;
+        }
+
+        .hover-metric .variance {
+          padding-left: 2px;
+          font-weight: 850;
+        }
+
+        .hover-metric .variance.positive {
+          color: #16834f;
+        }
+
+        .hover-metric .variance.negative {
+          color: #d94841;
+        }
+
+        svg {
+          display: block;
+          width: 100%;
+          height: auto;
+          min-width: 0;
+          max-width: 100%;
+        }
+
+        @media (max-width: 1100px) {
+          .hover-banner {
+            align-items: flex-start;
+            flex-wrap: wrap;
+            gap: 5px 8px;
+          }
+
+          .hover-banner-metrics {
+            flex-wrap: wrap;
+            overflow: visible;
+            gap: 4px 8px;
+          }
+
+
+        }
+
+        .legend {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 4px;
+          margin-top: 4px;
+        }
+
+        .legend button {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 5px 8px;
+          border: 1px solid #e0e9e4;
+          border-radius: 999px;
+          background: #ffffff;
+          color: #607269;
+          font-size: 11px;
+          font-weight: 750;
+          cursor: pointer;
+        }
+
+        .legend button.inactive {
+          opacity: 0.38;
+          filter: grayscale(0.55);
+        }
+
+        .legend button.active {
+          border-color: #c8ddd2;
+          box-shadow: 0 2px 6px rgba(19, 70, 51, 0.05);
+        }
+
+        .solid {
+          width: 16px;
+          height: 3px;
+          border-radius: 99px;
+        }
+
+        .dashed {
+          width: 16px;
+          border-top: 2px dashed;
+        }
+      `}</style>
+    </div>
+  );
+}
+
+export default function CommercialLayerPerformancePage() {
+  return (
+    <Suspense fallback={null}>
+      <CommercialLayerPerformanceContent />
+    </Suspense>
+  );
+}
