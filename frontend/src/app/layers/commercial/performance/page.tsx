@@ -1513,139 +1513,6 @@ function ProfessionalLayerChart({
 
   return (
     <div className="chart-wrap">
-      <div
-        className={
-          activeHoverX !== null
-            ? "hover-banner visible"
-            : "hover-banner"
-        }
-        aria-live="polite"
-      >
-        {activeHoverX !== null ? (
-          <>
-            <div className="hover-banner-age">
-              <strong>
-                {showDaily
-                  ? `Day ${activeHoverX.toFixed(0)}`
-                  : `Week ${Math.round(
-                      activeHoverX / (showDaily ? 7 : 1),
-                    )}`}
-              </strong>
-              <span>
-                {nearestPoint
-                  ? nearestPoint.row.entry_date
-                  : "ISA Brown Alternative"}
-              </span>
-            </div>
-
-            <div className="hover-banner-metrics">
-              {activeMetrics.map((metric) => {
-                const actual = nearestPoint
-                  ? metric.actual(nearestPoint.row)
-                  : null;
-
-                const ageWeeks = nearestPoint
-                  ? nearestPoint.row.age_weeks ??
-                    nearestPoint.x /
-                      (showDaily ? 7 : 1)
-                  : nearestStandardPoint?.standard.ageWeeks ??
-                    activeHoverX /
-                      (showDaily ? 7 : 1);
-
-                const apiStandard = nearestPoint
-                  ? metric.standard(nearestPoint.row)
-                  : null;
-
-                const standard = apiStandard ??
-                  (metric.key !== "water"
-                    ? isaStandardValue(
-                        metric.key,
-                        nearestIsaStandard(ageWeeks),
-                      )
-                    : null);
-
-                const variance =
-                  actual !== null &&
-                  standard !== null
-                    ? actual - standard
-                    : null;
-
-                return (
-                  <span
-                    key={metric.key}
-                    className="hover-metric"
-                  >
-                    <i
-                      style={{
-                        background: metric.colour,
-                      }}
-                    />
-                    <b>{metric.shortLabel}</b>
-
-                    {nearestPoint ? (
-                      <>
-                        <em>
-                          {actual === null
-                            ? "—"
-                            : `${actual.toFixed(
-                                metric.decimals,
-                              )}${
-                                metric.unit
-                                  ? ` ${metric.unit}`
-                                  : ""
-                              }`}
-                        </em>
-                        {standard !== null ? (
-                          <small>
-                            Std{" "}
-                            {standard.toFixed(
-                              metric.decimals,
-                            )}
-                          </small>
-                        ) : null}
-                        {variance !== null ? (
-                          <small
-                            className={
-                              variance > 0
-                                ? "variance positive"
-                                : variance < 0
-                                  ? "variance negative"
-                                  : "variance"
-                            }
-                          >
-                            {variance > 0 ? "+" : ""}
-                            {variance.toFixed(
-                              metric.decimals,
-                            )}
-                          </small>
-                        ) : null}
-                      </>
-                    ) : (
-                      <em>
-                        {standard === null
-                          ? "No standard"
-                          : `${standard.toFixed(
-                              metric.decimals,
-                            )}${
-                              metric.unit
-                                ? ` ${metric.unit}`
-                                : ""
-                            }`}
-                      </em>
-                    )}
-                  </span>
-                );
-              })}
-            </div>
-
-          </>
-        ) : (
-          <span className="hover-banner-placeholder">
-            Hover over the graph for flock values
-          </span>
-        )}
-      </div>
-
       <svg
         viewBox={`0 0 ${width} ${height}`}
         preserveAspectRatio="xMidYMin meet"
@@ -2087,6 +1954,75 @@ function ProfessionalLayerChart({
           />
         ) : null}
 
+        {/* Compact in-graph tooltip: same actual / standard / variance as the former top hover bar. */}
+        {activeHoverX !== null && (nearestPoint || nearestStandardPoint) ? (() => {
+          const tooltipWidth = 316;
+          const tooltipHeight = 60 + activeMetrics.length * 27;
+          const hoverPixelX = x(activeHoverX);
+          const tooltipX = hoverPixelX + tooltipWidth + 20 > left + plotWidth
+            ? Math.max(left + 8, hoverPixelX - tooltipWidth - 16)
+            : hoverPixelX + 16;
+          const tooltipY = top + 14;
+          const ageWeeks = nearestPoint
+            ? (nearestPoint.row.age_weeks ?? nearestPoint.x / (showDaily ? 7 : 1))
+            : (nearestStandardPoint?.standard.ageWeeks ?? activeHoverX / (showDaily ? 7 : 1));
+          return (
+            <foreignObject
+              x={tooltipX}
+              y={tooltipY}
+              width={tooltipWidth}
+              height={tooltipHeight}
+              pointerEvents="none"
+              style={{ overflow: "visible" }}
+            >
+              <div xmlns="http://www.w3.org/1999/xhtml" style={{
+                boxSizing: "border-box", width: "100%", height: "100%",
+                background: "rgba(255,255,255,0.97)",
+                border: "1px solid #dbe7e1", borderRadius: 12,
+                boxShadow: "0 10px 30px rgba(15,50,36,0.15)",
+                padding: "10px 12px", fontFamily: "system-ui, sans-serif",
+                color: "#173f2d", overflow: "hidden",
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: 7 }}>
+                  <strong style={{ fontSize: 13 }}>
+                    {showDaily ? `Day ${Math.round(activeHoverX)}` : `Week ${Math.round(activeHoverX)}`}
+                  </strong>
+                  <span style={{ color: "#73877d", fontSize: 10 }}>
+                    {nearestPoint?.row.entry_date ?? "ISA Brown Alternative"}
+                  </span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 66px 58px 57px", gap: 5, fontSize: 9, color: "#778a80", marginBottom: 4 }}>
+                  <span>Metric</span><span style={{ textAlign: "right" }}>Actual</span>
+                  <span style={{ textAlign: "right" }}>Std</span><span style={{ textAlign: "right" }}>Δ</span>
+                </div>
+                {activeMetrics.map((metric) => {
+                  const actual = nearestPoint ? metric.actual(nearestPoint.row) : null;
+                  const standard = (nearestPoint ? metric.standard(nearestPoint.row) : null) ??
+                    (metric.key === "water" ? null : isaStandardValue(metric.key, nearestIsaStandard(ageWeeks)));
+                  const delta = actual !== null && standard !== null ? actual - standard : null;
+                  return (
+                    <div key={metric.key} style={{ display: "grid", gridTemplateColumns: "1fr 66px 58px 57px", alignItems: "center", gap: 5, minHeight: 27, fontSize: 10, borderTop: "1px solid #f0f4f2" }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0, fontWeight: 650, whiteSpace: "nowrap" }}>
+                        <i style={{ width: 7, height: 7, flexShrink: 0, background: metric.colour, borderRadius: "50%" }} />
+                        {metric.shortLabel}
+                      </span>
+                      <strong style={{ textAlign: "right", color: metric.colour, whiteSpace: "nowrap" }}>
+                        {actual === null ? "—" : actual.toFixed(metric.decimals)}
+                      </strong>
+                      <span style={{ textAlign: "right", color: "#75877e" }}>
+                        {standard === null ? "—" : standard.toFixed(metric.decimals)}
+                      </span>
+                      <strong style={{ textAlign: "right", color: delta === null ? "#75877e" : delta < 0 ? "#d94841" : delta > 0 ? "#148452" : "#75877e" }}>
+                        {delta === null ? "—" : `${delta > 0 ? "+" : ""}${delta.toFixed(metric.decimals)}`}
+                      </strong>
+                    </div>
+                  );
+                })}
+              </div>
+            </foreignObject>
+          );
+        })() : null}
+
         <text
           x={left + plotWidth / 2}
           y={height - 18}
@@ -2158,7 +2094,7 @@ function ProfessionalLayerChart({
           width: 100%;
           min-height: 0;
           display: grid;
-          grid-template-rows: auto auto auto;
+          grid-template-rows: auto auto;
           align-content: start;
           gap: 4px;
           overflow: hidden;
