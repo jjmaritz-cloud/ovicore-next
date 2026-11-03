@@ -692,16 +692,6 @@ function CommercialLayerPerformanceContent() {
             </select>
           </label>
 
-          <label className="daily-toggle">
-            <input
-              type="checkbox"
-              checked={showDaily}
-              onChange={(event) =>
-                setShowDaily(event.target.checked)
-              }
-            />
-            Show daily
-          </label>
         </div>
 
         <p className="selection-caption">
@@ -748,6 +738,14 @@ function CommercialLayerPerformanceContent() {
           </div>
 
           <div className="chart-head-actions">
+            <label className="comments-toggle" title="Switch between daily and weekly graph data">
+              <input
+                type="checkbox"
+                checked={showDaily}
+                onChange={(event) => setShowDaily(event.target.checked)}
+              />
+              Show daily
+            </label>
             <label className="comments-toggle" title="Show or hide daily comment markers on the graph">
               <input
                 type="checkbox"
@@ -813,7 +811,11 @@ function CommercialLayerPerformanceContent() {
                 </span>
               </div>
 
-              <label className="comments-toggle" style={{ marginLeft: "auto" }}>
+              <label className="comments-toggle" style={{ marginLeft: "auto" }} title="Switch between daily and weekly graph data">
+                <input type="checkbox" checked={showDaily} onChange={(event) => setShowDaily(event.target.checked)} />
+                Show daily
+              </label>
+              <label className="comments-toggle">
                 <input type="checkbox" checked={showComments} onChange={(event) => setShowComments(event.target.checked)} />
                 Show comments
               </label>
@@ -896,18 +898,10 @@ function CommercialLayerPerformanceContent() {
 
         .range-row {
           display: grid;
-          grid-template-columns: minmax(260px, 1fr) auto;
+          grid-template-columns: minmax(260px, 1fr);
           align-items: end;
           gap: 10px;
           margin-top: 4px;
-        }
-
-        .daily-toggle {
-          display: flex;
-          align-items: center;
-          gap: 7px;
-          min-height: 32px;
-          white-space: nowrap;
         }
 
         .selection-caption {
