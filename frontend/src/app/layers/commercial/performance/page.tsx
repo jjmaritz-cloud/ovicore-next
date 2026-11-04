@@ -403,6 +403,7 @@ function CommercialLayerPerformanceContent() {
     useState<"laying" | "full">("laying");
   const [showDaily, setShowDaily] = useState(false);
   const [showFeedStages, setShowFeedStages] = useState(false);
+  const [showStandards, setShowStandards] = useState(true);
   const [showComments, setShowComments] = useState(false);
   const [compareId, setCompareId] = useState<number | "">("");
   const [comparisonRows, setComparisonRows] = useState<PerformanceRow[]>([]);
@@ -755,6 +756,14 @@ function CommercialLayerPerformanceContent() {
               />
               Show feed stages
             </label>
+            <label className="comments-toggle" title="Show or hide the dashed breed-standard lines">
+              <input
+                type="checkbox"
+                checked={showStandards}
+                onChange={(event) => setShowStandards(event.target.checked)}
+              />
+              Show standards
+            </label>
             <label className="comments-toggle" title="Show or hide daily comment markers on the graph">
               <input
                 type="checkbox"
@@ -799,6 +808,7 @@ function CommercialLayerPerformanceContent() {
               selectedMetrics={selectedMetrics}
               showDaily={showDaily}
               showFeedStages={showFeedStages}
+              showStandards={showStandards}
               showComments={showComments}
               onToggleMetric={toggleMetric}
             />
@@ -829,6 +839,10 @@ function CommercialLayerPerformanceContent() {
                 <input type="checkbox" checked={showFeedStages} onChange={(event) => setShowFeedStages(event.target.checked)} />
                 Show feed stages
               </label>
+              <label className="comments-toggle" title="Show or hide the dashed breed-standard lines">
+                <input type="checkbox" checked={showStandards} onChange={(event) => setShowStandards(event.target.checked)} />
+                Show standards
+              </label>
               <label className="comments-toggle">
                 <input type="checkbox" checked={showComments} onChange={(event) => setShowComments(event.target.checked)} />
                 Show comments
@@ -851,6 +865,7 @@ function CommercialLayerPerformanceContent() {
                 selectedMetrics={selectedMetrics}
                 showDaily={showDaily}
                 showFeedStages={showFeedStages}
+                showStandards={showStandards}
                 showComments={showComments}
                 onToggleMetric={toggleMetric}
                 expanded
@@ -1206,6 +1221,7 @@ function ProfessionalLayerChart({
   selectedMetrics,
   showDaily,
   showFeedStages,
+  showStandards,
   showComments,
   onToggleMetric,
   expanded = false,
@@ -1217,6 +1233,7 @@ function ProfessionalLayerChart({
   selectedMetrics: MetricKey[];
   showDaily: boolean;
   showFeedStages: boolean;
+  showStandards: boolean;
   showComments: boolean;
   onToggleMetric: (key: MetricKey) => void;
   expanded?: boolean;
@@ -1823,7 +1840,7 @@ function ProfessionalLayerChart({
 
           return (
             <g key={metric.key}>
-              {standardLinePoints ? (
+              {showStandards && standardLinePoints ? (
                 <polyline
                   points={standardLinePoints}
                   fill="none"
@@ -1889,7 +1906,7 @@ function ProfessionalLayerChart({
               );
             })
           : null}
-        {!nearestPoint && nearestStandardPoint
+        {showStandards && !nearestPoint && nearestStandardPoint
           ? activeMetrics.map((metric) => {
               const value = isaStandardValue(
                 metric.key,
@@ -2078,13 +2095,12 @@ function ProfessionalLayerChart({
                 style={{ background: metric.colour }}
               />
               {metric.shortLabel} actual
-              <span
-                className="dashed"
-                style={{ borderColor: metric.colour }}
-              />
-              {metric.key === "water"
-                ? "standard unavailable"
-                : "standard"}
+              {showStandards ? (
+                <>
+                  <span className="dashed" style={{ borderColor: metric.colour }} />
+                  {metric.key === "water" ? "standard unavailable" : "standard"}
+                </>
+              ) : null}
             </button>
           );
         })}
