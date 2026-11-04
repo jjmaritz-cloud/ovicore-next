@@ -402,6 +402,7 @@ function CommercialLayerPerformanceContent() {
   const [ageRange, setAgeRange] =
     useState<"laying" | "full">("laying");
   const [showDaily, setShowDaily] = useState(false);
+  const [showFeedStages, setShowFeedStages] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [compareId, setCompareId] = useState<number | "">("");
   const [comparisonRows, setComparisonRows] = useState<PerformanceRow[]>([]);
@@ -746,6 +747,14 @@ function CommercialLayerPerformanceContent() {
               />
               Show daily
             </label>
+            <label className="comments-toggle" title="Show or hide feed stage background colours and headers">
+              <input
+                type="checkbox"
+                checked={showFeedStages}
+                onChange={(event) => setShowFeedStages(event.target.checked)}
+              />
+              Show feed stages
+            </label>
             <label className="comments-toggle" title="Show or hide daily comment markers on the graph">
               <input
                 type="checkbox"
@@ -789,6 +798,7 @@ function CommercialLayerPerformanceContent() {
               comparisonMetric={compareId !== "" ? compareMetric : null}
               selectedMetrics={selectedMetrics}
               showDaily={showDaily}
+              showFeedStages={showFeedStages}
               showComments={showComments}
               onToggleMetric={toggleMetric}
             />
@@ -815,6 +825,10 @@ function CommercialLayerPerformanceContent() {
                 <input type="checkbox" checked={showDaily} onChange={(event) => setShowDaily(event.target.checked)} />
                 Show daily
               </label>
+              <label className="comments-toggle" title="Show or hide feed stage background colours and headers">
+                <input type="checkbox" checked={showFeedStages} onChange={(event) => setShowFeedStages(event.target.checked)} />
+                Show feed stages
+              </label>
               <label className="comments-toggle">
                 <input type="checkbox" checked={showComments} onChange={(event) => setShowComments(event.target.checked)} />
                 Show comments
@@ -836,6 +850,7 @@ function CommercialLayerPerformanceContent() {
                 comparisonMetric={compareId !== "" ? compareMetric : null}
                 selectedMetrics={selectedMetrics}
                 showDaily={showDaily}
+                showFeedStages={showFeedStages}
                 showComments={showComments}
                 onToggleMetric={toggleMetric}
                 expanded
@@ -1190,6 +1205,7 @@ function ProfessionalLayerChart({
   comparisonMetric,
   selectedMetrics,
   showDaily,
+  showFeedStages,
   showComments,
   onToggleMetric,
   expanded = false,
@@ -1200,6 +1216,7 @@ function ProfessionalLayerChart({
   comparisonMetric: MetricKey | null;
   selectedMetrics: MetricKey[];
   showDaily: boolean;
+  showFeedStages: boolean;
   showComments: boolean;
   onToggleMetric: (key: MetricKey) => void;
   expanded?: boolean;
@@ -1232,7 +1249,7 @@ function ProfessionalLayerChart({
   const height = expanded ? 660 : 455;
   const left = 72;
   const right = 160;
-  const top = 38;
+  const top = showFeedStages ? 38 : 12;
   const bottom = 58;
   const plotWidth = width - left - right;
   const plotHeight = height - top - bottom;
@@ -1542,14 +1559,16 @@ function ProfessionalLayerChart({
           fill="#fbfdfc"
         />
 
-        {!showDaily &&
+        {showFeedStages &&
           LIFE_STAGES.map((band) => {
+            const start = showDaily ? band.start * 7 : band.start;
+            const end = showDaily ? band.end * 7 : band.end;
             const bandStart = Math.max(
-              band.start,
+              start,
               minX,
             );
             const bandEnd = Math.min(
-              band.end,
+              end,
               maxX,
             );
 
