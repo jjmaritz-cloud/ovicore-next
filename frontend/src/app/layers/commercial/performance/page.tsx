@@ -768,7 +768,7 @@ function CommercialLayerPerformanceContent() {
               ) : null}
             </div>
             <p>
-              {viewMode === "compare" ? "Selected metrics share one graph, aligned by flock age." : "Solid lines show actual performance. Dashed lines show the applicable standard."}
+              {viewMode === "compare" ? "Solid lines show each flock; dashed lines show standards. Hover to compare values at the same age." : "Solid lines show actual performance. Dashed lines show the applicable standard."}
             </p>
           </div>
 
