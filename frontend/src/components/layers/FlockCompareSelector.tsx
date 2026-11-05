@@ -83,7 +83,7 @@ export default function FlockCompareSelector({
       <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
         {metrics.map(m => <button type="button" key={m.key} onClick={() => toggleMetric(m.key)} aria-pressed={selectedMetricKeys.includes(m.key)} style={{ ...button, background: selectedMetricKeys.includes(m.key) ? "#e1f3ed" : "#fff", borderColor: selectedMetricKeys.includes(m.key) ? "#42a184" : "#cfded9" }}>{selectedMetricKeys.includes(m.key) ? "✓ " : "+ "}{m.label}</button>)}
       </div>
-      <p style={{ fontSize: 11, color: "#64746f", margin: "9px 0 0" }}>Each selected metric displays in its own age-aligned chart. Standards can be hidden above the charts.</p>
+      <p style={{ fontSize: 11, color: "#64746f", margin: "9px 0 0" }}>All selected metrics appear on the same graph. Click a metric to hide/show it; click a flock label on the chart to hide/show that flock.</p>
     </>}
     {open && <div role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) setOpen(false); }} style={{ position: "fixed", inset: 0, background: "rgba(17,34,31,.52)", display: "grid", placeItems: "center", padding: 15, zIndex: 9999 }}>
       <div role="dialog" aria-modal="true" aria-label="Add comparison flocks" style={{ background: "white", borderRadius: 12, padding: 18, width: "min(760px, 100%)", maxHeight: "85vh", overflowY: "auto", boxShadow: "0 20px 60px #0003" }}>

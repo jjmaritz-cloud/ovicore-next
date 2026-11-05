@@ -2,123 +2,127 @@
 
 import { useMemo, useState } from "react";
 
-export type ComparisonValueRow = {
-  ageDays: number;
-  value: number | null;
-  standard: number | null;
-};
-export type ComparisonSeries = {
-  id: number;
-  label: string;
-  rows: ComparisonValueRow[];
-};
+export type ComparisonValueRow = { ageDays: number; value: number | null; standard: number | null };
+export type ComparisonSeries = { id: number; label: string; rows: ComparisonValueRow[] };
 export type ComparisonMetricChart = {
-  key: string;
-  label: string;
-  unit: string;
-  decimals: number;
+  key: string; label: string; unit: string; decimals: number;
   series: ComparisonSeries[];
   reference: { ageDays: number; value: number }[];
 };
 
-const PALETTE = ["#1677d2", "#009b91", "#ab65c7", "#e7a23d", "#d66c72"];
+const COLORS = ["#1677d2", "#009b91", "#ab65c7", "#d28b19", "#d65d70"];
+const DASHES = ["", "9 5", "3 5", "12 4 3 4", "2 3", "15 5", "6 3 2 3"];
+type Point = { age: number; value: number | null };
 
-function MetricChart({ metric, daily, standards, range }: {
-  metric: ComparisonMetricChart;
-  daily: boolean;
-  standards: boolean;
-  range: "laying" | "full";
+// One shared biological-age X axis, one independent Y scale for each visible metric.
+// Flock identity is encoded by colour; metric identity by stroke pattern.
+export default function FlockComparisonCharts({ charts, daily, standards, range }: {
+  charts: ComparisonMetricChart[]; daily: boolean; standards: boolean; range: "laying" | "full";
 }) {
-  const [hoverAge, setHoverAge] = useState<number | null>(null);
-  const chart = useMemo(() => {
-    const bucketSize = daily ? 1 : 7;
-    const getBucket = (day: number) => daily ? Math.round(day) : Math.floor(day / 7);
-    const aggregated = metric.series.map(s => {
-      const groups = new Map<number, ComparisonValueRow[]>();
-      s.rows.forEach(row => {
-        if (!Number.isFinite(row.ageDays)) return;
-        const key = getBucket(row.ageDays);
-        groups.set(key, [...(groups.get(key) ?? []), row]);
+  const [hiddenFlocks, setHiddenFlocks] = useState<number[]>([]);
+  const [hover, setHover] = useState<number | null>(null);
+  const [hiddenReference, setHiddenReference] = useState(false);
+  const flockList = useMemo(() => charts[0]?.series.map((s, index) => ({id:s.id,label:s.label,color:COLORS[index % COLORS.length]})) ?? [], [charts]);
+  const plotted = useMemo(() => charts.map(metric => {
+    const bucket = (day:number) => daily ? Math.round(day) : Math.floor(day / 7);
+    const cumulative = metric.key === "mortality" || metric.key === "eggsPerBird";
+    const series = metric.series.map(s => {
+      const bins = new Map<number, ComparisonValueRow[]>();
+      for (const row of s.rows) {
+        if (!Number.isFinite(row.ageDays)) continue;
+        const k = bucket(row.ageDays);
+        bins.set(k, [...(bins.get(k) ?? []), row]);
+      }
+      const data: Point[] = [...bins.entries()].sort(([a],[b])=>a-b).map(([age, entries]) => {
+        const sorted = entries.filter(e=>e.value!==null && Number.isFinite(e.value)).sort((a,b)=>a.ageDays-b.ageDays);
+        return {age, value:sorted.length ? (cumulative ? sorted[sorted.length-1].value : sorted.reduce((sum,r)=>sum+(r.value ?? 0),0)/sorted.length) : null};
       });
-      // Production, egg weight, feed, water and bodyweight are weekly means.
-      // Cumulative measurements use the last valid value of each biological week.
-      const cumulative = metric.key === "mortality" || metric.key === "eggsPerBird";
-      const summarise = (group: ComparisonValueRow[], field: "value" | "standard") => {
-        const valid = group.filter(row => row[field] !== null).sort((a,b) => a.ageDays - b.ageDays);
-        if (!valid.length) return null;
-        return cumulative ? valid[valid.length - 1][field] : valid.reduce((sum, row) => sum + (row[field] ?? 0), 0) / valid.length;
-      };
-      return { ...s, values: [...groups].sort(([a],[b]) => a-b).map(([age, group]) => ({ age, value: summarise(group, "value"), standard: summarise(group, "standard") })) };
+      return {...s,data};
     });
-    const reference = metric.reference.map(p => ({age: getBucket(p.ageDays), value: p.value}));
-    const allAges = [...aggregated.flatMap(s => s.values.map(v=>v.age)), ...(standards ? reference.map(p=>p.age) : [])];
-    const min = range === "laying" ? (daily ? 119 : 17) : 0;
-    const max = Math.max(min + 1, ...allAges, daily ? 700 : 100);
-    const vals = [...aggregated.flatMap(s => s.values.flatMap(p => [p.value, ...(standards ? [p.standard] : [])])), ...(standards ? reference.map(p=>p.value) : [])].filter((v):v is number => v !== null && Number.isFinite(v));
-    const low = Math.min(0, ...vals);
-    const high = Math.max(1, ...vals);
-    const padding = Math.max((high - low) * .10, 0.5);
-    return { aggregated, reference, min, max, low: Math.max(0, low-padding), high: high+padding, bucketSize };
-  }, [metric, daily, standards, range]);
-  const W = 1080, H = 340, L = 65, R = 20, T = 18, B = 48;
-  const plotW = W-L-R, plotH = H-T-B;
-  const px = (age:number) => L + (age-chart.min) / (chart.max-chart.min) * plotW;
-  const py = (value:number) => T + plotH - (value-chart.low) / (chart.high-chart.low) * plotH;
-  const pathSegments = (values: {age:number;value:number|null}[]) => {
-    const paths:string[]=[]; let segment:string[]=[]; let previous:number|null=null;
-    const flush=()=>{if(segment.length>1) paths.push(segment.join(" "));segment=[];};
-    for(const p of values) {
-      if(p.value===null || !Number.isFinite(p.value) || p.age<chart.min || p.age>chart.max){flush();previous=null;continue;}
-      if(previous!==null && p.age-previous> (daily ? 3 : 2)) flush();
-      segment.push(`${px(p.age).toFixed(2)},${py(p.value).toFixed(2)}`);
-      previous=p.age;
+    const reference:Point[] = metric.reference.map(r=>({age:bucket(r.ageDays),value:r.value}));
+    // If a breed reference is not present, use the main flock's API standard.
+    if (!reference.length && metric.series[0]) {
+      const bins = new Map<number,ComparisonValueRow[]>();
+      for (const r of metric.series[0].rows) {
+        const k=bucket(r.ageDays);bins.set(k,[...(bins.get(k)??[]),r]);
+      }
+      for (const [age, rows] of [...bins.entries()].sort(([a],[b])=>a-b)) {
+        const v=rows.filter(r=>r.standard!==null && Number.isFinite(r.standard)).sort((a,b)=>a.ageDays-b.ageDays);
+        reference.push({age,value:!v.length?null:cumulative?v[v.length-1].standard:v.reduce((sum,r)=>sum+(r.standard??0),0)/v.length});
+      }
     }
-    flush();return paths;
+    return {...metric,series,reference};
+  }),[charts,daily]);
+  const visible = plotted.map(m=>({...m,series:m.series.filter(s=>!hiddenFlocks.includes(s.id))}));
+  const allAges = visible.flatMap(m=>m.series.flatMap(s=>s.data.map(p=>p.age)));
+  const minAge=range==="laying"?(daily?119:17):0;
+  const maxAge=Math.max(minAge+1,daily?700:100,...allAges);
+  const ranges=visible.map(m=>{
+    const values=[...m.series.flatMap(s=>s.data.map(p=>p.value)),...(standards&&!hiddenReference?m.reference.map(p=>p.value):[])].filter((v):v is number=>v!==null&&Number.isFinite(v));
+    const bottom=Math.min(0,...values); const high=Math.max(1,...values);
+    const pad=Math.max((high-bottom)*.07,.5);
+    return {min:Math.max(0,bottom-pad),max:high+pad};
+  });
+  const W=1400,H=455,L=65,T=22,B=57,R=Math.max(105,visible.length*54+35);
+  const PW=W-L-R,PH=H-T-B;
+  const x=(age:number)=>L+(age-minAge)/(maxAge-minAge)*PW;
+  const y=(value:number,i:number)=>T+PH-(value-ranges[i].min)/(ranges[i].max-ranges[i].min)*PH;
+  const segments=(items:Point[],i:number)=>{
+    const result:string[]=[];let current:string[]=[];let prev:number|null=null;
+    const flush=()=>{if(current.length>1)result.push(current.join(" "));current=[];};
+    for(const p of items){
+      if(p.value===null||!Number.isFinite(p.value)||p.age<minAge||p.age>maxAge){flush();prev=null;continue;}
+      if(prev!==null&&p.age-prev>(daily?3:2))flush();
+      current.push(`${x(p.age).toFixed(2)},${y(p.value,i).toFixed(2)}`);prev=p.age;
+    }
+    flush();return result;
   };
-  const tickAges = Array.from({length:9},(_,i)=>chart.min + (chart.max-chart.min)*i/8);
-  const selectedAge = hoverAge === null ? null : (daily ? Math.round(hoverAge) : Math.floor(hoverAge));
-  const showReference = standards && metric.reference.length > 0;
-  return <div style={{border:"1px solid #dce8e2",borderRadius:12,background:"white",padding:"12px 14px",minWidth:0}}>
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:10,flexWrap:"wrap",marginBottom:6}}>
-      <strong style={{color:"#174633",fontSize:14}}>{metric.label}</strong>
-      <span style={{fontSize:11,color:"#60776b"}}>{metric.unit ? `Unit: ${metric.unit} · ` : ""}Aligned by biological age</span>
+  const tickAges=Array.from({length:10},(_,i)=>minAge+(maxAge-minAge)*i/9);
+  const hoveredAge=hover===null?null:daily?Math.round(hover):Math.round(hover);
+  const toggleFlock=(id:number)=>setHiddenFlocks(ids=>ids.includes(id)?ids.filter(v=>v!==id):[...ids,id]);
+  if(!charts.length)return <div style={{padding:20,color:"#617369"}}>Choose a metric above to display it on the graph.</div>;
+  return <div style={{border:"1px solid #dce8e2",borderRadius:12,background:"white",padding:"10px 12px",minWidth:0}}>
+    <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:8}}>
+      <strong style={{fontSize:13,color:"#164b37"}}>Flock performance comparison</strong>
+      <span style={{fontSize:10,color:"#668074"}}>One graph · Aligned by biological age · Select flocks and metrics above</span>
     </div>
-    <div style={{display:"flex",gap:13,flexWrap:"wrap",fontSize:11,marginBottom:5}}>
-      {chart.aggregated.map((s,i)=><span key={s.id} style={{color:PALETTE[i%PALETTE.length],fontWeight:750}}>━━ {s.label}</span>)}
-      {standards && <span style={{color:"#7c8995"}}>┄┄ Standard</span>}
+    <div style={{display:"flex",gap:7,flexWrap:"wrap",alignItems:"center",marginBottom:6}} aria-label="Toggle individual flock lines">
+      {flockList.map(f=><button key={f.id} type="button" onClick={()=>toggleFlock(f.id)} aria-pressed={!hiddenFlocks.includes(f.id)} title={`Show or hide ${f.label}`} style={{display:"inline-flex",alignItems:"center",gap:5,padding:"5px 9px",border:"1px solid #dce8e2",borderRadius:20,background:hiddenFlocks.includes(f.id)?"#f3f5f4":"#f9fcfb",opacity:hiddenFlocks.includes(f.id)?.4:1,cursor:"pointer",fontSize:11,fontWeight:750,color:"#214a3d"}}><span style={{width:15,height:3,background:f.color,borderRadius:2}}/>{f.label} {hiddenFlocks.includes(f.id)?"(hidden)":"✓"}</button>)}
+      {standards&&<button type="button" aria-pressed={!hiddenReference} onClick={()=>setHiddenReference(v=>!v)} style={{border:"1px solid #dce8e2",borderRadius:20,padding:"5px 9px",fontSize:11,background:"white",color:"#5b6972",opacity:hiddenReference?.45:1,cursor:"pointer"}}>┄┄ Standard {hiddenReference?"(hidden)":"✓"}</button>}
     </div>
-    <svg viewBox={`0 0 ${W} ${H}`} style={{display:"block",width:"100%",height:"auto",touchAction:"pan-y"}} role="img" aria-label={`Age-aligned ${metric.label} comparison chart`} onMouseLeave={()=>setHoverAge(null)}>
-      <rect x={L} y={T} width={plotW} height={plotH} fill="#fbfdfc" rx={8}/>
-      {Array.from({length:5},(_,i)=>{
-        const v=chart.low+(chart.high-chart.low)*i/4;
-        return <g key={i}><line x1={L} x2={W-R} y1={py(v)} y2={py(v)} stroke="#ddeae3" strokeDasharray="4 6"/><text x={L-9} y={py(v)+4} textAnchor="end" fontSize={11} fill="#587064">{v.toFixed(metric.decimals)}</text></g>;
+    <div style={{display:"flex",gap:10,flexWrap:"wrap",fontSize:10,color:"#425f51",marginBottom:4}} aria-label="Metric line styles">
+      {visible.map((m,i)=><span key={m.key} style={{display:"inline-flex",alignItems:"center",gap:4}}><svg width="26" height="10" aria-hidden="true"><line x1="0" x2="25" y1="5" y2="5" stroke="#465e54" strokeWidth="2.2" strokeDasharray={DASHES[i%DASHES.length]||undefined}/></svg>{m.label} ({m.unit||"count"})</span>)}
+    </div>
+    <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Combined flock and metric comparison aligned by flock age" style={{width:"100%",height:"auto",display:"block"}} onMouseLeave={()=>setHover(null)}>
+      <defs><clipPath id="flock-combined-plot"><rect x={L} y={T} width={PW} height={PH}/></clipPath></defs>
+      <rect x={L} y={T} width={PW} height={PH} fill="#fbfdfc" rx="8"/>
+      {Array.from({length:5},(_,i)=>T+PH*i/4).map((yy,i)=><line key={i} x1={L} x2={L+PW} y1={yy} y2={yy} stroke="#dceae3" strokeDasharray="4 7"/>)}
+      {tickAges.map((age,i)=><g key={i}><line x1={x(age)} x2={x(age)} y1={T} y2={T+PH} stroke="#e6eeea"/><text x={x(age)} y={H-28} fill="#62786b" textAnchor="middle" fontSize="11">{Math.round(age)}</text></g>)}
+      {visible.map((m,i)=>{
+        const axisX=L+PW+14+i*54; const range=ranges[i];
+        return <g key={`axis-${m.key}`}>
+          <line x1={axisX} x2={axisX} y1={T} y2={T+PH} stroke="#a4b4aa"/>
+          {[0,1,2,3,4].map(t=>{const v=range.max-(range.max-range.min)*t/4;return <text key={t} x={axisX+4} y={T+PH*t/4+4} fontSize="9" fill="#506c5c">{v.toFixed(m.decimals)}</text>;})}
+          <text x={axisX+3} y="13" fill="#456b59" fontSize="9" fontWeight="800">{m.label.slice(0,8)}</text>
+        </g>;
       })}
-      {tickAges.map((age,i)=><g key={i}><line x1={px(age)} x2={px(age)} y1={T} y2={H-B} stroke="#e7efea"/><text x={px(age)} y={H-20} fontSize={11} textAnchor="middle" fill="#65796e">{Math.round(age)}</text></g>)}
-      {showReference && pathSegments(chart.reference).map((p,i)=><polyline key={`ref-${i}`} points={p} fill="none" stroke="#7c8995" strokeWidth={2} strokeDasharray="7 6" opacity={.78}/>)}
-      {standards && !showReference && chart.aggregated[0]?.values && pathSegments(chart.aggregated[0].values.map(p=>({age:p.age,value:p.standard}))).map((p,i)=><polyline key={`std-${i}`} points={p} fill="none" stroke="#7c8995" strokeWidth={2} strokeDasharray="7 6" opacity={.78}/>)}
-      {chart.aggregated.map((s,i)=>pathSegments(s.values).map((path,k)=><polyline key={`${s.id}-${k}`} points={path} fill="none" stroke={PALETTE[i%PALETTE.length]} strokeWidth={3.3} strokeLinecap="round" strokeLinejoin="round"/>))}
-      {selectedAge!==null && <line x1={px(selectedAge)} x2={px(selectedAge)} y1={T} y2={H-B} stroke="#64796d" strokeDasharray="5 5"/>}
-      <rect x={L} y={T} width={plotW} height={plotH} fill="transparent" style={{cursor:"crosshair"}} onMouseMove={e=>{
-        const svg=e.currentTarget.ownerSVGElement;
-        if(!svg) return;
-        const bounds=svg.getBoundingClientRect();
-        const x=(e.clientX-bounds.left)*W/bounds.width;
-        setHoverAge(chart.min+Math.max(0,Math.min(1,(x-L)/plotW))*(chart.max-chart.min));
-      }}/>
-      <text x={L+plotW/2} y={H-3} fontSize={11} fontWeight={750} textAnchor="middle" fill="#587064">Age in {daily?"days":"weeks"}</text>
+      <g clipPath="url(#flock-combined-plot)">
+        {visible.map((m,i)=><g key={m.key}>
+          {standards&&!hiddenReference&&segments(m.reference,i).map((path,k)=><polyline key={`standard-${k}`} points={path} fill="none" stroke="#8e9da5" strokeDasharray="5 5" strokeWidth="1.7" opacity=".65"/>)}
+          {m.series.map(s=>{
+            const fi=flockList.findIndex(f=>f.id===s.id);
+            return <g key={s.id}>{segments(s.data,i).map((path,k)=><polyline key={k} points={path} stroke={COLORS[Math.max(0,fi)%COLORS.length]} strokeWidth={i===0?3.1:2.5} strokeDasharray={DASHES[i%DASHES.length]||undefined} strokeLinecap="round" strokeLinejoin="round" fill="none" opacity={i===0?1:.9}/>)}</g>;
+          })}
+        </g>)}
+      </g>
+      {hoveredAge!==null&&<line x1={x(hoveredAge)} x2={x(hoveredAge)} y1={T} y2={T+PH} stroke="#506c5c" strokeDasharray="4 4" pointerEvents="none"/>}
+      <rect x={L} y={T} width={PW} height={PH} fill="transparent" style={{cursor:"crosshair"}} onMouseMove={e=>{const b=e.currentTarget.ownerSVGElement?.getBoundingClientRect();if(!b)return;const sx=(e.clientX-b.left)*W/b.width;setHover(minAge+Math.max(0,Math.min(1,(sx-L)/PW))*(maxAge-minAge));}}/>
+      <text x={L+PW/2} y={H-5} textAnchor="middle" fontSize="12" fontWeight="750" fill="#4b6758">Age in {daily?"days":"weeks"}</text>
     </svg>
-    {selectedAge!==null && <div style={{display:"flex",flexWrap:"wrap",gap:"6px 16px",background:"#f5faf8",borderRadius:7,padding:"8px 10px",fontSize:11,alignItems:"center"}}>
-      <strong>{daily?"Day":"Week"} {selectedAge}</strong>
-      {chart.aggregated.map((s,i)=>{
-        const point=s.values.find(v=>v.age===selectedAge);
-        return <span key={s.id} style={{color:PALETTE[i%PALETTE.length]}}>{s.label}: <strong>{point?.value==null?"—":point.value.toFixed(metric.decimals)}</strong></span>;
-      })}
-      {standards && <span style={{color:"#65766f"}}>Standard: <strong>{(showReference ? chart.reference.find(p=>p.age===selectedAge)?.value : chart.aggregated[0]?.values.find(p=>p.age===selectedAge)?.standard)?.toFixed(metric.decimals) ?? "—"}</strong></span>}
+    {hoveredAge!==null&&<div style={{background:"#f4faf7",borderRadius:8,padding:9,display:"flex",flexWrap:"wrap",gap:"8px 16px",alignItems:"start",fontSize:11}}>
+      <strong style={{color:"#164b37"}}>{daily?"Day":"Week"} {hoveredAge}</strong>
+      {visible.map(m=><div key={m.key} style={{display:"grid",gap:3}}><b>{m.label}</b>{m.series.map(s=>{const p=s.data.find(v=>v.age===hoveredAge);const f=flockList.find(f=>f.id===s.id);return <span key={s.id} style={{color:f?.color??"#305"}}>{s.label}: {p?.value==null?"—":p.value.toFixed(m.decimals)} {m.unit}</span>;})}</div>)}
     </div>}
+    <div style={{fontSize:10,color:"#6d8075",marginTop:5}}>Click a flock label to hide or show it. Click a metric above the graph to hide or show all flocks for that metric. Grey dashed lines show standards.</div>
   </div>;
-}
-
-export default function FlockComparisonCharts({charts,daily,standards,range}:{charts:ComparisonMetricChart[];daily:boolean;standards:boolean;range:"laying"|"full"}){
-  if(!charts.length) return <div style={{padding:20,color:"#617369"}}>Choose a metric to compare.</div>;
-  return <div style={{display:"grid",gap:12}}>{charts.map(c=><MetricChart key={c.key} metric={c} daily={daily} standards={standards} range={range}/>)}</div>;
 }
