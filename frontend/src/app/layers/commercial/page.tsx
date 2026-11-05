@@ -160,53 +160,125 @@ function CommercialOverviewContent() {
       return {t,hd:weighted(obs)};
     });
   },[active,latestComplete]);
+  const productionSpark=trend.map(t=>t.hd);
+  const feedSpark=Array.from({length:14},(_,i)=>{
+    const stamp=latestComplete-(13-i)*day;
+    return weighted(active.map(s=>({value:mean(s.rows.filter(r=>dateValue(r.entry_date)===stamp).map(r=>number(r.feed_g_bird_day))),weight:number(s.flock.birds_housed)})));
+  });
+  const coverageSpark=Array.from({length:14},(_,i)=>{
+    const stamp=latestComplete-(13-i)*day;
+    return active.length ? active.filter(s=>s.rows.some(r=>dateValue(r.entry_date)===stamp)).length/active.length*100 : null;
+  });
+    const [hoverTrend,setHoverTrend]=useState<number|null>(null);
   const points=trend.map((v,i)=>v.hd===null?null:{x:27+i*35.5,y:140-Math.max(0,Math.min(100,v.hd))*1.12}).filter((p):p is {x:number;y:number}=>p!==null);
   const path=points.map((p,i)=>`${i===0?"M":"L"}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ");
   return <div className="page-shell">
     <OviCoreSidebar menu={getSidebarMenu("layers")}/>
     <main className="main-panel">
       <OviCoreModuleHeader eyebrow="OVICORE INTELLIGENCE · COMMERCIAL LAYERS" title="Commercial Layers Overview" description="Intelligence That Drives Performance. · Farm, shed and flock performance across your permitted operations." actions={[{label:"Egg Production",href:"/layers",type:"home"}]}/>
-      <div className="overview">
-        <div className="toolbar"><div><strong>Operational overview</strong><small>7 completed days vs previous 7 · latest production records</small></div>
+      <div className="overview visual-refresh">
+        <div className="toolbar"><div className="toolbar-title"><span className="live-dot" aria-hidden="true"/><div><strong>Operational pulse</strong><small>Last 7 completed days · compared with previous 7</small></div></div>
           <div className="filters"><label>Farm <select value={farmId} onChange={e=>setFarmId(e.target.value)}><option value="all">All accessible farms</option>{farms.map(([id,name])=><option key={id} value={id}>{name}</option>)}</select></label><button type="button" onClick={reload} disabled={loading}>{loading?"Loading…":"↻ Refresh"}</button></div></div>
         {error&&<div className="warning" role="alert">{error}</div>}
         {loading&&<div className="loading" role="status">Analysing available flocks and production records…</div>}
         <section className="kpis" aria-label="Commercial Layers key indicators">
-          <Kpi name="Active flocks" value={loading?"…":integer(active.length)} note="Non-depleted flocks"/>
-          <Kpi name="Birds housed" value={loading?"…":integer(knownHoused?totalHoused:null)} note="Original placement, not live birds"/>
-          <Kpi name="HD production · 7D" value={loading?"…":hd7===null?"—":`${fmt(hd7)}%`} note={hdDelta===null?"Age/entry coverage dependent":`${hdDelta>=0?"+":""}${fmt(hdDelta)} pp vs previous 7D`}/>
-          <Kpi name="Attention required" value={loading?"…":integer(attention.size)} note="Flocks with review flags" attention={attention.size>0}/>
-          <Kpi name="Feed intake · 7D" value={loading?"…":feed7===null?"—":`${fmt(feed7)} g`} note="Per bird per day (housed-weighted)"/>
-          <Kpi name="Flocks with 7D entries" value={loading?"…":`${recent.length} / ${active.length}`} note="At least one valid completed-day record"/>
-          <Kpi name="Live closing birds" value="—" note="Requires closing-bird API field"/>
-          <Kpi name="Total eggs · latest day" value="—" note="Requires actual egg-count API field"/>
+          <Kpi name="Active flocks" value={loading?"…":integer(active.length)} note="Non-depleted flocks" icon="◉" accent="green"/>
+          <Kpi name="Birds housed" value={loading?"…":integer(knownHoused?totalHoused:null)} note="Original placement, not live birds" icon="♟" accent="green"/>
+          <Kpi name="HD production · 7D" value={loading?"…":hd7===null?"—":`${fmt(hd7)}%`} note={hdDelta===null?"Age/entry coverage dependent":`${hdDelta>=0?"+":""}${fmt(hdDelta)} pp vs previous 7D`} spark={productionSpark} icon="↗" accent="blue"/>
+          <Kpi name="Attention required" value={loading?"…":integer(attention.size)} note="Flocks with review flags" attention={attention.size>0} icon="!" accent="amber"/>
+          <Kpi name="Feed intake · 7D" value={loading?"…":feed7===null?"—":`${fmt(feed7)} g`} note="Per bird per day (housed-weighted)" spark={feedSpark} icon="≈" accent="teal"/>
+          <Kpi name="Flocks with 7D entries" value={loading?"…":`${recent.length} / ${active.length}`} note="At least one valid completed-day record" spark={coverageSpark} icon="▤" accent="purple"/>
+          <Kpi name="Live closing birds" value="—" note="Requires closing-bird API field" icon="○" accent="muted"/>
+          <Kpi name="Total eggs · latest day" value="—" note="Requires actual egg-count API field" icon="◇" accent="muted"/>
         </section>
         <div className="middle">
-          <section className="panel intelligence"><div className="panel-head"><div><span className="eyebrow">OVICORE INTELLIGENCE</span><h2>What needs attention?</h2></div><button type="button" className="subtle" onClick={()=>setExpandedInsight(v=>!v)}>{expandedInsight?"Collapse":"Expand"}</button></div>
-            {expandedInsight&&<div className="insight-list">{insights.length===0?<p className="muted">{loading?"Checking operational signals…":"No alerts triggered by the available records. This does not confirm every flock is performing normally."}</p>:insights.slice(0,8).map(i=><article key={i.id} className={`insight ${i.severity}`}><span className="dot"/><div><strong>{i.title}</strong><p>{i.detail}</p>{i.flock&&<Link href={`/layers/commercial/performance?company_id=${companyId}`}>Open Performance →</Link>}</div></article>)}{insights.length>8&&<p className="muted">+ {insights.length-8} additional insights. Filter by farm to narrow results.</p>}</div>}
+          <section className="panel intelligence"><div className="panel-head"><div><span className="eyebrow">✦ OVICORE INTELLIGENCE</span><h2>What needs attention? <span className="count-pill">{insights.filter(i=>i.severity==="high"||i.severity==="watch").length} flags</span></h2></div><button type="button" className="subtle" onClick={()=>setExpandedInsight(v=>!v)}>{expandedInsight?"Collapse":"Expand"}</button></div>
+            {expandedInsight&&<div className="insight-list">{insights.length===0?<p className="muted">{loading?"Checking operational signals…":"No alerts triggered by the available records. This does not confirm every flock is performing normally."}</p>:insights.slice(0,8).map(i=><article key={i.id} className={`insight ${i.severity}`}><span className="insight-icon" aria-hidden="true">{i.severity==="high"?"!":i.severity==="watch"?"!":i.severity==="positive"?"↗":"i"}</span><div><strong>{i.title}</strong><p>{i.detail}</p>{i.flock&&<Link href={`/layers/commercial/performance?company_id=${companyId}`}>Open Performance →</Link>}</div></article>)}{insights.length>8&&<p className="muted">+ {insights.length-8} additional insights. Filter by farm to narrow results.</p>}</div>}
             <p className="rule-note">Deterministic rules, not generative AI. Flags are indicators for review—not diagnoses or automatic treatment instructions.</p>
           </section>
           <section className="panel"><div className="panel-head"><div><span className="eyebrow">PRODUCTION TREND</span><h2>Hen-day production · 14 days</h2></div><span className="mini-pill">Housed-weighted</span></div>
-            <div className="trend"><svg role="img" aria-label="Daily production trend for the last 14 completed days" viewBox="0 0 510 162" preserveAspectRatio="none">
+            <div className="trend">{hoverTrend!==null&&trend[hoverTrend]?.hd!==null&&<div className="trend-tooltip"><strong>{new Date(trend[hoverTrend].t).toLocaleDateString("en-AU",{day:"numeric",month:"short",timeZone:"UTC"})}</strong><span>{fmt(trend[hoverTrend].hd)}% HD</span></div>}<svg onMouseLeave={()=>setHoverTrend(null)} role="img" aria-label="Daily production trend for the last 14 completed days" viewBox="0 0 510 162" preserveAspectRatio="none">
               {[28,65,102,140].map((y,i)=><g key={i}><line x1="27" y1={y} x2="492" y2={y} stroke="#dce9e2" strokeDasharray="3 5"/><text x="21" y={y+3} fill="#70867b" textAnchor="end" fontSize="9">{[100,67,33,0][i]}</text></g>)}
               {points.length>1&&<path d={path} fill="none" stroke="#0b9474" strokeWidth="3.1" strokeLinejoin="round" strokeLinecap="round"/>}
-              {points.map((p,i)=><circle key={i} cx={p.x} cy={p.y} r="2.3" fill="#0b9474"/>)}
+              {trend.map((t,i)=>t.hd===null?null:<g key={i}><circle cx={27+i*35.5} cy={140-Math.max(0,Math.min(100,t.hd))*1.12} r={hoverTrend===i?"5":"2.3"} fill={hoverTrend===i?"#ffffff":"#0b9474"} stroke="#0b9474" strokeWidth={hoverTrend===i?"2.5":"0"}/><rect x={27+i*35.5-16} y="8" width="32" height="137" fill="transparent" onMouseEnter={()=>setHoverTrend(i)}/></g>)}
               <text x="27" y="158" fontSize="10" fill="#70867b">14 days ago</text><text x="492" y="158" textAnchor="end" fontSize="10" fill="#70867b">Yesterday</text>
             </svg>{points.length<2&&<p className="muted">Not enough recorded daily production values to show a trend.</p>}</div>
             <p className="rule-note">Weighted using birds housed. This is not a true live-bird-weighted HD figure until closing-bird counts are exposed in the API.</p>
           </section>
         </div>
-        <section className="panel flock-panel"><div className="panel-head"><div><span className="eyebrow">FLOCK MONITOR</span><h2>Farm and shed performance</h2></div><div className="table-tools"><input aria-label="Search flocks" placeholder="Search farm, shed or flock" value={search} onChange={e=>setSearch(e.target.value)}/><label className="check"><input type="checkbox" checked={onlyAttention} onChange={e=>setOnlyAttention(e.target.checked)}/> Attention only</label></div></div>
-          <div className="table-wrap"><table><thead><tr><th>Farm / Shed</th><th>Flock</th><th>Age</th><th>Last entry</th><th>HD % 7D</th><th>Δ vs prior</th><th>Mort % cum</th><th>Feed g/b/d</th><th>Status</th><th></th></tr></thead><tbody>{shown.map(s=>{const cur=mean(s.last7.map(r=>number(r.production_pct)));const prev=mean(s.prior7.map(r=>number(r.production_pct)));const delta=cur!==null&&prev!==null?cur-prev:null;return <tr key={s.flock.id}><td><strong>{s.flock.farm_name}</strong><small>{s.flock.shed_name}</small></td><td>{s.flock.flock_code}</td><td>{ageOf(s.latest)}</td><td>{s.latest?.entry_date??"—"}</td><td>{cur===null?"—":`${fmt(cur)}%`}</td><td className={delta!==null&&delta<0?"negative":""}>{delta===null?"—":`${delta>0?"+":""}${fmt(delta)} pp`}</td><td>{fmt(number(s.latest?.cumulative_mortality_pct),2)}</td><td>{fmt(mean(s.last7.map(r=>number(r.feed_g_bird_day))))}</td><td><span className={`status ${attention.has(s.flock.id)?"needs-review":"normal"}`}>{attention.has(s.flock.id)?"Review":s.latest?"Recorded":"No data"}</span></td><td><Link href={`/layers/commercial/performance?company_id=${companyId}`}>View →</Link></td></tr>;})}{!shown.length&&<tr><td colSpan={10} className="muted">{loading?"Loading flock records…":"No flocks match these filters."}</td></tr>}</tbody></table></div>
+        <section className="panel flock-panel"><div className="panel-head"><div><span className="eyebrow">FLOCK MONITOR</span><h2>Farm and shed performance</h2></div><div className="table-tools"><input aria-label="Search flocks" placeholder="Search farm, shed or flock" value={search} onChange={e=>setSearch(e.target.value)}/><label className={`attention-filter ${onlyAttention?"selected":""}`}><input type="checkbox" checked={onlyAttention} onChange={e=>setOnlyAttention(e.target.checked)}/><span>⚑ Attention only</span></label></div></div>
+          <div className="table-wrap"><table><thead><tr><th>Farm / Shed</th><th>Flock</th><th>Age</th><th>Last entry</th><th>HD % 7D</th><th>7D trend</th><th>Δ vs prior</th><th>Mort % cum</th><th>Feed g/b/d</th><th>Status</th><th></th></tr></thead><tbody>{shown.map(s=>{const cur=mean(s.last7.map(r=>number(r.production_pct)));const prev=mean(s.prior7.map(r=>number(r.production_pct)));const delta=cur!==null&&prev!==null?cur-prev:null;return <tr key={s.flock.id}><td><strong>{s.flock.farm_name}</strong><small>{s.flock.shed_name}</small></td><td>{s.flock.flock_code}</td><td>{ageOf(s.latest)}</td><td>{s.latest?.entry_date??"—"}</td><td>{cur===null?"—":`${fmt(cur)}%`}</td><td><Sparkline values={s.last7.map(r=>number(r.production_pct))} width={90} height={27}/></td><td className={delta!==null&&delta<0?"negative":""}>{delta===null?"—":`${delta>0?"+":""}${fmt(delta)} pp`}</td><td>{fmt(number(s.latest?.cumulative_mortality_pct),2)}</td><td>{fmt(mean(s.last7.map(r=>number(r.feed_g_bird_day))))}</td><td><span className={`status ${attention.has(s.flock.id)?"needs-review":"normal"}`}>{attention.has(s.flock.id)?"Review":s.latest?"Recorded":"No data"}</span></td><td><Link href={`/layers/commercial/performance?company_id=${companyId}`}>View →</Link></td></tr>;})}{!shown.length&&<tr><td colSpan={11} className="muted">{loading?"Loading flock records…":"No flocks match these filters."}</td></tr>}</tbody></table></div>
           <p className="rule-note">Status is based on available signals. HD averages use recorded days only; missing days are not treated as zero. Flock detail links open the existing Performance module.</p>
         </section>
         <section className="quick" aria-label="Quick actions"><span>Quick actions</span>{links.map(a=><Link key={a.name} href={a.href}><strong>{a.name}</strong><small>{a.desc}</small></Link>)}<small className="updated">{latestUpdate?`Refreshed ${latestUpdate}`:""}</small></section>
       </div>
+
+      <style jsx>{`
+      .visual-refresh{gap:12px;margin-top:12px}
+      .visual-refresh .toolbar,.visual-refresh .panel,.visual-refresh .quick{border-radius:16px;border:1px solid #dbeae2;box-shadow:0 12px 32px rgba(8,62,44,.055)}
+      .visual-refresh .toolbar{padding:12px 17px;background:linear-gradient(110deg,#effaf4 0%,#fff 62%,#edf8f4 100%)}
+      .toolbar-title{display:flex;align-items:center;gap:11px}.toolbar-title strong{font-size:16px;color:#0c4734}.toolbar-title small{font-size:11px}
+      .live-dot{display:inline-block;width:10px;height:10px;background:#16a16c;box-shadow:0 0 0 5px #d9f4e7;border-radius:50%;animation:gentle-pulse 3.2s ease-in-out infinite}
+      .visual-refresh .filters button{background:#065c47;color:white;border-color:#065c47;padding:9px 14px}
+      .visual-refresh .kpis{gap:11px}.visual-refresh .panel{padding:17px 19px}
+      .visual-refresh .panel-head{margin-bottom:13px}.visual-refresh .panel-head h2{font-size:20px;letter-spacing:-.03em}.visual-refresh .eyebrow{letter-spacing:.14em;color:#158465}
+      .visual-refresh .middle{grid-template-columns:1.02fr 1fr;align-items:stretch}
+      .visual-refresh .intelligence{background:linear-gradient(160deg,#fff 40%,#f7fbf8 100%)}
+      .visual-refresh .insight-list{max-height:275px;padding:3px 2px 3px 0;gap:9px}
+      .visual-refresh .insight{padding:12px 13px;gap:12px;border-radius:12px;transition:transform .18s ease,box-shadow .18s ease}
+      .visual-refresh .insight:hover{transform:translateY(-1px);box-shadow:0 8px 18px #0b4a3013}
+      .insight-icon{display:grid;place-items:center;border-radius:10px;height:29px;width:29px;flex:none;font-size:16px;font-weight:950;background:#e7f7ed;color:#128459}
+      .watch .insight-icon{background:#fff0cd;color:#a66b0d}.high .insight-icon{background:#ffe2df;color:#bb3b32}
+      .visual-refresh .insight .dot{display:none}.visual-refresh .insight strong{font-size:13px}.visual-refresh .insight p{font-size:11.5px;line-height:1.5}
+      .count-pill{display:inline-flex;vertical-align:middle;font-size:10px;font-weight:850;color:#946619;background:#fff3da;border:1px solid #f0e1bd;padding:5px 8px;border-radius:99px;margin-left:7px;letter-spacing:0}
+      .visual-refresh .trend{padding:9px 10px;border-radius:13px;background:linear-gradient(180deg,#f7fcfa,#fff);border:1px solid #e5f0ea}
+      .visual-refresh .trend svg{height:230px}.trend-tooltip{position:absolute;right:14px;top:15px;display:flex;gap:10px;align-items:center;background:white;border:1px solid #d5e9df;border-radius:9px;padding:8px 12px;font-size:11px;box-shadow:0 8px 23px #103b2417;pointer-events:none}.trend-tooltip span{font-weight:900;color:#087c59}
+      .visual-refresh .flock-panel{padding-bottom:12px}.visual-refresh thead th{background:#eff8f3;padding:12px 10px;font-size:10px}.visual-refresh tbody tr{transition:background .2s ease}.visual-refresh tbody tr:hover{background:#f3fbf7}.visual-refresh tbody td{padding:11px 10px}
+      .attention-filter{display:inline-flex;gap:7px;align-items:center;padding:8px 11px;background:#fff;border:1px solid #d6e5dc;border-radius:9px;cursor:pointer;font-size:11px;font-weight:750;white-space:nowrap;color:#526d5b;transition:background .15s ease}.attention-filter.selected{background:#fff2d9;border-color:#f0cf8c;color:#986211}.attention-filter input{accent-color:#c58d21}
+      .visual-refresh .status{padding:6px 10px}.visual-refresh .quick{padding:10px 12px;gap:9px}.visual-refresh .quick a{border-radius:10px;background:#f7fbf8;transition:transform .2s ease,background .2s}.visual-refresh .quick a:hover{transform:translateY(-2px);background:#edf8f0}
+      @keyframes gentle-pulse{0%,100%{box-shadow:0 0 0 4px #d9f4e7}50%{box-shadow:0 0 0 7px #e4f7ed}}
+      @media(max-width:1150px){.visual-refresh .middle{grid-template-columns:1fr}}
+      @media(prefers-reduced-motion:reduce){.live-dot{animation:none}.visual-refresh .insight,.visual-refresh .quick a{transition:none}}
+      `}</style>
       <style jsx>{`
         .overview{display:grid;gap:10px;margin-top:12px;color:#173e2d}.toolbar,.panel,.quick{border:1px solid #dbe8e1;border-radius:14px;background:#fff;box-shadow:0 6px 17px #123f2a0a}.toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 14px}.toolbar>div:first-child{display:grid;gap:2px}.toolbar strong{font-size:15px}.toolbar small,.rule-note,.muted{color:#72867a;font-size:11px}.filters{display:flex;align-items:end;gap:8px}.filters label{display:grid;gap:3px;font-size:10px;font-weight:800;color:#597266}select,input,button{font:inherit}select,.filters button,.table-tools input,.subtle{border:1px solid #ccded4;background:#fff;border-radius:8px;padding:8px 10px;color:#1a4935}.filters button,.subtle{cursor:pointer;font-weight:750}.filters button:disabled{opacity:.6;cursor:default}.warning{border-radius:9px;border:1px solid #e7ceb7;background:#fff8ed;color:#8a5023;padding:10px 12px;font-size:12px}.loading{font-size:12px;color:#447f66;padding:4px 10px}.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.middle{display:grid;grid-template-columns:1.15fr 1fr;gap:10px}.panel{padding:12px 13px;min-width:0}.panel-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px}.panel-head h2{margin:3px 0 0;color:#154430;font-size:17px}.eyebrow{font-size:9px;letter-spacing:.09em;font-weight:900;color:#157651}.rule-note{margin:9px 0 0;line-height:1.45}.insight-list{display:grid;gap:7px;max-height:255px;overflow-y:auto}.insight{display:flex;gap:9px;padding:9px 10px;border-radius:9px;background:#f7faf8;border:1px solid #e5eee8}.insight.high{background:#fff6f4;border-color:#f2d4cf}.insight.watch{background:#fffaf0;border-color:#eee1c4}.insight.positive{background:#f1fbf4;border-color:#d3eadb}.dot{height:9px;width:9px;flex:none;margin-top:4px;border-radius:50%;background:#9aa99f}.high .dot{background:#d54d46}.watch .dot{background:#c38a22}.positive .dot{background:#15965f}.insight strong{font-size:12px}.insight p{font-size:11px;margin:3px 0 4px;color:#5a7064;line-height:1.35}.insight a{font-size:11px;color:#007a54;font-weight:750}.trend{position:relative}.trend svg{display:block;width:100%;height:210px}.mini-pill{font-size:10px;color:#38765c;background:#edf8f1;padding:5px 8px;border-radius:15px}.flock-panel{padding-bottom:8px}.table-tools{display:flex;gap:10px;align-items:center}.table-tools input{min-width:210px;font-size:11px}.check{display:flex;align-items:center;gap:5px;font-size:11px;white-space:nowrap;color:#496f5b}.table-wrap{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:11px}th{background:#eef7f1;color:#416350;white-space:nowrap;text-align:left;font-size:10px}th,td{padding:10px 9px;border-bottom:1px solid #e9f0eb}td{color:#345542;white-space:nowrap}td strong,td small{display:block}td small{font-size:10px;color:#7b8d83;margin-top:3px}td a{font-weight:800;color:#007c58}.status{border-radius:15px;padding:4px 8px;font-size:10px;font-weight:800;background:#eef7f1;color:#216b49}.status.needs-review{color:#9a6818;background:#fff3d9}.negative{color:#ba4037;font-weight:800}.quick{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 11px}.quick>span{font-size:11px;font-weight:900;margin-right:4px}.quick a{display:grid;gap:2px;border:1px solid #d7e7dd;border-radius:8px;padding:7px 11px;color:#0c6245;text-decoration:none}.quick a strong{font-size:11px}.quick a small{font-size:9px;color:#87968d}.updated{margin-left:auto;color:#87988e;font-size:10px}@media(max-width:1150px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.middle{grid-template-columns:1fr}}@media(max-width:700px){.toolbar,.panel-head{align-items:stretch;flex-direction:column}.filters{flex-wrap:wrap}.filters select{max-width:220px}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.table-tools{flex-wrap:wrap}.table-tools input{min-width:0;width:100%}.trend svg{height:165px}}
       `}</style>
     </main>
   </div>;
 }
-function Kpi({name,value,note,attention=false}:{name:string;value:string;note:string;attention?:boolean}) {return <div className="overview-kpi"><span>{name}</span><strong className={attention?"attention":""}>{value}</strong><small>{note}</small><style jsx>{`.overview-kpi{padding:13px 14px;border:1px solid #dce9e2;border-radius:12px;background:white;display:grid;gap:3px;min-width:0;box-shadow:0 6px 18px #114b3108}.overview-kpi span{color:#5c7567;font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:850}.overview-kpi strong{font-size:clamp(20px,2.1vw,30px);line-height:1.1;color:#095c3e;font-variant-numeric:tabular-nums}.overview-kpi strong.attention{color:#bc721b}.overview-kpi small{font-size:10px;color:#73897b}`}</style></div>}
+function Sparkline({values,width=116,height=37,color="#0a9473"}:{values:(number|null)[];width?:number;height?:number;color?:string}){
+  const valid=values.map((v,i)=>({v,i})).filter((p):p is {v:number;i:number}=>p.v!==null&&Number.isFinite(p.v));
+  if(valid.length<2)return <span style={{fontSize:10,color:"#a0ada6"}}>Not enough history</span>;
+  const min=Math.min(...valid.map(p=>p.v)),max=Math.max(...valid.map(p=>p.v));
+  const pad=4,range=Math.max(1,max-min);
+  const x=(i:number)=>pad+i*(width-pad*2)/Math.max(1,values.length-1);
+  const y=(v:number)=>height-pad-(v-min)/range*(height-pad*2);
+  const segments:string[]=[];let ongoing="";
+  values.forEach((v,i)=>{if(v===null||!Number.isFinite(v)){if(ongoing)segments.push(ongoing);ongoing="";return;}ongoing+=`${ongoing?" L":"M"}${x(i).toFixed(1)} ${y(v).toFixed(1)}`;});
+  if(ongoing)segments.push(ongoing);
+  const last=valid[valid.length-1];
+  return <svg viewBox={`0 0 ${width} ${height}`} width={width} height={height} role="img" aria-label="Recorded trend sparkline" style={{display:"block",overflow:"visible"}}>{segments.map((d,i)=><path key={i} d={d} stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>)}<circle cx={x(last.i)} cy={y(last.v)} r="3" fill={color} stroke="#fff" strokeWidth="1"/></svg>;
+}
+function Kpi({name,value,note,attention=false,spark,icon="◈",accent="green"}:{name:string;value:string;note:string;attention?:boolean;spark?:(number|null)[];icon?:string;accent?:"green"|"blue"|"teal"|"purple"|"amber"|"muted"}){
+  return <div className={`overview-kpi ${accent} ${attention?"alert":""}`}>
+    <div className="kpi-top"><span>{name}</span><span className="kpi-icon" aria-hidden="true">{icon}</span></div>
+    <div className="kpi-main"><strong>{value}</strong>{spark&&<Sparkline values={spark} color={accent==="blue"?"#1677d2":accent==="purple"?"#8660cc":"#0c9b7c"}/>}</div>
+    <small>{note}</small>
+    <style jsx>{`
+      .overview-kpi{position:relative;overflow:hidden;padding:15px 17px;min-width:0;min-height:110px;display:flex;flex-direction:column;justify-content:space-between;gap:7px;border:1px solid #dce9e2;border-radius:15px;background:linear-gradient(155deg,#fff 62%,#f5fbf7);box-shadow:0 7px 23px #114b310c;transition:transform .2s ease,box-shadow .2s ease}
+      .overview-kpi:before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:#17936e}
+      .overview-kpi:hover{transform:translateY(-2px);box-shadow:0 12px 26px #114b3119}
+      .overview-kpi.blue:before{background:#1677d2}.overview-kpi.teal:before{background:#0ca69c}.overview-kpi.purple:before{background:#8860c8}.overview-kpi.amber:before{background:#da9725}.overview-kpi.muted:before{background:#cddbd3}
+      .overview-kpi.alert{background:linear-gradient(155deg,#fff 45%,#fff7e7)}.overview-kpi.muted{background:#fafcfb}
+      .kpi-top,.kpi-main{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
+      .kpi-top>span:first-child{color:#5b7667;font-size:10px;letter-spacing:.07em;text-transform:uppercase;font-weight:900}
+      .kpi-icon{height:26px;min-width:26px;display:grid;place-items:center;border-radius:8px;background:#e9f7ef;color:#12815e;font-size:16px;font-weight:900}
+      .blue .kpi-icon{background:#eaf3ff;color:#1677d2}.purple .kpi-icon{background:#f3edff;color:#8860c8}.amber .kpi-icon{background:#fff1d9;color:#bf7e18}.muted .kpi-icon{background:#f0f4f2;color:#9aaba1}
+      .kpi-main strong{min-width:0;font-size:clamp(23px,2.3vw,34px);line-height:1.05;color:#075d41;font-variant-numeric:tabular-nums;letter-spacing:-.035em}.alert .kpi-main strong{color:#bd7719}.muted .kpi-main strong{color:#a9b7ae}
+      .kpi-main :global(svg){flex:0 1 116px;max-width:43%;height:37px}
+      small{font-size:10px;line-height:1.25;color:#73897b}
+      @media(prefers-reduced-motion:reduce){.overview-kpi{transition:none}}
+    `}</style>
+  </div>;
+}
 export default function CommercialLayersHomePage(){return <Suspense fallback={null}><CommercialOverviewContent/></Suspense>}
