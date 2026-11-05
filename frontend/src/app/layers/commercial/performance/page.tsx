@@ -11,6 +11,8 @@ import { useSearchParams } from "next/navigation";
 
 import OviCorePageHeader from "@/components/ovicore/OviCorePageHeader";
 import OviCoreShell from "@/components/ovicore/OviCoreShell";
+import FlockCompareSelector from "@/components/layers/FlockCompareSelector";
+import FlockComparisonCharts, { type ComparisonMetricChart } from "@/components/layers/FlockComparisonCharts";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 const API_BASE = "";
@@ -405,10 +407,12 @@ function CommercialLayerPerformanceContent() {
   const [showFeedStages, setShowFeedStages] = useState(false);
   const [showStandards, setShowStandards] = useState(true);
   const [showComments, setShowComments] = useState(false);
-  const [compareId, setCompareId] = useState<number | "">("");
-  const [comparisonRows, setComparisonRows] = useState<PerformanceRow[]>([]);
-  const [compareMetric, setCompareMetric] = useState<MetricKey>("production");
-  const [comparisonError, setComparisonError] = useState("");
+  const [viewMode, setViewMode] = useState<"performance" | "compare">("performance");
+  const [compareIds, setCompareIds] = useState<number[]>([]);
+  const [compareMetrics, setCompareMetrics] = useState<MetricKey[]>(["production"]);
+  const [comparisonData, setComparisonData] = useState<Record<number, PerformanceRow[]>>({});
+  const [comparisonErrors, setComparisonErrors] = useState<Record<number, string>>({});
+  const [comparisonLoading, setComparisonLoading] = useState(false);
   const [selectedMetrics, setSelectedMetrics] =
     useState<MetricKey[]>([
       "production",
@@ -552,32 +556,39 @@ function CommercialLayerPerformanceContent() {
       .sort((a,b) => start(b).localeCompare(start(a)))[0] ?? null;
   }, [flocks, selectedFlock]);
 
-  useEffect(() => { setCompareId(""); setComparisonRows([]); setComparisonError(""); }, [selectedFlockId]);
+  // Comparison selection belongs to the current flock, and never leaks between flocks.
   useEffect(() => {
-    if (!companyId || !compareId || compareId === selectedFlockId) {
-      setComparisonRows([]); setComparisonError(""); return;
+    setCompareIds([]);
+    setComparisonData({});
+    setComparisonErrors({});
+  }, [selectedFlockId]);
+
+  useEffect(() => {
+    if (viewMode !== "compare" || !companyId || compareIds.length === 0) {
+      setComparisonData({});
+      setComparisonErrors({});
+      setComparisonLoading(false);
+      return;
     }
     const controller = new AbortController();
-    setComparisonRows([]); setComparisonError("");
-    void (async () => {
+    setComparisonData({});
+    setComparisonErrors({});
+    setComparisonLoading(true);
+    void Promise.all(compareIds.map(async id => {
       try {
-        const res = await authenticatedFetch(
-          `${API_BASE}/api/layers/commercial/performance?company_id=${companyId}&flock_id=${compareId}&include_rearing=${ageRange === "full"}`,
-          {cache:"no-store", signal:controller.signal}
+        const response = await authenticatedFetch(
+          `${API_BASE}/api/layers/commercial/performance?company_id=${companyId}&flock_id=${id}&include_rearing=${ageRange === "full"}`,
+          { cache: "no-store", signal: controller.signal },
         );
-        if (!res.ok) throw new Error(`Comparison flock unavailable (${res.status})`);
-        const data: PerformanceRow[] = await res.json();
-        if (!controller.signal.aborted) setComparisonRows(data);
+        if (!response.ok) throw new Error(`Could not load flock (${response.status})`);
+        const data: PerformanceRow[] = await response.json();
+        if (!controller.signal.aborted) setComparisonData(current => ({ ...current, [id]: data }));
       } catch (e) {
-        if (!controller.signal.aborted) setComparisonError(e instanceof Error ? e.message : "Could not load comparison flock");
+        if (!controller.signal.aborted) setComparisonErrors(current => ({...current, [id]: e instanceof Error ? e.message : "Comparison unavailable"}));
       }
-    })();
+    })).finally(() => { if (!controller.signal.aborted) setComparisonLoading(false); });
     return () => controller.abort();
-  }, [companyId, compareId, selectedFlockId, ageRange]);
-  const comparisonFlock = flocks.find(f => f.id === compareId);
-  const filteredComparisonRows = useMemo(() => comparisonRows.filter(r =>
-    (r.age_days ?? ((r.age_weeks ?? 0) * 7)) >= (ageRange === "laying" ? 119 : 0)
-  ), [comparisonRows, ageRange]);
+  }, [companyId, compareIds, ageRange, viewMode]);
 
   const filteredRows = useMemo(() => {
     const minimumAge = ageRange === "laying" ? 17 * 7 : 0;
@@ -586,6 +597,31 @@ function CommercialLayerPerformanceContent() {
       (row) => (row.age_days ?? 0) >= minimumAge,
     );
   }, [ageRange, rows]);
+
+  const comparisonCharts = useMemo<ComparisonMetricChart[]>(() => {
+    if (viewMode !== "compare" || !selectedFlock) return [];
+    const minDays = ageRange === "laying" ? 17 * 7 : 0;
+    const source = [{ id: selectedFlock.id, label: selectedFlock.flock_code, data: rows },
+      ...compareIds.map(id => ({id, label: flocks.find(f=>f.id===id)?.flock_code ?? `Flock ${id}`, data: comparisonData[id] ?? []}))];
+    return METRICS.filter(m => compareMetrics.includes(m.key)).map(metric => ({
+      key: metric.key,
+      label: metric.label,
+      unit: metric.unit,
+      decimals: metric.decimals,
+      series: source.map(f => ({
+        id: f.id,
+        label: f.label,
+        rows: f.data.flatMap(row => {
+          const ageDays = finite(row.age_days) ?? (finite(row.age_weeks) !== null ? Number(row.age_weeks) * 7 : null);
+          return ageDays === null || ageDays < minDays ? [] : [{ageDays, value:metric.actual(row), standard:metric.standard(row)}];
+        }),
+      })),
+      reference: ISA_ALT_STANDARDS.flatMap(std => {
+        const value = isaStandardValue(metric.key, std);
+        return value === null || std.ageWeeks * 7 < minDays ? [] : [{ageDays:std.ageWeeks * 7,value}];
+      }),
+    }));
+  }, [viewMode, selectedFlock, ageRange, rows, compareIds, flocks, comparisonData, compareMetrics]);
 
   const toggleMetric = (key: MetricKey) => {
     setSelectedMetrics((current) => {
@@ -703,39 +739,36 @@ function CommercialLayerPerformanceContent() {
         </p>
       </section>
 
-      <section className="comparison-controls" aria-label="Compare flock performance">
-        <label className="compare-field">Compare flock
-          <select value={compareId} onChange={e=>setCompareId(e.target.value ? Number(e.target.value) : "")}>
-            <option value="">No comparison</option>
-            {previousFlock && <option value={previousFlock.id}>Previous flock · {previousFlock.flock_code}</option>}
-            {flocks.filter(f => f.id !== selectedFlockId && f.id !== previousFlock?.id)
-              .map(f => <option key={f.id} value={f.id}>{f.farm_name} / {f.shed_name} / {f.flock_code}</option>)}
-          </select>
-        </label>
-        {compareId !== "" && <label className="compare-field">Compare metric
-          <select value={compareMetric} onChange={e => setCompareMetric(e.target.value as MetricKey)}>
-            {METRICS.map(m => <option key={m.key} value={m.key}>{m.shortLabel}</option>)}
-          </select>
-        </label>}
-        {compareId !== "" && <span className="comparison-key">● Current: {selectedFlock?.flock_code} &nbsp; <span style={{color:"#008b86"}}>━ Previous/selected: {comparisonFlock?.flock_code}</span></span>}
-        {comparisonError && <span role="alert" style={{color:"#ad342c"}}>{comparisonError}</span>}
-      </section>
-      <style jsx>{` .comparison-controls{display:flex;align-items:end;gap:12px;flex-wrap:wrap;border:1px solid #dce8e2;border-radius:12px;background:white;padding:9px 12px}.compare-field{display:grid;gap:3px;min-width:210px;font-size:11px;font-weight:800;color:#315846}.compare-field select{min-height:32px;border:1px solid #cbd8d1;border-radius:8px;background:white;padding:4px 8px;max-width:420px}.comparison-key{font-size:11px;font-weight:800;color:#1677d2;padding-bottom:7px}`}</style>
+      <FlockCompareSelector
+        flocks={flocks}
+        currentFlockId={selectedFlockId === "" ? null : selectedFlockId}
+        selectedFlockIds={compareIds}
+        onSelectedFlockIdsChange={setCompareIds}
+        metrics={METRICS.map(m=>({key:m.key,label:m.shortLabel}))}
+        selectedMetricKeys={compareMetrics}
+        onSelectedMetricKeysChange={keys=>setCompareMetrics(keys as MetricKey[])}
+        mode={viewMode}
+        onModeChange={setViewMode}
+      />
+      {viewMode === "compare" && Object.keys(comparisonErrors).length > 0 &&
+        <div role="alert" style={{color:"#ad342c",fontSize:12}}>
+          {Object.entries(comparisonErrors).map(([id,message])=>
+            <div key={id}>{flocks.find(f=>f.id===Number(id))?.flock_code ?? id}: {message}</div>)}
+        </div>}
       <section className="chart-card">
         <div className="chart-card-head">
           <div className="chart-title-block">
             <p className="eyebrow">Flock performance</p>
             <div className="chart-title-line">
-              <h2>Actual versus standard</h2>
-              {filteredRows.length === 0 ? (
+              <h2>{viewMode === "compare" ? "Compare flock performance" : "Actual versus standard"}</h2>
+              {viewMode === "performance" && filteredRows.length === 0 ? (
                 <span className="standards-only-inline">
                   Standards only
                 </span>
               ) : null}
             </div>
             <p>
-              Solid lines show actual performance. Dashed lines show
-              the applicable standard.
+              {viewMode === "compare" ? "One metric per chart, aligned by flock age." : "Solid lines show actual performance. Dashed lines show the applicable standard."}
             </p>
           </div>
 
@@ -748,14 +781,14 @@ function CommercialLayerPerformanceContent() {
               />
               Show daily
             </label>
-            <label className="comments-toggle" title="Show or hide feed stage background colours and headers">
+            {viewMode === "performance" && <label className="comments-toggle" title="Show or hide feed stage background colours and headers">
               <input
                 type="checkbox"
                 checked={showFeedStages}
                 onChange={(event) => setShowFeedStages(event.target.checked)}
               />
               Show feed stages
-            </label>
+            </label>}
             <label className="comments-toggle" title="Show or hide the dashed breed-standard lines">
               <input
                 type="checkbox"
@@ -764,14 +797,14 @@ function CommercialLayerPerformanceContent() {
               />
               Show standards
             </label>
-            <label className="comments-toggle" title="Show or hide daily comment markers on the graph">
+            {viewMode === "performance" && <label className="comments-toggle" title="Show or hide daily comment markers on the graph">
               <input
                 type="checkbox"
                 checked={showComments}
                 onChange={(event) => setShowComments(event.target.checked)}
               />
               Show comments
-            </label>
+            </label>}
             <span className="standard-pill">
               Standard: {ISA_ALT_STANDARD_LABEL}
             </span>
@@ -794,25 +827,26 @@ function CommercialLayerPerformanceContent() {
         {loading ? (
           <div className="empty-state">Loading performance…</div>
         ) : error || userError ? (
-          <div className="empty-state error">
-            {error || userError}
+          <div className="empty-state error">{error || userError}</div>
+        ) : viewMode === "compare" ? (
+          <div style={{display:"grid",gap:8}}>
+            {comparisonLoading && <span style={{fontSize:11,color:"#60776b"}}>Loading comparison flocks…</span>}
+            <FlockComparisonCharts charts={comparisonCharts} daily={showDaily} standards={showStandards} range={ageRange}/>
           </div>
         ) : (
-          <>
-            <ProfessionalLayerChart
-              key={`${selectedFlockId}-${ageRange}-${showDaily}`}
-              rows={filteredRows}
-              comparisonRows={filteredComparisonRows}
-              comparisonLabel={comparisonFlock?.flock_code ?? "Comparison flock"}
-              comparisonMetric={compareId !== "" ? compareMetric : null}
-              selectedMetrics={selectedMetrics}
-              showDaily={showDaily}
-              showFeedStages={showFeedStages}
-              showStandards={showStandards}
-              showComments={showComments}
-              onToggleMetric={toggleMetric}
-            />
-          </>
+          <ProfessionalLayerChart
+            key={`${selectedFlockId}-${ageRange}-${showDaily}`}
+            rows={filteredRows}
+            comparisonRows={[]}
+            comparisonLabel=""
+            comparisonMetric={null}
+            selectedMetrics={selectedMetrics}
+            showDaily={showDaily}
+            showFeedStages={showFeedStages}
+            showStandards={showStandards}
+            showComments={showComments}
+            onToggleMetric={toggleMetric}
+          />
         )}
       </section>
 
@@ -835,18 +869,18 @@ function CommercialLayerPerformanceContent() {
                 <input type="checkbox" checked={showDaily} onChange={(event) => setShowDaily(event.target.checked)} />
                 Show daily
               </label>
-              <label className="comments-toggle" title="Show or hide feed stage background colours and headers">
+              {viewMode === "performance" && <label className="comments-toggle" title="Show or hide feed stage background colours and headers">
                 <input type="checkbox" checked={showFeedStages} onChange={(event) => setShowFeedStages(event.target.checked)} />
                 Show feed stages
-              </label>
+              </label>}
               <label className="comments-toggle" title="Show or hide the dashed breed-standard lines">
                 <input type="checkbox" checked={showStandards} onChange={(event) => setShowStandards(event.target.checked)} />
                 Show standards
               </label>
-              <label className="comments-toggle">
+              {viewMode === "performance" && <label className="comments-toggle">
                 <input type="checkbox" checked={showComments} onChange={(event) => setShowComments(event.target.checked)} />
                 Show comments
-              </label>
+              </label>}
               <button
                 type="button"
                 onClick={() => setChartExpanded(false)}
@@ -856,20 +890,24 @@ function CommercialLayerPerformanceContent() {
             </div>
 
             <div className="chart-expanded-body">
-              <ProfessionalLayerChart
-                key={`${selectedFlockId}-${ageRange}-${showDaily}-expanded`}
-                rows={filteredRows}
-                comparisonRows={filteredComparisonRows}
-                comparisonLabel={comparisonFlock?.flock_code ?? "Comparison flock"}
-                comparisonMetric={compareId !== "" ? compareMetric : null}
-                selectedMetrics={selectedMetrics}
-                showDaily={showDaily}
-                showFeedStages={showFeedStages}
-                showStandards={showStandards}
-                showComments={showComments}
-                onToggleMetric={toggleMetric}
-                expanded
-              />
+              {viewMode === "compare" ? (
+                <FlockComparisonCharts charts={comparisonCharts} daily={showDaily} standards={showStandards} range={ageRange}/>
+              ) : (
+                <ProfessionalLayerChart
+                  key={`${selectedFlockId}-${ageRange}-${showDaily}-expanded`}
+                  rows={filteredRows}
+                  comparisonRows={[]}
+                  comparisonLabel=""
+                  comparisonMetric={null}
+                  selectedMetrics={selectedMetrics}
+                  showDaily={showDaily}
+                  showFeedStages={showFeedStages}
+                  showStandards={showStandards}
+                  showComments={showComments}
+                  onToggleMetric={toggleMetric}
+                  expanded
+                />
+              )}
             </div>
           </div>
         </div>
@@ -883,7 +921,7 @@ function CommercialLayerPerformanceContent() {
           padding: 7px 10px 8px;
           box-sizing: border-box;
           display: grid;
-          grid-template-rows: auto auto auto auto;
+          grid-template-rows: auto;
           align-content: start;
           gap: 6px;
           overflow-x: hidden;
