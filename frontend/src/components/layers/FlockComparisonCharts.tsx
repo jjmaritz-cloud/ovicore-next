@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 
 export type ComparisonValueRow = { ageDays: number; value: number | null; standard: number | null };
 export type ComparisonSeries = { id: number; label: string; rows: ComparisonValueRow[] };
@@ -19,6 +19,7 @@ type Point = { age: number; value: number | null };
 export default function FlockComparisonCharts({ charts, daily, standards, range }: {
   charts: ComparisonMetricChart[]; daily: boolean; standards: boolean; range: "laying" | "full";
 }) {
+  const clipId = useId().replace(/:/g, "");
   const [hiddenFlocks, setHiddenFlocks] = useState<number[]>([]);
   const [hover, setHover] = useState<number | null>(null);
   const [hiddenReference, setHiddenReference] = useState(false);
@@ -78,23 +79,36 @@ export default function FlockComparisonCharts({ charts, daily, standards, range 
     flush();return result;
   };
   const tickAges=Array.from({length:10},(_,i)=>minAge+(maxAge-minAge)*i/9);
-  const hoveredAge=hover===null?null:daily?Math.round(hover):Math.round(hover);
+  const hoveredAge=hover===null?null:Math.round(hover);
+  const tooltipMetrics = hoveredAge===null ? [] : visible.map(m=>({
+    key:m.key,label:m.label,unit:m.unit,decimals:m.decimals,
+    values:m.series.map(s=>({
+      id:s.id,label:s.label,
+      value:s.data.find(p=>p.age===hoveredAge)?.value ?? null,
+      color:flockList.find(f=>f.id===s.id)?.color ?? "#456",
+    })),
+    standard: standards&&!hiddenReference ? m.reference.find(p=>p.age===hoveredAge)?.value ?? null : null,
+  }));
+  const tooltipWidth = Math.min(430, Math.max(270, 225 + flockList.length * 15));
+  const tooltipHeight = Math.min(320, 42 + tooltipMetrics.reduce((total,m)=>total+24+(m.values.length+(m.standard!==null?1:0))*18,0));
+  const tooltipX = hoveredAge!==null && x(hoveredAge) < L+PW*.53 ? L+PW-tooltipWidth-12 : L+12;
+  const tooltipY = T+10;
   const toggleFlock=(id:number)=>setHiddenFlocks(ids=>ids.includes(id)?ids.filter(v=>v!==id):[...ids,id]);
   if(!charts.length)return <div style={{padding:20,color:"#617369"}}>Choose a metric above to display it on the graph.</div>;
-  return <div style={{border:"1px solid #dce8e2",borderRadius:12,background:"white",padding:"10px 12px",minWidth:0}}>
-    <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:8}}>
+  return <div style={{border:"1px solid #dce8e2",borderRadius:12,background:"white",padding:"5px 8px",minWidth:0}}>
+    <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:3}}>
       <strong style={{fontSize:13,color:"#164b37"}}>Flock performance comparison</strong>
       <span style={{fontSize:10,color:"#668074"}}>One graph · Aligned by biological age · Select flocks and metrics above</span>
     </div>
-    <div style={{display:"flex",gap:7,flexWrap:"wrap",alignItems:"center",marginBottom:6}} aria-label="Toggle individual flock lines">
+    <div style={{display:"flex",gap:7,flexWrap:"wrap",alignItems:"center",marginBottom:3}} aria-label="Toggle individual flock lines">
       {flockList.map(f=><button key={f.id} type="button" onClick={()=>toggleFlock(f.id)} aria-pressed={!hiddenFlocks.includes(f.id)} title={`Show or hide ${f.label}`} style={{display:"inline-flex",alignItems:"center",gap:5,padding:"5px 9px",border:"1px solid #dce8e2",borderRadius:20,background:hiddenFlocks.includes(f.id)?"#f3f5f4":"#f9fcfb",opacity:hiddenFlocks.includes(f.id)?.4:1,cursor:"pointer",fontSize:11,fontWeight:750,color:"#214a3d"}}><span style={{width:15,height:3,background:f.color,borderRadius:2}}/>{f.label} {hiddenFlocks.includes(f.id)?"(hidden)":"✓"}</button>)}
       {standards&&<button type="button" aria-pressed={!hiddenReference} onClick={()=>setHiddenReference(v=>!v)} style={{border:"1px solid #dce8e2",borderRadius:20,padding:"5px 9px",fontSize:11,background:"white",color:"#5b6972",opacity:hiddenReference?.45:1,cursor:"pointer"}}>┄┄ Standard {hiddenReference?"(hidden)":"✓"}</button>}
     </div>
     <div style={{display:"flex",gap:10,flexWrap:"wrap",fontSize:10,color:"#425f51",marginBottom:4}} aria-label="Metric line styles">
       {visible.map((m,i)=><span key={m.key} style={{display:"inline-flex",alignItems:"center",gap:4}}><svg width="26" height="10" aria-hidden="true"><line x1="0" x2="25" y1="5" y2="5" stroke="#465e54" strokeWidth="2.2" strokeDasharray={DASHES[i%DASHES.length]||undefined}/></svg>{m.label} ({m.unit||"count"})</span>)}
     </div>
-    <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Combined flock and metric comparison aligned by flock age" style={{width:"100%",height:"auto",display:"block"}} onMouseLeave={()=>setHover(null)}>
-      <defs><clipPath id="flock-combined-plot"><rect x={L} y={T} width={PW} height={PH}/></clipPath></defs>
+    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label="Combined flock and metric comparison aligned by flock age" style={{width:"100%",height:"clamp(275px, calc(100dvh - 480px), 580px)",display:"block"}} onMouseLeave={()=>setHover(null)}>
+      <defs><clipPath id={clipId}><rect x={L} y={T} width={PW} height={PH}/></clipPath></defs>
       <rect x={L} y={T} width={PW} height={PH} fill="#fbfdfc" rx="8"/>
       {Array.from({length:5},(_,i)=>T+PH*i/4).map((yy,i)=><line key={i} x1={L} x2={L+PW} y1={yy} y2={yy} stroke="#dceae3" strokeDasharray="4 7"/>)}
       {tickAges.map((age,i)=><g key={i}><line x1={x(age)} x2={x(age)} y1={T} y2={T+PH} stroke="#e6eeea"/><text x={x(age)} y={H-28} fill="#62786b" textAnchor="middle" fontSize="11">{Math.round(age)}</text></g>)}
@@ -106,7 +120,7 @@ export default function FlockComparisonCharts({ charts, daily, standards, range 
           <text x={axisX+3} y="13" fill="#456b59" fontSize="9" fontWeight="800">{m.label.slice(0,8)}</text>
         </g>;
       })}
-      <g clipPath="url(#flock-combined-plot)">
+      <g clipPath={`url(#${clipId})`}>
         {visible.map((m,i)=><g key={m.key}>
           {standards&&!hiddenReference&&segments(m.reference,i).map((path,k)=><polyline key={`standard-${k}`} points={path} fill="none" stroke="#8e9da5" strokeDasharray="5 5" strokeWidth="1.7" opacity=".65"/>)}
           {m.series.map(s=>{
@@ -117,12 +131,40 @@ export default function FlockComparisonCharts({ charts, daily, standards, range 
       </g>
       {hoveredAge!==null&&<line x1={x(hoveredAge)} x2={x(hoveredAge)} y1={T} y2={T+PH} stroke="#506c5c" strokeDasharray="4 4" pointerEvents="none"/>}
       <rect x={L} y={T} width={PW} height={PH} fill="transparent" style={{cursor:"crosshair"}} onMouseMove={e=>{const b=e.currentTarget.ownerSVGElement?.getBoundingClientRect();if(!b)return;const sx=(e.clientX-b.left)*W/b.width;setHover(minAge+Math.max(0,Math.min(1,(sx-L)/PW))*(maxAge-minAge));}}/>
+      {hoveredAge!==null && tooltipMetrics.length>0 && <foreignObject
+        x={tooltipX} y={tooltipY} width={tooltipWidth} height={tooltipHeight}
+        pointerEvents="none" style={{overflow:"visible"}}>
+        <div style={{height:"100%",boxSizing:"border-box",border:"1px solid #dbe7e1",borderRadius:10,
+          background:"rgba(255,255,255,.96)",boxShadow:"0 5px 22px rgba(15,50,36,.18)",
+          padding:"8px 10px",fontFamily:"system-ui,sans-serif",color:"#173f2d",overflow:"hidden"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:5,
+            paddingBottom:5,borderBottom:"1px solid #e8f0eb"}}>
+            <strong style={{fontSize:13}}>{daily?"Day":"Week"} {hoveredAge}</strong>
+            <span style={{fontSize:9,color:"#74877c"}}>Flock comparison · {tooltipMetrics.length} metric{tooltipMetrics.length===1?"":"s"}</span>
+          </div>
+          <div style={{maxHeight:tooltipHeight-47,overflow:"hidden"}}>
+            {tooltipMetrics.map(m=><div key={m.key} style={{marginBottom:5}}>
+              <div style={{fontSize:10,fontWeight:800,background:"#f1f8f4",padding:"3px 5px",borderRadius:4,
+                display:"flex",justifyContent:"space-between"}}>
+                <span>{m.label}</span><span style={{fontWeight:600,color:"#62776b"}}>{m.unit}</span>
+              </div>
+              {m.values.map(v=><div key={v.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",
+                padding:"2px 4px",gap:8,fontSize:10,borderBottom:"1px solid #f1f4f2"}}>
+                <span style={{display:"inline-flex",alignItems:"center",gap:5,minWidth:0}}>
+                  <i style={{height:7,width:7,flexShrink:0,borderRadius:"50%",background:v.color}}/>
+                  <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{v.label}</span>
+                </span>
+                <strong style={{color:v.color,whiteSpace:"nowrap"}}>{v.value===null?"—":v.value.toFixed(m.decimals)}</strong>
+              </div>)}
+              {m.standard!==null && <div style={{display:"flex",justifyContent:"space-between",padding:"2px 4px",fontSize:10,color:"#73858b"}}>
+                <span>Standard</span><b>{m.standard.toFixed(m.decimals)}</b>
+              </div>}
+            </div>)}
+          </div>
+        </div>
+      </foreignObject>}
       <text x={L+PW/2} y={H-5} textAnchor="middle" fontSize="12" fontWeight="750" fill="#4b6758">Age in {daily?"days":"weeks"}</text>
     </svg>
-    {hoveredAge!==null&&<div style={{background:"#f4faf7",borderRadius:8,padding:9,display:"flex",flexWrap:"wrap",gap:"8px 16px",alignItems:"start",fontSize:11}}>
-      <strong style={{color:"#164b37"}}>{daily?"Day":"Week"} {hoveredAge}</strong>
-      {visible.map(m=><div key={m.key} style={{display:"grid",gap:3}}><b>{m.label}</b>{m.series.map(s=>{const p=s.data.find(v=>v.age===hoveredAge);const f=flockList.find(f=>f.id===s.id);return <span key={s.id} style={{color:f?.color??"#305"}}>{s.label}: {p?.value==null?"—":p.value.toFixed(m.decimals)} {m.unit}</span>;})}</div>)}
-    </div>}
-    <div style={{fontSize:10,color:"#6d8075",marginTop:5}}>Click a flock label to hide or show it. Click a metric above the graph to hide or show all flocks for that metric. Grey dashed lines show standards.</div>
+    <div style={{fontSize:9,color:"#6d8075",marginTop:2}}>Hover for flock values · Click flock labels to show/hide · Select metrics above · Dashed lines indicate standards.</div>
   </div>;
 }

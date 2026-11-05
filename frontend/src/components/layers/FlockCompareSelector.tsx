@@ -62,10 +62,10 @@ export default function FlockCompareSelector({
       ? selectedMetricKeys.length > 1 ? selectedMetricKeys.filter(m => m !== key) : selectedMetricKeys
       : [...selectedMetricKeys, key]);
   };
-  const button: React.CSSProperties = { border: "1px solid #ccdcd8", background: "white", borderRadius: 9, padding: "8px 12px", cursor: "pointer", color: "#143e37", fontWeight: 650, fontSize: 12 };
-  const heading: React.CSSProperties = { fontSize: 12, fontWeight: 800, color: "#1d5247", marginBottom: 9, letterSpacing: ".02em" };
-  return <section aria-label="Flock comparison" style={{ background: "#fff", border: "1px solid #d5e5e1", borderRadius: 12, padding: 14, marginBottom: 12, color: "#173b35" }}>
-    <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", alignItems: "center", gap: 8, marginBottom: 13 }}>
+  const button: React.CSSProperties = { border: "1px solid #ccdcd8", background: "white", borderRadius: 9, padding: "5px 9px", cursor: "pointer", color: "#143e37", fontWeight: 650, fontSize: 12 };
+  const heading: React.CSSProperties = { fontSize: 12, fontWeight: 800, color: "#1d5247", marginBottom: 4, letterSpacing: ".02em" };
+  return <section aria-label="Flock comparison" style={{ background: "#fff", border: "1px solid #d5e5e1", borderRadius: 12, padding: "4px 8px", marginBottom: 3, color: "#173b35" }}>
+    <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", alignItems: "center", gap: 6, marginBottom: 5 }}>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         {(["performance", "compare"] as const).map(v => <button type="button" key={v} onClick={() => onModeChange(v)} aria-pressed={mode === v} style={{ ...button, background: mode === v ? "#145c50" : "#fff", color: mode === v ? "#fff" : "#145c50", borderColor: mode === v ? "#145c50" : "#cfe0da" }}>{v === "performance" ? "Performance" : "Compare flocks"}</button>)}
       </div>
@@ -73,17 +73,17 @@ export default function FlockCompareSelector({
     </div>
     {mode === "compare" && <>
       <div style={heading}>SELECTED FLOCKS</div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 7, alignItems: "center" }}>
-        {current && <span style={{ border: "1px solid #cde3f5", background: "#eff7ff", borderRadius: 20, padding: "7px 10px", fontSize: 12 }}><strong style={{ color: COLORS[0] }}>●</strong> {current.flock_code} <small style={{ color: "#57726c" }}>Current</small></span>}
-        {selected.map((f, index) => <span key={f.id} style={{ border: "1px solid #d6e4e1", background: "#f7faf9", borderRadius: 20, padding: "7px 10px", fontSize: 12 }}><strong style={{ color: COLORS[(index + 1) % COLORS.length] }}>●</strong> {f.flock_code} <button type="button" aria-label={`Remove ${f.flock_code}`} onClick={() => toggleFlock(f.id)} style={{ border: 0, background: "transparent", cursor: "pointer", marginLeft: 4, color: "#5a7069" }}>×</button></span>)}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 5, alignItems: "center" }}>
+        {current && <span style={{ border: "1px solid #cde3f5", background: "#eff7ff", borderRadius: 20, padding: "4px 8px", fontSize: 12 }}><strong style={{ color: COLORS[0] }}>●</strong> {current.flock_code} <small style={{ color: "#57726c" }}>Current</small></span>}
+        {selected.map((f, index) => <span key={f.id} style={{ border: "1px solid #d6e4e1", background: "#f7faf9", borderRadius: 20, padding: "4px 8px", fontSize: 12 }}><strong style={{ color: COLORS[(index + 1) % COLORS.length] }}>●</strong> {f.flock_code} <button type="button" aria-label={`Remove ${f.flock_code}`} onClick={() => toggleFlock(f.id)} style={{ border: 0, background: "transparent", cursor: "pointer", marginLeft: 4, color: "#5a7069" }}>×</button></span>)}
         <button type="button" onClick={() => setOpen(true)} style={button}>＋ Add flocks</button>
         {previous && !selectedFlockIds.includes(previous.id) && <button type="button" onClick={() => toggleFlock(previous.id)} style={button}>Compare previous in same shed</button>}
       </div>
-      <div style={{ ...heading, marginTop: 17 }}>CHOOSE METRICS</div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+      <div style={{ ...heading, marginTop: 8 }}>CHOOSE METRICS</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
         {metrics.map(m => <button type="button" key={m.key} onClick={() => toggleMetric(m.key)} aria-pressed={selectedMetricKeys.includes(m.key)} style={{ ...button, background: selectedMetricKeys.includes(m.key) ? "#e1f3ed" : "#fff", borderColor: selectedMetricKeys.includes(m.key) ? "#42a184" : "#cfded9" }}>{selectedMetricKeys.includes(m.key) ? "✓ " : "+ "}{m.label}</button>)}
       </div>
-      <p style={{ fontSize: 11, color: "#64746f", margin: "9px 0 0" }}>All selected metrics appear on the same graph. Click a metric to hide/show it; click a flock label on the chart to hide/show that flock.</p>
+      <p style={{ fontSize: 11, color: "#64746f", margin: "4px 0 0" }}>All selected metrics appear on the same graph. Click a metric to hide/show it; click a flock label on the chart to hide/show that flock.</p>
     </>}
     {open && <div role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) setOpen(false); }} style={{ position: "fixed", inset: 0, background: "rgba(17,34,31,.52)", display: "grid", placeItems: "center", padding: 15, zIndex: 9999 }}>
       <div role="dialog" aria-modal="true" aria-label="Add comparison flocks" style={{ background: "white", borderRadius: 12, padding: 18, width: "min(760px, 100%)", maxHeight: "85vh", overflowY: "auto", boxShadow: "0 20px 60px #0003" }}>

@@ -637,7 +637,7 @@ function CommercialLayerPerformanceContent() {
 
   return (
     <OviCoreShell module="layers">
-      <div className="commercial-performance-page">
+      <div className={`commercial-performance-page ${viewMode === "compare" ? "comparison-view" : ""}`}>
       <OviCorePageHeader
         title="Commercial Layers Performance"
         subtitle="Actual-versus-standard flock performance across production, mortality, egg quality, feed, water and bodyweight."
@@ -768,7 +768,7 @@ function CommercialLayerPerformanceContent() {
               ) : null}
             </div>
             <p>
-              {viewMode === "compare" ? "One metric per chart, aligned by flock age." : "Solid lines show actual performance. Dashed lines show the applicable standard."}
+              {viewMode === "compare" ? "Selected metrics share one graph, aligned by flock age." : "Solid lines show actual performance. Dashed lines show the applicable standard."}
             </p>
           </div>
 
@@ -926,6 +926,14 @@ function CommercialLayerPerformanceContent() {
           gap: 6px;
           overflow-x: hidden;
         }
+
+        .comparison-view :global(.comparison-chart-placeholder) { display:none; }
+        .comparison-view .chart-card { padding: 5px 8px 4px; }
+        .comparison-view .chart-card-head { margin-bottom: 1px; }
+        .comparison-view .chart-card-head h2 { font-size: 14px; }
+        .comparison-view .selector-card { padding: 5px 8px; }
+        .comparison-view .selection-caption { margin-top: 2px; }
+        .comparison-view .range-row { margin-top: 2px; }
 
         .selector-card,
         .chart-card {
