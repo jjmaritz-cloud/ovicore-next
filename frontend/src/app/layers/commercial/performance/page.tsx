@@ -13,6 +13,7 @@ import OviCorePageHeader from "@/components/ovicore/OviCorePageHeader";
 import OviCoreShell from "@/components/ovicore/OviCoreShell";
 import FlockCompareSelector from "@/components/layers/FlockCompareSelector";
 import FlockComparisonCharts, { type ComparisonMetricChart } from "@/components/layers/FlockComparisonCharts";
+import FlockPerformanceReport from "@/components/layers/FlockPerformanceReport";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 const API_BASE = "";
@@ -623,6 +624,23 @@ function CommercialLayerPerformanceContent() {
     }));
   }, [viewMode, selectedFlock, ageRange, rows, compareIds, flocks, comparisonData, compareMetrics]);
 
+  // The report uses the original dated observations, rather than plotted weekly
+  // averages. Date-range filters apply only to the table/export, not the chart.
+  const reportFlocks = useMemo(() => {
+    const selected = selectedFlock ? [{
+      id: selectedFlock.id, farm: selectedFlock.farm_name,
+      shed: selectedFlock.shed_name, code: selectedFlock.flock_code, rows,
+    }] : [];
+    if (viewMode !== "compare") return selected;
+    return [...selected, ...compareIds.map(id => {
+      const flock = flocks.find(f => f.id === id);
+      return flock ? {
+        id: flock.id, farm: flock.farm_name, shed: flock.shed_name,
+        code: flock.flock_code, rows: comparisonData[id] ?? [],
+      } : null;
+    }).filter((flock): flock is NonNullable<typeof flock> => flock !== null)];
+  }, [selectedFlock, rows, viewMode, compareIds, flocks, comparisonData]);
+
   const toggleMetric = (key: MetricKey) => {
     setSelectedMetrics((current) => {
       if (current.includes(key)) {
@@ -849,6 +867,15 @@ function CommercialLayerPerformanceContent() {
           />
         )}
       </section>
+
+      {!loading && !error && !userError && !comparisonLoading && (
+        <FlockPerformanceReport
+          key={`${viewMode}-${selectedFlockId}-${ageRange}-${compareIds.join("-")}`}
+          flocks={reportFlocks}
+          mode={viewMode}
+          minimumAgeDays={ageRange === "laying" ? 119 : 0}
+        />
+      )}
 
       {chartExpanded ? (
         <div className="chart-expanded-overlay">
