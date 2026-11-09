@@ -101,7 +101,46 @@ export default function NutritionIntelligencePage() {
   const proteinGap = proteinTarget === undefined ? undefined : supplyProtein - proteinTarget;
   const calciumGap = calciumTarget === undefined ? undefined : supplyCa - calciumTarget;
   const comparisonRatio = benchmark !== undefined && benchmark > 0 ? actual / benchmark : 1;
-  const impactItems = [
+  // Rearing birds must never receive egg-production / egg-quality assessments.
+  // A rearing ration selected at an older age remains in rearing mode while the
+  // separate feeding-stage mismatch warning identifies the inconsistent selection.
+  const isRearing = group === "Rearing" || age < 18;
+  const rearingIntakeLow = benchmark !== undefined && actual < benchmark * .95;
+  const rearingIntakeVeryLow = benchmark !== undefined && actual < benchmark * .90;
+  const impactItems = isRearing ? [
+    {
+      title: "Skeletal development & bone reserves",
+      level: rearingIntakeLow ? "watch" : "unknown",
+      reason: rearingIntakeLow
+        ? "Feed intake is below the age-matched guide, reducing the calculated supply of calcium, phosphorus and other nutrients. Sustained inadequate mineral supply during rearing may impair skeletal development and reserves needed in later lay. Total phosphorus is not the same as available phosphorus, and adequacy cannot be established from this report."
+        : "Bone development depends on suitable calcium, available phosphorus, vitamin D and growth. This formulation snapshot does not establish whether the pullets meet their skeletal nutrient requirements.",
+      check: "Review growth curve, leg soundness, feed intake history and nutritionist-approved calcium / available phosphorus targets."
+    },
+    {
+      title: "Growth & bodyweight",
+      level: rearingIntakeVeryLow ? "review" : rearingIntakeLow ? "watch" : "unknown",
+      reason: rearingIntakeLow
+        ? "Below-guide feed intake may reduce energy, protein and amino acid supply over time. Growth can fall behind the breed weight curve if the shortfall persists; actual energy and digestible amino acids have not been assessed."
+        : "Feed consumption alone cannot establish appropriate growth. Compare measured bodyweight with the age-matched breed curve.",
+      check: "Review weekly average bodyweight, growth rate and target bodyweight for the selected breed."
+    },
+    {
+      title: "Uniformity & flock development",
+      level: rearingIntakeLow ? "watch" : "unknown",
+      reason: rearingIntakeLow
+        ? "Uneven feed access or a persistent intake shortfall may contribute to uneven growth and poorer bodyweight uniformity. This is a possibility, not a measured outcome."
+        : "Uniformity depends on feed distribution, stocking conditions and bird development as well as ration composition.",
+      check: "Review bodyweight evenness %, feeder access, flock distribution and recent weighing records."
+    },
+    {
+      title: "Readiness for future laying performance",
+      level: rearingIntakeLow ? "watch" : "unknown",
+      reason: rearingIntakeLow
+        ? "If inadequate rearing nutrition leads to poor skeletal development or underweight, uneven pullets, later onset of lay and subsequent persistency may be affected. This screen does not assess current egg production in rearing birds."
+        : "Good rearing growth, frame development and uniformity support the transition into lay. Future laying outcomes cannot be predicted from this formulation snapshot.",
+      check: "Review bodyweight at transfer, uniformity, frame development and the approved pre-lay transition plan."
+    }
+  ] : [
     {
       title: "Egg production & egg mass",
       level: proteinGap !== undefined && proteinGap < 0 ? "review" : comparisonRatio < .9 ? "watch" : "unknown",
@@ -134,7 +173,7 @@ export default function NutritionIntelligencePage() {
         : "Bodyweight implications cannot be established from the available formulation percentages alone.",
       check: "Review bodyweight trend, uniformity, water intake, feed delivery and flock condition."
     }
-  ] as const;
+  ];
   const impactFlags = impactItems.filter(item => item.level !== "unknown").length;
   return <main className={styles.page}>
     <div className={styles.wrap}>
@@ -157,7 +196,7 @@ export default function NutritionIntelligencePage() {
         <div className={styles.sliderBox}><div><label>Breed feed intake target · week {age}</label><strong>{benchmark !== undefined ? `${FMT(benchmark,1)} g/bird/day` : "Not available"}</strong></div><div className={styles.benchmarkReadout}><span>{benchmark !== undefined ? "Hy-Line Brown Alternative (AU) age-based target" : "No age-matched target for this ration family"}</span><small>{benchmark !== undefined ? `Automatically updated for week ${age}` : "Select an Alternative or Rearing ration with age 1–100 weeks"}</small></div></div>
         <div className={styles.intakeFoot}>Breed target changes with flock age. The selected ration determines the relevant reference family; its nutrient composition determines supply. An age-based feed target is not a minimum nutrient requirement.</div>
       </section>
-      {mismatchedAge && <div className={styles.warning}>Feeding stage check: {ration.code} is labelled {ration.minWeek}–{ration.maxWeek === 120 ? "70+" : ration.maxWeek} weeks in Mehdi&apos;s report; selected age is {age} weeks. Formula ages overlap at transitions and require an approved effective-dated feeding program.</div>}
+      {mismatchedAge && <div className={styles.warning}>Feeding stage check: {ration.code} is labelled {ration.minWeek}–{ration.maxWeek === 120 ? "70+" : ration.maxWeek} weeks in the Beresfield formulation report; selected age is {age} weeks. Formula ages overlap at transitions and require an approved effective-dated feeding program.</div>}
       <section className={styles.kpis}>
         <article><span>Feed vs age target</span><strong className={benchmark !== undefined && actual<benchmark?styles.red:""}>{benchmark !== undefined ? `${FMT(actual/benchmark*100,1)}%` : "N/A"}</strong><small>{benchmark !== undefined ? `${actual-benchmark>=0?"+":""}${FMT(actual-benchmark,1)} g/bird/day` : "No matching breed feed target"}</small></article>
         <article><span>Crude protein supplied</span><strong>{FMT(supplyProtein)} g</strong><small>{ration.nutrients.protein}% in formulation</small></article>
@@ -187,7 +226,7 @@ export default function NutritionIntelligencePage() {
         </aside>
       </div>
       <section className={styles.panel} aria-label="Potential flock and production impacts">
-        <div className={styles.panelHead}><div><h2>Potential production & bird impacts</h2><p>Practical investigation prompts based on nutrient-supply gaps and feed intake. These are not predicted losses or diagnoses.</p></div><span className={styles.impactCount}>{impactFlags > 0 ? `${impactFlags} areas to review` : "Monitoring guide"}</span></div>
+        <div className={styles.panelHead}><div><h2>{isRearing ? "Potential pullet development & future performance impacts" : "Potential production & bird impacts"}</h2><p>Practical investigation prompts based on nutrient-supply gaps and feed intake. {isRearing ? "Rearing analysis focuses on growth, skeletal development and readiness for future lay — not current egg production." : "These are not predicted losses or diagnoses."}</p></div><span className={styles.impactCount}>{impactFlags > 0 ? `${impactFlags} areas to review` : "Monitoring guide"}</span></div>
         <div className={styles.impactGrid}>
           {impactItems.map(item => <article className={styles.impactCard} key={item.title}>
             <div className={styles.impactCardHead}><h3>{item.title}</h3><span className={`${styles.impactTag} ${item.level === "review" ? styles.impactReview : item.level === "watch" ? styles.impactWatch : styles.impactUnknown}`}>{item.level === "review" ? "Review supply" : item.level === "watch" ? "Check trends" : "Not assessed"}</span></div>
@@ -202,7 +241,7 @@ export default function NutritionIntelligencePage() {
         <div className={styles.program}>{listed.map(r=><button type="button" key={r.code} className={`${styles.programItem} ${r.code===ration.code?styles.selected:""}`} onClick={()=>setRationCode(r.code)}><b>{r.code}</b><span>{r.name}</span><small>{r.minWeek}–{r.maxWeek===120?"70+":r.maxWeek} wk</small></button>)}</div>
         <p className={styles.footnote}>Age boundaries overlap in the source formulation names. Future program assignments will need effective dates, mill, flock, formulation version and authorisation. OviCore reporting stages remain separate.</p>
       </section>
-      <footer className={styles.footer}><b>Source provenance</b><p>Formulations: Pace Beresfield CFC Production Formula (Rounded), 26 Oct 2026, prepared by Mehdi (versions shown in the source). Age-based feed-intake targets (weeks 1–100) and nutrient references: <a href={SOURCE_PDF} target="_blank" rel="noopener noreferrer">Hy-Line Brown Alternative Systems Australia Standards, May 2025, p.20</a>. Use current nutritionist-approved targets for decisions. No flock data is retrieved, stored or modified on this page.</p></footer>
+      <footer className={styles.footer}><b>Source provenance</b><p>Formulations: Pace Beresfield CFC Production Formula (Rounded), 26 Oct 2026 (formulation versions shown in the source). Age-based feed-intake targets (weeks 1–100) and nutrient references: <a href={SOURCE_PDF} target="_blank" rel="noopener noreferrer">Hy-Line Brown Alternative Systems Australia Standards, May 2025, p.20</a>. Use current nutritionist-approved targets for decisions. No flock data is retrieved, stored or modified on this page.</p></footer>
     </div>
   </main>;
 }
