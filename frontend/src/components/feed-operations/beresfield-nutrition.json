@@ -1,0 +1,249 @@
+[
+  {
+    "code": "PBCS",
+    "name": "Chick Starter medicated (1-6 wk)",
+    "version": 11,
+    "cost": 593.17,
+    "minWeek": 1,
+    "maxWeek": 6,
+    "group": "Rearing",
+    "nutrients": {
+      "protein": 22.275,
+      "fat": 4.061,
+      "ash": 5.468,
+      "calcium": 1.042,
+      "totalPhosphorus": 0.665,
+      "sodium": 0.199,
+      "chloride": 0.23,
+      "potassium": 0.844
+    }
+  },
+  {
+    "code": "PBPG",
+    "name": "Pullet Grower medicated (6-12 wk)",
+    "version": 13,
+    "cost": 536.09,
+    "minWeek": 6,
+    "maxWeek": 12,
+    "group": "Rearing",
+    "nutrients": {
+      "protein": 17.999,
+      "fat": 3.668,
+      "ash": 5.119,
+      "calcium": 0.985,
+      "totalPhosphorus": 0.678,
+      "sodium": 0.201,
+      "chloride": 0.23,
+      "potassium": 0.762
+    }
+  },
+  {
+    "code": "PBPD",
+    "name": "Pullet Developer (12-15 wk)",
+    "version": 13,
+    "cost": 510.61,
+    "minWeek": 12,
+    "maxWeek": 15,
+    "group": "Rearing",
+    "nutrients": {
+      "protein": 16.551,
+      "fat": 3.208,
+      "ash": 5.276,
+      "calcium": 1.101,
+      "totalPhosphorus": 0.686,
+      "sodium": 0.2,
+      "chloride": 0.229,
+      "potassium": 0.707
+    }
+  },
+  {
+    "code": "PBAS",
+    "name": "Alternative Pre-peaking (16-22 wk)",
+    "version": 9,
+    "cost": 578.79,
+    "minWeek": 16,
+    "maxWeek": 22,
+    "group": "Alternative",
+    "nutrients": {
+      "protein": 18.308,
+      "fat": 5.101,
+      "ash": 12.413,
+      "calcium": 3.858,
+      "totalPhosphorus": 0.592,
+      "sodium": 0.199,
+      "chloride": 0.218,
+      "potassium": 0.669
+    }
+  },
+  {
+    "code": "PBA1",
+    "name": "Alternative Layer 1 (22 - 44 wk)",
+    "version": 18,
+    "cost": 582.94,
+    "minWeek": 22,
+    "maxWeek": 44,
+    "group": "Alternative",
+    "nutrients": {
+      "protein": 17.691,
+      "fat": 5.281,
+      "ash": 12.722,
+      "calcium": 4.002,
+      "totalPhosphorus": 0.582,
+      "sodium": 0.201,
+      "chloride": 0.217,
+      "potassium": 0.641
+    }
+  },
+  {
+    "code": "PBA2",
+    "name": "Alternative Layer 2 (44-55 wk)",
+    "version": 17,
+    "cost": 558.21,
+    "minWeek": 44,
+    "maxWeek": 55,
+    "group": "Alternative",
+    "nutrients": {
+      "protein": 17.096,
+      "fat": 5.059,
+      "ash": 12.874,
+      "calcium": 4.051,
+      "totalPhosphorus": 0.539,
+      "sodium": 0.201,
+      "chloride": 0.22,
+      "potassium": 0.632
+    }
+  },
+  {
+    "code": "PBA3",
+    "name": "Alternative Layer 3 (55 - 70 wk)",
+    "version": 18,
+    "cost": 536.59,
+    "minWeek": 55,
+    "maxWeek": 70,
+    "group": "Alternative",
+    "nutrients": {
+      "protein": 16.474,
+      "fat": 4.508,
+      "ash": 12.971,
+      "calcium": 4.108,
+      "totalPhosphorus": 0.513,
+      "sodium": 0.189,
+      "chloride": 0.212,
+      "potassium": 0.617
+    }
+  },
+  {
+    "code": "PBA4",
+    "name": "Alternative Layer 4 (70 + wk)",
+    "version": 18,
+    "cost": 511.85,
+    "minWeek": 70,
+    "maxWeek": 120,
+    "group": "Alternative",
+    "nutrients": {
+      "protein": 16.099,
+      "fat": 3.562,
+      "ash": 13.125,
+      "calcium": 4.161,
+      "totalPhosphorus": 0.506,
+      "sodium": 0.194,
+      "chloride": 0.191,
+      "potassium": 0.6
+    }
+  },
+  {
+    "code": "PBCC",
+    "name": "Cage Layer Pre-peaking (16 - 22 wk)",
+    "version": 7,
+    "cost": 549.06,
+    "minWeek": 16,
+    "maxWeek": 22,
+    "group": "Cage",
+    "nutrients": {
+      "protein": 18.492,
+      "fat": 4.246,
+      "ash": 12.283,
+      "calcium": 3.783,
+      "totalPhosphorus": 0.6,
+      "sodium": 0.208,
+      "chloride": 0.219,
+      "potassium": 0.677
+    }
+  },
+  {
+    "code": "PBC1",
+    "name": "Cage Layer 1 (22 - 44 wk)",
+    "version": 18,
+    "cost": 555.05,
+    "minWeek": 22,
+    "maxWeek": 44,
+    "group": "Cage",
+    "nutrients": {
+      "protein": 18.414,
+      "fat": 4.919,
+      "ash": 12.844,
+      "calcium": 4.014,
+      "totalPhosphorus": 0.599,
+      "sodium": 0.2,
+      "chloride": 0.219,
+      "potassium": 0.672
+    }
+  },
+  {
+    "code": "PBC2",
+    "name": "Cage Layer 2 (44-55 wk)",
+    "version": 16,
+    "cost": 527.19,
+    "minWeek": 44,
+    "maxWeek": 55,
+    "group": "Cage",
+    "nutrients": {
+      "protein": 17.26,
+      "fat": 4.201,
+      "ash": 12.909,
+      "calcium": 4.052,
+      "totalPhosphorus": 0.546,
+      "sodium": 0.201,
+      "chloride": 0.221,
+      "potassium": 0.639
+    }
+  },
+  {
+    "code": "PBC3",
+    "name": "Cage Layer 3 (55 - 70 wk)",
+    "version": 16,
+    "cost": 506.02,
+    "minWeek": 55,
+    "maxWeek": 70,
+    "group": "Cage",
+    "nutrients": {
+      "protein": 16.396,
+      "fat": 3.622,
+      "ash": 12.938,
+      "calcium": 4.085,
+      "totalPhosphorus": 0.508,
+      "sodium": 0.191,
+      "chloride": 0.207,
+      "potassium": 0.615
+    }
+  },
+  {
+    "code": "PBC4",
+    "name": "Cage Layer 4 (70 + wk)",
+    "version": 16,
+    "cost": 491.42,
+    "minWeek": 70,
+    "maxWeek": 120,
+    "group": "Cage",
+    "nutrients": {
+      "protein": 15.72,
+      "fat": 3.141,
+      "ash": 13.126,
+      "calcium": 4.164,
+      "totalPhosphorus": 0.492,
+      "sodium": 0.199,
+      "chloride": 0.208,
+      "potassium": 0.586
+    }
+  }
+]

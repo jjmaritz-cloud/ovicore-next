@@ -31,6 +31,10 @@ export const feedOperationsMenu: SidebarMenuConfig = {
           href: "/feed-operations/rations",
         },
         {
+          label: "Nutrition Intelligence",
+          href: "/feed-operations/nutrition",
+        },
+        {
           label: "Diet Ingredients",
           href: "/feed-operations/ingredients",
         },
