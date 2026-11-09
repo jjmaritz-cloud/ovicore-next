@@ -26,6 +26,22 @@ export default function RationsPage(){
     if(await save({...catalog,rations:edit?catalog.rations.map(r=>r.id===edit?item:r):[...catalog.rations,item]})){reset();setMessage("Ration saved in OviCore.");}else setMessage("Unable to save. Check API permissions or connection.");
   };
   const choose=(r:Ration)=>{setEdit(r.id);setForm({millId:r.millId||"",code:r.code,name:r.name,supplierCode:r.supplierCode||"",supplierName:r.supplierName||"",phase:r.phase,type:r.type,baseId:r.baseId,status:r.status,notes:r.notes,lines:r.lines.map(l=>({...l}))});setMessage("");window.scrollTo({top:0,behavior:"smooth"});};
+  // Duplicate a saved ration as a NEW draft record. Never modify the source.
+  // Company code and supplier SKU are cleared to force unique identities.
+  // For medication variants, link back to the approved source base ration.
+  const duplicate=(r:Ration)=>{
+    const linkBase=r.type==="Base"&&r.status==="Approved" ? r.id : (r.baseId||"");
+    setEdit("");
+    setForm({
+      millId:r.millId||"", code:"", name:`${r.name} — Copy`,
+      supplierCode:"", supplierName:r.supplierName||"",
+      phase:r.phase, type:"Base", baseId:"", status:"Draft",
+      notes:`Duplicated from ${r.code} (${r.name}). Review all inclusions, pricing and approvals before use.\n${r.notes||""}`.trim(),
+      lines:r.lines.map(l=>({...l})),
+    });
+    setMessage(`Draft copy of ${r.code} loaded. Choose Base or Medicated, enter NEW company code and supplier SKU, review composition, then save. Original unchanged.${linkBase?" For a medicated version, select Medicated and link the approved base ration.":""}`);
+    window.scrollTo({top:0,behavior:"smooth"});
+  };
   const [millFilter,setMillFilter]=useState("all");
   const visible=catalog.rations.filter(r=>(millFilter==="all"||r.millId===millFilter)&&`${r.code} ${r.name} ${r.supplierCode||""} ${r.supplierName||""} ${r.phase} ${r.type}`.toLowerCase().includes(search.toLowerCase())).sort((a,b)=>a.code.localeCompare(b.code));
   const cost=knownCost({...form,id:""},catalog.ingredients);
@@ -52,5 +68,5 @@ export default function RationsPage(){
         <div className={`${s.controls} ${s.wide}`}><button className={s.button} type="submit">{edit?"Save Changes":"Create Ration"}</button><button type="button" className={`${s.button} ${s.secondary}`} onClick={reset}>Clear</button></div>
       </form>{message&&<div className={message.startsWith("Ration saved")?s.good:s.error}>{message}</div>}</div>
       <div className={s.card}><div className={s.heading}><h3>Ration Register</h3><select className={s.search} style={{maxWidth:170}} aria-label="Filter mill" value={millFilter} onChange={e=>setMillFilter(e.target.value)}><option value="all">All mills</option>{catalog.mills.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select><input className={s.search} style={{maxWidth:190}} aria-label="Search rations" placeholder="Search rations…" value={search} onChange={e=>setSearch(e.target.value)}/></div>
-      <div className={s.tableWrap}><table className={s.table}><thead><tr><th>Mill</th><th>Company Code</th><th>Company Ration</th><th>Supplier SKU</th><th>Supplier Description</th><th>Phase</th><th>Type</th><th>Inclusion</th><th>Ingredient Cost</th><th>Status</th><th></th></tr></thead><tbody>{visible.map(r=>{const c=knownCost(r,catalog.ingredients);return <tr key={r.id}><td>{catalog.mills.find(m=>m.id===r.millId)?.name||"Unassigned — edit"}</td><td><strong>{r.code}</strong></td><td>{r.name}</td><td>{r.supplierCode||"Needs mapping"}</td><td>{r.supplierName||"Needs mapping"}</td><td>{r.phase}</td><td><span className={`${s.pill} ${r.type==="Medicated"?s.warn:""}`}>{r.type}</span></td><td>{totalInclusion(r).toFixed(2)}%</td><td>{r.lines.length&&c.complete?`$${c.cost.toFixed(2)}/t`:"—"}</td><td>{r.status}</td><td><button className={s.action} type="button" onClick={()=>choose(r)}>Edit</button></td></tr>})}{visible.length===0&&<tr><td colSpan={11} className={s.muted}>No rations found. Add a mill and ingredients first, then create a ration.</td></tr>}</tbody></table></div></div></div></section><div className={s.foot}>OviCore Ecosystem · Intelligence That Drives Performance.</div></div></main>;
+      <div className={s.tableWrap}><table className={s.table}><thead><tr><th>Mill</th><th>Company Code</th><th>Company Ration</th><th>Supplier SKU</th><th>Supplier Description</th><th>Phase</th><th>Type</th><th>Inclusion</th><th>Ingredient Cost</th><th>Status</th><th>Actions</th></tr></thead><tbody>{visible.map(r=>{const c=knownCost(r,catalog.ingredients);return <tr key={r.id}><td>{catalog.mills.find(m=>m.id===r.millId)?.name||"Unassigned — edit"}</td><td><strong>{r.code}</strong></td><td>{r.name}</td><td>{r.supplierCode||"Needs mapping"}</td><td>{r.supplierName||"Needs mapping"}</td><td>{r.phase}</td><td><span className={`${s.pill} ${r.type==="Medicated"?s.warn:""}`}>{r.type}</span></td><td>{totalInclusion(r).toFixed(2)}%</td><td>{r.lines.length&&c.complete?`$${c.cost.toFixed(2)}/t`:"—"}</td><td>{r.status}</td><td><button className={s.action} type="button" onClick={()=>choose(r)}>Edit</button>{" "}<button className={s.action} type="button" onClick={()=>duplicate(r)} aria-label={`Duplicate ${r.code}`}>Duplicate</button></td></tr>})}{visible.length===0&&<tr><td colSpan={11} className={s.muted}>No rations found. Add a mill and ingredients first, then create a ration.</td></tr>}</tbody></table></div></div></div></section><div className={s.foot}>OviCore Ecosystem · Intelligence That Drives Performance.</div></div></main>;
 }
