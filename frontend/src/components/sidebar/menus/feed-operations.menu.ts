@@ -35,6 +35,10 @@ export const feedOperationsMenu: SidebarMenuConfig = {
           href: "/feed-operations/nutrition",
         },
         {
+          label: "Nutritional Risk Monitor",
+          href: "/feed-operations/nutrition/risks",
+        },
+        {
           label: "Diet Ingredients",
           href: "/feed-operations/ingredients",
         },
