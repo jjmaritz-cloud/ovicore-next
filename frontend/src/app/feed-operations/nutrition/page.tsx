@@ -24,6 +24,21 @@ const CALCIUM = [
   { min: 49, max: 62, g: 4.4 }, { min: 63, max: 76, g: 4.6 },
   { min: 77, max: 120, g: 4.7 },
 ];
+// HY-LINE BROWN Alternative Systems Australia, May 2025, pages 4, 7 and 8.
+// Weekly TARGET feed intake (g/bird/day), weeks 1–100; index 0 = week 1.
+// This is a breed performance reference, NOT a requirement derived from the mill ration.
+const HYLINE_ALT_FEED_TARGET: readonly number[] = [
+  13.5, 19.7, 23.3, 28.5, 33.6, 40.8, 46.5, 53.1, 58.2, 61.7,
+  66.3, 68.8, 70.8, 73.3, 75.3, 77.8, 80.3, 85.3, 94.4, 99.5,
+  104.1, 108.2, 111.8, 115.3, 116.9, 117.9, 118.3, 118.8, 119.3, 119.7,
+  120.2, 120.2, 120.2, 120.2, 120.2, 120.2, 120.2, 120.2, 120.2, 120.2,
+  120.2, 120.2, 120.2, 120.2, 120.2, 120.2, 120.2, 120.2, 120.2, 120.2,
+  120.2, 120.2, 120.2, 120.2, 120.2, 120.2, 120.2, 120.2, 120.2, 120.2,
+  120.2, 120.2, 120.2, 120.2, 120.2, 120.2, 120.2, 120.2, 120.2, 120.2,
+  120.2, 120.2, 120.2, 120.2, 120.2, 120.2, 120.2, 120.2, 120.2, 120.2,
+  120.2, 120.2, 120.2, 120.2, 120.2, 120.2, 120.2, 120.2, 120.2, 120.2,
+  120.2, 120.2, 120.2, 120.2, 120.2, 120.2, 120.2, 120.2, 120.2, 120.2
+];
 const SOURCE_PDF = "https://www.specialisedbreeders.com.au/wp-content/uploads/2025/07/HLB-Alt-mini-guide-2025-AUSTRALIA-updated-7-3-25.pdf";
 const FMT = (v: number, decimals = 2) => v.toLocaleString("en-AU", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 const nutritive = (r: Ration, key: Nutrient, gFeed: number, unit: "g" | "mg") => gFeed * r.nutrients[key] / 100 * (unit === "mg" ? 1000 : 1);
@@ -33,11 +48,15 @@ export default function NutritionIntelligencePage() {
   const [rationCode, setRationCode] = useState("PBA1");
   const [age, setAge] = useState(24);
   const [actual, setActual] = useState(115);
-  const [benchmark, setBenchmark] = useState(115);
   const [advanced, setAdvanced] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const ration = data.find(r => r.code === rationCode) || data[0];
   const group = ration.group;
+  // Match the selected ration family to an available breed performance guide.
+  // Cage formulas need their own approved reference; do not substitute Alternative targets.
+  const benchmark = (group === "Alternative" || group === "Rearing") && Number.isInteger(age) && age >= 1 && age <= 100
+    ? HYLINE_ALT_FEED_TARGET[age - 1] : undefined;
+
   const listed = useMemo(() => data.filter(r => r.group === group), [group]);
   // Age is known, but production phase depends on egg production rate, not just age.
   // Until flock production is linked, use ration stage as a provisional guide mapping.
@@ -60,15 +79,15 @@ export default function NutritionIntelligencePage() {
   const rows = showAll ? comparisons : comparisons.slice(0, 5);
   const mismatchedAge = age < ration.minWeek || age >= ration.maxWeek && ration.maxWeek !== 120;
   const resetDefaults = () => {
-    setRationCode("PBA1"); setAge(24); setActual(115); setBenchmark(115);
+    setRationCode("PBA1"); setAge(24); setActual(115);
     setShowAll(false); setAdvanced(false);
   };
   const downloadCSV = () => {
-    const header = ["Nutrient", "Units", "Actual supply", "At feed benchmark", "Breed requirement", "Status"];
+    const header = ["Nutrient", "Units", "Actual supply", "At breed feed target", "Breed requirement", "Status"];
     const values = comparisons.map(m => {
       const supply = nutritive(ration, m.key, actual, m.unit);
       const required = canCompare ? m.requirement : undefined;
-      return [m.label, m.unit, supply.toFixed(3), nutritive(ration, m.key, benchmark, m.unit).toFixed(3), required ?? "Not available", required ? status(supply / required) : "Not assessed"];
+      return [m.label, m.unit, supply.toFixed(3), benchmark !== undefined ? nutritive(ration, m.key, benchmark, m.unit).toFixed(3) : "Not available", required ?? "Not available", required ? status(supply / required) : "Not assessed"];
     });
     const csv = [header, ...values].map(row => row.map(x => `"${String(x).replace(/"/g, '""')}"`).join(",")).join("\r\n");
     const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" });
@@ -81,7 +100,7 @@ export default function NutritionIntelligencePage() {
   const calciumTarget = canCompare ? ca?.g : undefined;
   const proteinGap = proteinTarget === undefined ? undefined : supplyProtein - proteinTarget;
   const calciumGap = calciumTarget === undefined ? undefined : supplyCa - calciumTarget;
-  const comparisonRatio = benchmark > 0 ? actual / benchmark : 1;
+  const comparisonRatio = benchmark !== undefined && benchmark > 0 ? actual / benchmark : 1;
   const impactItems = [
     {
       title: "Egg production & egg mass",
@@ -134,13 +153,13 @@ export default function NutritionIntelligencePage() {
         <div className={styles.autoReference}><strong>Breed reference — automatic</strong><span>{supported ? `Hy-Line Brown Alternative (AU) · ${phase.name} (provisional)` : "No verified matching breed requirements loaded"}</span><small>{supported ? "Calcium is age-based. Protein, sodium and chloride currently use a provisional ration-stage-to-breed-phase mapping, not live % lay." : "Nutrient supply still calculates. A validated breed/stage reference is required for this ration and age."}</small></div>
       </section>
       <section className={styles.intake}>
-        <div className={styles.sliderBox}><div className={styles.intakeLabel}><label htmlFor="actual">Actual feed intake <span className={styles.simulated}>SIMULATED</span></label><span className={styles.intakeValue}><input aria-label="Actual feed intake in grams per bird per day" type="number" min={group==="Rearing"?1:1} max={200} step={1} value={actual} onChange={e=>setActual(Math.max(1,Math.min(200,Number(e.target.value)||1)))}/><b>g/bird/day</b></span></div><input id="actual" type="range" min={group==="Rearing"?10:70} max={group==="Rearing"?110:145} value={Math.max(group==="Rearing"?10:70,Math.min(group==="Rearing"?110:145,actual))} onChange={e=>setActual(Number(e.target.value))}/></div>
-        <div className={styles.sliderBox}><div><label htmlFor="benchmark">Feed intake benchmark</label><strong>{FMT(benchmark,0)} g/bird/day</strong></div><input id="benchmark" type="range" min={group==="Rearing"?10:70} max={group==="Rearing"?110:145} value={benchmark} onChange={e=>setBenchmark(Number(e.target.value))}/></div>
-        <div className={styles.intakeFoot}>The feed benchmark is an adjustable comparison scenario, not a breed nutrient requirement. The breed reference is chosen automatically where supported.</div>
+        <div className={styles.sliderBox}><div><label htmlFor="actual">Actual feed intake <span className={styles.simulated}>SIMULATED</span></label><strong>{FMT(actual,0)} g/bird/day</strong></div><input id="actual" type="range" min={group==="Rearing"?10:70} max={group==="Rearing"?110:145} value={Math.max(group==="Rearing"?10:70,Math.min(group==="Rearing"?110:145,actual))} onChange={e=>setActual(Number(e.target.value))}/></div>
+        <div className={styles.sliderBox}><div><label>Breed feed intake target · week {age}</label><strong>{benchmark !== undefined ? `${FMT(benchmark,1)} g/bird/day` : "Not available"}</strong></div><div className={styles.benchmarkReadout}><span>{benchmark !== undefined ? "Hy-Line Brown Alternative (AU) age-based target" : "No age-matched target for this ration family"}</span><small>{benchmark !== undefined ? `Automatically updated for week ${age}` : "Select an Alternative or Rearing ration with age 1–100 weeks"}</small></div></div>
+        <div className={styles.intakeFoot}>Breed target changes with flock age. The selected ration determines the relevant reference family; its nutrient composition determines supply. An age-based feed target is not a minimum nutrient requirement.</div>
       </section>
       {mismatchedAge && <div className={styles.warning}>Feeding stage check: {ration.code} is labelled {ration.minWeek}–{ration.maxWeek === 120 ? "70+" : ration.maxWeek} weeks in Mehdi&apos;s report; selected age is {age} weeks. Formula ages overlap at transitions and require an approved effective-dated feeding program.</div>}
       <section className={styles.kpis}>
-        <article><span>Feed vs benchmark</span><strong className={actual<benchmark?styles.red:""}>{FMT(actual/benchmark*100,1)}%</strong><small>{actual-benchmark>=0?"+":""}{actual-benchmark} g/bird/day</small></article>
+        <article><span>Feed vs age target</span><strong className={benchmark !== undefined && actual<benchmark?styles.red:""}>{benchmark !== undefined ? `${FMT(actual/benchmark*100,1)}%` : "N/A"}</strong><small>{benchmark !== undefined ? `${actual-benchmark>=0?"+":""}${FMT(actual-benchmark,1)} g/bird/day` : "No matching breed feed target"}</small></article>
         <article><span>Crude protein supplied</span><strong>{FMT(supplyProtein)} g</strong><small>{ration.nutrients.protein}% in formulation</small></article>
         <article><span>Calcium supplied</span><strong>{FMT(supplyCa)} g</strong><small>{ration.nutrients.calcium}% in formulation</small></article>
         <article><span>Formula cost / tonne</span><strong>${FMT(ration.cost)}</strong><small>Historical formula cost, not delivered price</small></article>
@@ -148,11 +167,11 @@ export default function NutritionIntelligencePage() {
       <div className={styles.columns}>
         <section className={styles.panel}>
           <div className={styles.panelHead}><div><h2>Nutrient supply assessment</h2><p>Actual nutrient supplied = feed consumed × formula concentration</p></div><span className={styles.pill}>{canCompare?"HY-LINE PROVISIONAL":"SUPPLY ONLY"}</span></div>
-          <div className={styles.tableScroll}><table><thead><tr><th>Nutrient</th><th>Actual</th><th>At feed benchmark</th><th>Breed requirement</th><th>Assessment</th></tr></thead><tbody>{rows.map(m=>{
+          <div className={styles.tableScroll}><table><thead><tr><th>Nutrient</th><th>Actual</th><th>At breed feed target</th><th>Breed requirement</th><th>Assessment</th></tr></thead><tbody>{rows.map(m=>{
             const value=nutritive(ration,m.key,actual,m.unit);
             const req=canCompare?m.requirement:undefined;
             const rating=req?status(value/req):"unknown";
-            return <tr key={m.key}><td><b>{m.label}</b><small>{m.unit}/bird/day</small></td><td>{FMT(value,m.unit==="mg"?0:2)}</td><td>{FMT(nutritive(ration,m.key,benchmark,m.unit),m.unit==="mg"?0:2)}</td><td>{req!==undefined?FMT(req,m.unit==="mg"?0:2):"—"}</td><td><span className={`${styles.tag} ${rating==="review"?styles.bad:rating==="watch"?styles.warn:rating==="ok"?styles.good:styles.neutral}`}>{rating==="review"?"Below guide":rating==="watch"?"Near guide":rating==="ok"?"Meets guide*":"Not assessed"}</span></td></tr>;
+            return <tr key={m.key}><td><b>{m.label}</b><small>{m.unit}/bird/day</small></td><td>{FMT(value,m.unit==="mg"?0:2)}</td><td>{benchmark !== undefined ? FMT(nutritive(ration,m.key,benchmark,m.unit),m.unit==="mg"?0:2) : "—"}</td><td>{req!==undefined?FMT(req,m.unit==="mg"?0:2):"—"}</td><td><span className={`${styles.tag} ${rating==="review"?styles.bad:rating==="watch"?styles.warn:rating==="ok"?styles.good:styles.neutral}`}>{rating==="review"?"Below guide":rating==="watch"?"Near guide":rating==="ok"?"Meets guide*":"Not assessed"}</span></td></tr>;
           })}</tbody></table></div>
           <button className={styles.textButton} onClick={()=>setShowAll(!showAll)}>{showAll?"Show key nutrients":"Show all formula nutrients"}</button>
           <p className={styles.footnote}>*Concentration-based estimated supply meeting a reference intake does not confirm nutritional adequacy. Actual energy, digestible amino acids, available phosphorus, particle size and flock performance also matter. The displayed crude protein guide is illustrative; the breed guide identifies it as an estimated typical value. The breed production phase is inferred provisionally from the selected ration, not measured % lay.</p>
@@ -161,7 +180,7 @@ export default function NutritionIntelligencePage() {
           <div className={styles.panelHead}><div><h2>Intelligence observations</h2><p>Deterministic interpretation, not paid AI</p></div></div>
           <div className={styles.observations}>
             {canCompare && alerts.length > 0 ? <div className={styles.obsWarn}><strong>{alerts.length} nutrient reference{alerts.length>1?"s":""} below selected guide</strong><p>{alerts.map(a=>a.label).join(", ")} supply is below the guide for the selected phase or age. Review flock records, ration assignment, intake trends and the nutritionist&apos;s approved targets.</p></div> : canCompare ? <div className={styles.obsGood}><strong>No low-supply flags among available comparisons</strong><p>This does not establish a complete or balanced diet.</p></div> : <div className={styles.obsNeutral}><strong>Requirement comparison unavailable</strong><p>{group==="Rearing"?"A rearing-specific, age-based requirement reference is not loaded yet.":"A verified breed requirement is not available for this ration and age."}</p></div>}
-            <div className={styles.obsNeutral}><strong>Feed intake deviation: {FMT((actual/benchmark-1)*100,1)}%</strong><p>At the same formulation, nutrient supply changes in direct proportion to feed intake. The benchmark is an adjustable scenario, not a nutritional requirement.</p></div>
+            <div className={styles.obsNeutral}><strong>{benchmark !== undefined ? `Feed intake vs age target: ${FMT((actual/benchmark-1)*100,1)}%` : "Age-based feed target unavailable"}</strong><p>{benchmark !== undefined ? `Hy-Line Brown Alternative AU week ${age} target is ${FMT(benchmark,1)} g/bird/day. At the same formulation, nutrient supply changes proportionately with feed consumed.` : "There is no validated matching age-based feed target for this selected ration family and age. A different guide must be loaded before making this comparison."}</p></div>
             <div className={styles.obsNeutral}><strong>Missing formulation nutrients</strong><p>ME, digestible amino acids and available phosphorus are absent from this formula report. No shortage claims are made for them.</p></div>
           </div>
           <div className={styles.links}><Link href="/feed-operations/rations">Ration Library</Link><Link href="/feed-operations/mills">Mill Management</Link></div>
@@ -183,7 +202,7 @@ export default function NutritionIntelligencePage() {
         <div className={styles.program}>{listed.map(r=><button type="button" key={r.code} className={`${styles.programItem} ${r.code===ration.code?styles.selected:""}`} onClick={()=>setRationCode(r.code)}><b>{r.code}</b><span>{r.name}</span><small>{r.minWeek}–{r.maxWeek===120?"70+":r.maxWeek} wk</small></button>)}</div>
         <p className={styles.footnote}>Age boundaries overlap in the source formulation names. Future program assignments will need effective dates, mill, flock, formulation version and authorisation. OviCore reporting stages remain separate.</p>
       </section>
-      <footer className={styles.footer}><b>Source provenance</b><p>Formulations: Pace Beresfield CFC Production Formula (Rounded), 26 Oct 2026, prepared by Mehdi (versions shown in the source). Breed requirements: <a href={SOURCE_PDF} target="_blank" rel="noopener noreferrer">Hy-Line Brown Alternative Systems Australia Standards, May 2025, p.20</a>. Use current nutritionist-approved targets for decisions. No flock data is retrieved, stored or modified on this page.</p></footer>
+      <footer className={styles.footer}><b>Source provenance</b><p>Formulations: Pace Beresfield CFC Production Formula (Rounded), 26 Oct 2026, prepared by Mehdi (versions shown in the source). Age-based feed-intake targets (weeks 1–100) and nutrient references: <a href={SOURCE_PDF} target="_blank" rel="noopener noreferrer">Hy-Line Brown Alternative Systems Australia Standards, May 2025, p.20</a>. Use current nutritionist-approved targets for decisions. No flock data is retrieved, stored or modified on this page.</p></footer>
     </div>
   </main>;
 }
