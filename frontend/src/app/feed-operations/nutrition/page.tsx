@@ -77,6 +77,46 @@ export default function NutritionIntelligencePage() {
   };
   const supplyProtein = nutritive(ration, "protein", actual, "g");
   const supplyCa = nutritive(ration, "calcium", actual, "g");
+  const proteinTarget = canCompare ? phase.protein : undefined;
+  const calciumTarget = canCompare ? ca?.g : undefined;
+  const proteinGap = proteinTarget === undefined ? undefined : supplyProtein - proteinTarget;
+  const calciumGap = calciumTarget === undefined ? undefined : supplyCa - calciumTarget;
+  const comparisonRatio = benchmark > 0 ? actual / benchmark : 1;
+  const impactItems = [
+    {
+      title: "Egg production & egg mass",
+      level: proteinGap !== undefined && proteinGap < 0 ? "review" : comparisonRatio < .9 ? "watch" : "unknown",
+      reason: proteinGap !== undefined && proteinGap < 0
+        ? `Crude protein supply is ${FMT(Math.abs(proteinGap))} g/bird/day below the provisional guide. If essential amino acids or energy also fall short, egg mass or persistency may be affected.`
+        : comparisonRatio < .9 ? "Feed intake is markedly below the selected benchmark. Check actual hen-day production and egg mass before interpreting the effect." : "No protein-supply shortfall is flagged by the available guide. Energy and digestible amino acids have not been assessed.",
+      check: "Review 7-day HDA %, egg mass and production trend against breed standard."
+    },
+    {
+      title: "Egg size & egg weight",
+      level: comparisonRatio < .95 ? "watch" : "unknown",
+      reason: comparisonRatio < .95
+        ? "Lower feed intake may restrict energy, digestible amino acids or essential fatty acids needed to maintain egg size. Their concentrations are not available in this report."
+        : "Egg-weight risk cannot be quantified without energy, digestible amino acids and fatty-acid data.",
+      check: "Review 7-day average egg weight, egg-mass trend and age-matched breed egg weight."
+    },
+    {
+      title: "Shell strength & egg quality",
+      level: calciumGap !== undefined && calciumGap < 0 ? "review" : "unknown",
+      reason: calciumGap !== undefined && calciumGap < 0
+        ? `Calculated calcium supply is ${FMT(Math.abs(calciumGap))} g/bird/day below the age-based reference. Persistent inadequate available calcium may affect shell formation, but limestone particle size and availability also matter.`
+        : "Calculated calcium supply is not below the available age-based guide, but particle size, solubility and available phosphorus are not assessed.",
+      check: "Review cracked / broken / thin-shell eggs, seconds %, shell measurements and limestone particle size."
+    },
+    {
+      title: "Bird condition & bodyweight",
+      level: comparisonRatio < .9 ? "watch" : "unknown",
+      reason: comparisonRatio < .9
+        ? "Sustained low feed consumption may limit energy and essential nutrient intake, potentially affecting bodyweight maintenance or condition. This cannot be determined from feed intake alone."
+        : "Bodyweight implications cannot be established from the available formulation percentages alone.",
+      check: "Review bodyweight trend, uniformity, water intake, feed delivery and flock condition."
+    }
+  ] as const;
+  const impactFlags = impactItems.filter(item => item.level !== "unknown").length;
   return <main className={styles.page}>
     <div className={styles.wrap}>
       <header className={styles.top}>
@@ -94,7 +134,7 @@ export default function NutritionIntelligencePage() {
         <div className={styles.autoReference}><strong>Breed reference — automatic</strong><span>{supported ? `Hy-Line Brown Alternative (AU) · ${phase.name} (provisional)` : "No verified matching breed requirements loaded"}</span><small>{supported ? "Calcium is age-based. Protein, sodium and chloride currently use a provisional ration-stage-to-breed-phase mapping, not live % lay." : "Nutrient supply still calculates. A validated breed/stage reference is required for this ration and age."}</small></div>
       </section>
       <section className={styles.intake}>
-        <div className={styles.sliderBox}><div><label htmlFor="actual">Actual feed intake</label><strong>{FMT(actual,0)} g/bird/day</strong></div><input id="actual" type="range" min={group==="Rearing"?10:70} max={group==="Rearing"?110:145} value={actual} onChange={e=>setActual(Number(e.target.value))}/></div>
+        <div className={styles.sliderBox}><div className={styles.intakeLabel}><label htmlFor="actual">Actual feed intake <span className={styles.simulated}>SIMULATED</span></label><span className={styles.intakeValue}><input aria-label="Actual feed intake in grams per bird per day" type="number" min={group==="Rearing"?1:1} max={200} step={1} value={actual} onChange={e=>setActual(Math.max(1,Math.min(200,Number(e.target.value)||1)))}/><b>g/bird/day</b></span></div><input id="actual" type="range" min={group==="Rearing"?10:70} max={group==="Rearing"?110:145} value={Math.max(group==="Rearing"?10:70,Math.min(group==="Rearing"?110:145,actual))} onChange={e=>setActual(Number(e.target.value))}/></div>
         <div className={styles.sliderBox}><div><label htmlFor="benchmark">Feed intake benchmark</label><strong>{FMT(benchmark,0)} g/bird/day</strong></div><input id="benchmark" type="range" min={group==="Rearing"?10:70} max={group==="Rearing"?110:145} value={benchmark} onChange={e=>setBenchmark(Number(e.target.value))}/></div>
         <div className={styles.intakeFoot}>The feed benchmark is an adjustable comparison scenario, not a breed nutrient requirement. The breed reference is chosen automatically where supported.</div>
       </section>
@@ -127,6 +167,17 @@ export default function NutritionIntelligencePage() {
           <div className={styles.links}><Link href="/feed-operations/rations">Ration Library</Link><Link href="/feed-operations/mills">Mill Management</Link></div>
         </aside>
       </div>
+      <section className={styles.panel} aria-label="Potential flock and production impacts">
+        <div className={styles.panelHead}><div><h2>Potential production & bird impacts</h2><p>Practical investigation prompts based on nutrient-supply gaps and feed intake. These are not predicted losses or diagnoses.</p></div><span className={styles.impactCount}>{impactFlags > 0 ? `${impactFlags} areas to review` : "Monitoring guide"}</span></div>
+        <div className={styles.impactGrid}>
+          {impactItems.map(item => <article className={styles.impactCard} key={item.title}>
+            <div className={styles.impactCardHead}><h3>{item.title}</h3><span className={`${styles.impactTag} ${item.level === "review" ? styles.impactReview : item.level === "watch" ? styles.impactWatch : styles.impactUnknown}`}>{item.level === "review" ? "Review supply" : item.level === "watch" ? "Check trends" : "Not assessed"}</span></div>
+            <p>{item.reason}</p>
+            <div className={styles.impactCheck}><strong>What to check in OviCore</strong><span>{item.check}</span></div>
+          </article>)}
+        </div>
+        <p className={styles.footnote}>A flagged nutrient reference is an investigation prompt, not evidence of an observed production or welfare problem. Other factors include water, temperature, disease, age, production rate, feed distribution and actual nutrient availability. Energy, digestible amino acids and available phosphorus are missing from the supplied formula report. Require nutritionist review before ration changes.</p>
+      </section>
       <section className={styles.panel}>
         <div className={styles.panelHead}><div><h2>Beresfield feeding program — reference stages</h2><p>Select a ration to examine its formulation; age stays unchanged so any age mismatch is visible.</p></div><span>{listed.length} formulations</span></div>
         <div className={styles.program}>{listed.map(r=><button type="button" key={r.code} className={`${styles.programItem} ${r.code===ration.code?styles.selected:""}`} onClick={()=>setRationCode(r.code)}><b>{r.code}</b><span>{r.name}</span><small>{r.minWeek}–{r.maxWeek===120?"70+":r.maxWeek} wk</small></button>)}</div>
