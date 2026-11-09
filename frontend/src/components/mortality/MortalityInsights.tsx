@@ -1,12 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { adaptMortalityRows } from "./mortalityAdapter";
 
-/**
- * Backend contract (one record per flock/house/date/reason):
- * GET /api/layers/mortality-insights?module=commercial|rearing&from=YYYY-MM-DD&to=YYYY-MM-DD
- * Returns { rows: MortalityRow[] }. The API MUST restrict records to the signed-in user's
- * company, farm permissions and module entitlements. Do not rely on UI filters for security.
+/** Reads the existing authenticated company-scoped flock and daily-performance APIs.
+ * Server-side company/farm permissions remain authoritative; client filters are display-only.
  */
 export type MortalityRow = {
   date: string; // YYYY-MM-DD
@@ -72,6 +71,7 @@ function isValidRow(v: unknown): v is MortalityRow {
 }
 
 export default function MortalityInsights({ module }: { module: Module }) {
+  const { currentUser, loadingUser, userError } = useCurrentUser();
   const [from, setFrom] = useState(() => minusDays(today(), 6));
   const [to, setTo] = useState(today);
   const [rows, setRows] = useState<MortalityRow[]>([]);
@@ -87,22 +87,38 @@ export default function MortalityInsights({ module }: { module: Module }) {
   const [attentionOnly, setAttentionOnly] = useState(false);
 
   const refresh = useCallback(async (signal?: AbortSignal) => {
+    if (loadingUser) return;
     if (from > to) { setError("From date must be on or before To date."); setRows([]); return; }
+    const selectedId = Number(new URLSearchParams(window.location.search).get("company_id"));
+    const companyId = currentUser?.is_global_admin
+      ? (Number.isInteger(selectedId) && selectedId > 0 ? selectedId : null)
+      : currentUser?.company_id;
+    if (!companyId) {
+      setRows([]);
+      setError(userError || (currentUser?.is_global_admin ? "Select a company in the OviCore sidebar to view Mortality Insights." : "No company is assigned to this user."));
+      return;
+    }
     setLoading(true); setError("");
     try {
-      const q = new URLSearchParams({ module, from, to });
-      const response = await fetch(`/api/layers/mortality-insights?${q}`, { credentials: "include", signal, cache: "no-store" });
-      if (!response.ok) throw new Error(`Unable to load mortality data (HTTP ${response.status}). Check the backend API and permissions.`);
-      const json: unknown = await response.json();
-      if (!json || typeof json !== "object" || !Array.isArray((json as {rows?: unknown}).rows)) throw new Error("Mortality API response must contain a rows array.");
-      const raw = (json as {rows: unknown[]}).rows;
-      if (!raw.every(isValidRow)) throw new Error("Mortality API returned records that do not match the required schema.");
-      setRows(raw);
+      const prefix = `/api/layers/${module}`;
+      const params = `company_id=${encodeURIComponent(companyId)}`;
+      const paths = [`${prefix}/flocks?${params}`, `${prefix}/${module === "commercial" ? "daily-performance" : "performance"}?${params}`];
+      const responses = await Promise.all(paths.map(path => fetch(path, { credentials: "include", signal, cache: "no-store" })));
+      for (let i = 0; i < responses.length; i++) {
+        if (responses[i].status === 401) {
+          window.location.href = `/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`;
+          return;
+        }
+        if (!responses[i].ok) throw new Error(`Could not load ${i === 0 ? "flocks" : "daily performance"} (HTTP ${responses[i].status}).`);
+      }
+      const [flocks, performance]: unknown[] = await Promise.all(responses.map(r => r.json()));
+      const all = adaptMortalityRows(module, flocks, performance);
+      setRows(all.filter(r => r.date >= from && r.date <= to));
     } catch (e) {
       if (signal?.aborted) return;
       setError(e instanceof Error ? e.message : "Failed to load mortality data."); setRows([]);
     } finally { if (!signal?.aborted) setLoading(false); }
-  }, [module, from, to]);
+  }, [module, from, to, loadingUser, currentUser?.company_id, currentUser?.is_global_admin, userError]);
   useEffect(() => { const abort = new AbortController(); void refresh(abort.signal); return () => abort.abort(); }, [refresh]);
 
   const farms = useMemo(() => [...new Set(rows.map(r => r.farm))].sort(), [rows]);

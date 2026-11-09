@@ -33,6 +33,10 @@ export const layersMenu: SidebarMenuConfig = {
           label: "Daily House Card",
           href: "/layers/rearing/daily-entry",
         },
+        {
+          label: "Mortality Insights",
+          href: "/layers/rearing/mortality",
+        },
       ],
     },
     {
@@ -53,6 +57,10 @@ export const layersMenu: SidebarMenuConfig = {
         {
           label: "Performance",
           href: "/layers/commercial/performance",
+        },
+        {
+          label: "Mortality Insights",
+          href: "/layers/commercial/mortality",
         },
         {
           label: "Farm Intelligence",
