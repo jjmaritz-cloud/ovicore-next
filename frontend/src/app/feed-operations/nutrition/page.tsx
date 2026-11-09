@@ -82,7 +82,7 @@ export default function NutritionIntelligencePage() {
     setShowAll(false); setAdvanced(false);
   };
   const downloadCSV = () => {
-    const header = ["Nutrient", "Units", "Actual supply", "At breed feed target", "Breed requirement", "Status"];
+    const header = ["Nutrient", "Units", "Actual Nutrient Intake", "Supply at Standard Intake", "Nutrient Required", "Supply vs Requirement"];
     const values = comparisons.map(m => {
       const supply = nutritive(ration, m.key, actual, m.unit);
       const required = canCompare ? m.requirement : undefined;
@@ -205,7 +205,7 @@ export default function NutritionIntelligencePage() {
       <div className={styles.columns}>
         <section className={styles.panel}>
           <div className={styles.panelHead}><div><h2>Nutrient supply assessment</h2><p>Actual nutrient supplied = feed consumed × formula concentration</p></div><span className={styles.pill}>{canCompare?"HY-LINE PROVISIONAL":"SUPPLY ONLY"}</span></div>
-          <div className={styles.tableScroll}><table><thead><tr><th>Nutrient</th><th>Actual</th><th>At breed feed target</th><th>Breed requirement</th><th>Assessment</th></tr></thead><tbody>{rows.map(m=>{
+          <div className={styles.tableScroll}><table><thead><tr><th>Nutrient</th><th>Actual Nutrient Intake</th><th>Supply at Standard Intake</th><th>Nutrient Required</th><th>Supply vs Requirement</th></tr></thead><tbody>{rows.map(m=>{
             const value=nutritive(ration,m.key,actual,m.unit);
             const req=canCompare?m.requirement:undefined;
             const rating=req?status(value/req):"unknown";
