@@ -62,6 +62,9 @@ from .schemas import (
     LayerRearingFlockCreate,
     LayerRearingFlockPatch,
     LayerRearingFlockOut,
+    LayerRearingDailyPerformanceCreate,
+    LayerRearingDailyPerformancePatch,
+    LayerRearingDailyPerformanceOut,
     BreederRearingFlockCreate,
     BreederRearingFlockPatch,
     BreederRearingFlockOut,
@@ -7591,3 +7594,203 @@ def transfer_layer_rearing_flock(
             )
         ),
     )
+
+
+# ---------------------------------------------------------------------
+# Commercial Rearing Daily House Card - persisted daily performance
+# ---------------------------------------------------------------------
+
+def _rearing_performance_flock(db: Session, current_user: models.AppUser,
+                              flock_id: int, company_id: int):
+    flock = (
+        db.query(models.LayerRearingFlock)
+        .options(joinedload(models.LayerRearingFlock.farm),
+                 joinedload(models.LayerRearingFlock.shed))
+        .filter(models.LayerRearingFlock.id == flock_id,
+                models.LayerRearingFlock.company_id == company_id)
+        .first()
+    )
+    if flock is None:
+        raise HTTPException(status_code=404, detail="Commercial Rearing flock not found")
+    if not access.user_has_farm_access(db, current_user, flock.farm_id):
+        raise HTTPException(status_code=403, detail="No access to this rearing farm")
+    return flock
+
+
+def _rearing_performance_output(entry, flock, db: Session):
+    # Historical cumulative mortality comes from stored daily records, not
+    # a sum of daily percentages. Cull losses remain separate.
+    cumulative = (
+        db.query(models.LayerRearingDailyPerformance)
+        .filter(models.LayerRearingDailyPerformance.company_id == entry.company_id,
+                models.LayerRearingDailyPerformance.flock_id == entry.flock_id,
+                models.LayerRearingDailyPerformance.entry_date <= entry.entry_date)
+        .all()
+    )
+    deaths = sum(int(r.mortality_birds or 0) for r in cumulative)
+    initial = int(flock.birds_placed or 0)
+    opening = int(entry.opening_birds) if entry.opening_birds is not None else None
+    closing = int(entry.closing_birds) if entry.closing_birds is not None else None
+    denom = opening if opening and opening > 0 else initial
+    feed = float(entry.feed_kg) if entry.feed_kg is not None else None
+    weight = float(entry.avg_weight_kg) if entry.avg_weight_kg is not None else None
+    return LayerRearingDailyPerformanceOut(
+        id=entry.id, company_id=entry.company_id, flock_id=entry.flock_id,
+        farm_name=flock.farm.farm_name if flock.farm else None,
+        shed_name=flock.shed.shed_name if flock.shed else None,
+        flock_code=flock.flock_code, breed=flock.breed,
+        entry_date=entry.entry_date, age_days=entry.age_days,
+        opening_birds=entry.opening_birds,
+        mortality_front=int(entry.mortality_front or 0),
+        mortality_middle=int(entry.mortality_middle or 0),
+        mortality_back=int(entry.mortality_back or 0),
+        mortality_other=int(entry.mortality_other or 0),
+        mortality_birds=int(entry.mortality_birds or 0),
+        cull_legs=int(entry.cull_legs or 0),
+        cull_runts=int(entry.cull_runts or 0),
+        cull_beak=int(entry.cull_beak or 0),
+        cull_other=int(entry.cull_other or 0),
+        cull_birds=int(entry.cull_birds or 0),
+        closing_birds=entry.closing_birds,
+        feed_kg=feed,
+        water_litres=float(entry.water_litres) if entry.water_litres is not None else None,
+        avg_weight_kg=weight, body_weight_kg=weight,
+        daily_mortality_pct=round(int(entry.mortality_birds or 0) / denom * 100, 4) if denom else None,
+        cumulative_mortality_birds=deaths,
+        cumulative_mortality_pct=round(deaths / initial * 100, 4) if initial else None,
+        feed_per_bird_g=round(feed * 1000 / closing, 3) if feed is not None and closing and closing > 0 else None,
+        average_daily_gain_g=None,
+        notes=entry.notes, last_saved_by=entry.last_saved_by,
+        last_saved_at=entry.last_saved_at,
+    )
+
+
+def _validate_rearing_daily_numbers(data: dict):
+    count_fields = (
+        "opening_birds", "mortality_front", "mortality_middle", "mortality_back",
+        "mortality_other", "mortality_birds", "cull_legs", "cull_runts",
+        "cull_beak", "cull_other", "cull_birds", "closing_birds",
+    )
+    for key in count_fields + ("feed_kg", "water_litres", "avg_weight_kg", "body_weight_kg"):
+        value = data.get(key)
+        if value is not None and value < 0:
+            raise HTTPException(status_code=422, detail=f"{key} cannot be negative")
+    if data.get("entry_date") is None:
+        raise HTTPException(status_code=422, detail="entry_date is required")
+
+
+def _normalise_rearing_daily(data: dict):
+    data = dict(data)
+    if "body_weight_kg" in data:
+        data["avg_weight_kg"] = data.pop("body_weight_kg")
+    # Count totals are saved from the Daily House Card (which supports
+    # both split-category and legacy total-only records).
+    return data
+
+
+@app.get("/api/layers/rearing/performance", response_model=list[LayerRearingDailyPerformanceOut])
+def list_layer_rearing_performance(
+    company_id: int | None = None,
+    flock_id: int | None = None,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    company = resolve_company_id(current_user, company_id)
+    query = (
+        db.query(models.LayerRearingDailyPerformance)
+        .join(models.LayerRearingFlock,
+              models.LayerRearingFlock.id == models.LayerRearingDailyPerformance.flock_id)
+        .filter(models.LayerRearingDailyPerformance.company_id == company,
+                models.LayerRearingFlock.company_id == company)
+    )
+    if flock_id is not None:
+        _rearing_performance_flock(db, current_user, flock_id, company)
+        query = query.filter(models.LayerRearingDailyPerformance.flock_id == flock_id)
+    if not (current_user.is_global_admin or current_user.is_company_admin):
+        permitted = db.query(models.UserFarmAccess.farm_id).filter(
+            models.UserFarmAccess.user_id == current_user.id)
+        query = query.filter(models.LayerRearingFlock.farm_id.in_(permitted))
+    entries = query.order_by(models.LayerRearingDailyPerformance.entry_date.asc(),
+                             models.LayerRearingDailyPerformance.id.asc()).all()
+    flocks = {}
+    output = []
+    for entry in entries:
+        if entry.flock_id not in flocks:
+            flocks[entry.flock_id] = _rearing_performance_flock(
+                db, current_user, entry.flock_id, company)
+        output.append(_rearing_performance_output(entry, flocks[entry.flock_id], db))
+    return output
+
+
+@app.post("/api/layers/rearing/performance", response_model=LayerRearingDailyPerformanceOut,
+          status_code=201)
+def create_layer_rearing_performance(
+    payload: LayerRearingDailyPerformanceCreate,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    company = resolve_company_id(current_user, payload.company_id)
+    if payload.company_id != company:
+        raise HTTPException(status_code=403, detail="Company mismatch")
+    flock = _rearing_performance_flock(db, current_user, payload.flock_id, company)
+    data = _normalise_rearing_daily(payload.model_dump(exclude_unset=True))
+    _validate_rearing_daily_numbers(data)
+    existing = db.query(models.LayerRearingDailyPerformance).filter(
+        models.LayerRearingDailyPerformance.company_id == company,
+        models.LayerRearingDailyPerformance.flock_id == payload.flock_id,
+        models.LayerRearingDailyPerformance.entry_date == payload.entry_date,
+    ).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Entry already exists for this flock/date; reload and edit")
+    data.pop("company_id", None)
+    entry = models.LayerRearingDailyPerformance(
+        company_id=company, **data, last_saved_by=current_user.full_name,
+        last_saved_at=datetime.utcnow())
+    db.add(entry)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="A record already exists for this flock/date")
+    db.refresh(entry)
+    return _rearing_performance_output(entry, flock, db)
+
+
+@app.patch("/api/layers/rearing/performance/{entry_id}", response_model=LayerRearingDailyPerformanceOut)
+def patch_layer_rearing_performance(
+    entry_id: int,
+    payload: LayerRearingDailyPerformancePatch,
+    current_user: models.AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    entry = db.query(models.LayerRearingDailyPerformance).filter(
+        models.LayerRearingDailyPerformance.id == entry_id).first()
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Commercial Rearing daily record not found")
+    company = resolve_company_id(current_user, entry.company_id)
+    if company != entry.company_id:
+        raise HTTPException(status_code=403, detail="Company mismatch")
+    flock = _rearing_performance_flock(db, current_user, entry.flock_id, company)
+    data = _normalise_rearing_daily(payload.model_dump(exclude_unset=True))
+    if "entry_date" in data and data["entry_date"] is None:
+        raise HTTPException(status_code=422, detail="entry_date cannot be blank")
+    _validate_rearing_daily_numbers({**{"entry_date": entry.entry_date}, **data})
+    if "entry_date" in data and data["entry_date"] != entry.entry_date:
+        exists = db.query(models.LayerRearingDailyPerformance.id).filter(
+            models.LayerRearingDailyPerformance.flock_id == entry.flock_id,
+            models.LayerRearingDailyPerformance.entry_date == data["entry_date"],
+            models.LayerRearingDailyPerformance.id != entry.id,
+        ).first()
+        if exists:
+            raise HTTPException(status_code=409, detail="Entry already exists for this flock/date")
+    for key, value in data.items():
+        setattr(entry, key, value)
+    entry.last_saved_by = current_user.full_name
+    entry.last_saved_at = datetime.utcnow()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="A record already exists for this flock/date")
+    db.refresh(entry)
+    return _rearing_performance_output(entry, flock, db)
