@@ -57,7 +57,6 @@ export default function NutritionIntelligencePage() {
   const benchmark = (group === "Alternative" || group === "Rearing") && Number.isInteger(age) && age >= 1 && age <= 100
     ? HYLINE_ALT_FEED_TARGET[age - 1] : undefined;
 
-  const listed = useMemo(() => data.filter(r => r.group === group), [group]);
   // Age is known, but production phase depends on egg production rate, not just age.
   // Until flock production is linked, use ration stage as a provisional guide mapping.
   const phaseId = ration.code.endsWith("2") ? "l2" : ration.code.endsWith("3") ? "l3" : ration.code.endsWith("4") ? "l4" : "peak";
@@ -235,11 +234,6 @@ export default function NutritionIntelligencePage() {
           </article>)}
         </div>
         <p className={styles.footnote}>A flagged nutrient reference is an investigation prompt, not evidence of an observed production or welfare problem. Other factors include water, temperature, disease, age, production rate, feed distribution and actual nutrient availability. Energy, digestible amino acids and available phosphorus are missing from the supplied formula report. Require nutritionist review before ration changes.</p>
-      </section>
-      <section className={styles.panel}>
-        <div className={styles.panelHead}><div><h2>Beresfield feeding program — reference stages</h2><p>Select a ration to examine its formulation; age stays unchanged so any age mismatch is visible.</p></div><span>{listed.length} formulations</span></div>
-        <div className={styles.program}>{listed.map(r=><button type="button" key={r.code} className={`${styles.programItem} ${r.code===ration.code?styles.selected:""}`} onClick={()=>setRationCode(r.code)}><b>{r.code}</b><span>{r.name}</span><small>{r.minWeek}–{r.maxWeek===120?"70+":r.maxWeek} wk</small></button>)}</div>
-        <p className={styles.footnote}>Age boundaries overlap in the source formulation names. Future program assignments will need effective dates, mill, flock, formulation version and authorisation. OviCore reporting stages remain separate.</p>
       </section>
       <footer className={styles.footer}><b>Source provenance</b><p>Formulations: Pace Beresfield CFC Production Formula (Rounded), 26 Oct 2026 (formulation versions shown in the source). Age-based feed-intake targets (weeks 1–100) and nutrient references: <a href={SOURCE_PDF} target="_blank" rel="noopener noreferrer">Hy-Line Brown Alternative Systems Australia Standards, May 2025, p.20</a>. Use current nutritionist-approved targets for decisions. No flock data is retrieved, stored or modified on this page.</p></footer>
     </div>

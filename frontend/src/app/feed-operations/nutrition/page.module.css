@@ -7,3 +7,6 @@
 
 /* V4: the original simple slider, with read-only age-based breed target */
 .benchmarkReadout{border:1px solid #d8e4e6;background:#f6fafb;border-radius:8px;padding:12px 14px;min-height:49px;display:flex;flex-direction:column;gap:4px;color:#2a5965;font-size:11px}.benchmarkReadout span{font-weight:700}.benchmarkReadout small{color:#64748b;font-size:10px}
+
+/* v7: Expanded responsive workspace, retaining the existing OviCore collapsed sidebar. */
+@media (min-width:801px){.page{padding-left:72px;padding-right:28px}.wrap{width:100%;max-width:1800px}}
