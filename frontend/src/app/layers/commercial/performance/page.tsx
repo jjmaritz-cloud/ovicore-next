@@ -45,6 +45,12 @@ type PerformanceRow = {
   cumulative_mortality_pct?: number | null;
   egg_weight_g?: number | null;
   feed_g_bird_day?: number | null;
+  // Energy is optional until a dated, approved ration formulation is linked to feed consumed.
+  // Values should originate in the backend from effective-dated ration data, never an age guess.
+  energy_kcal_bird_day?: number | null;
+  energy_standard_kcal_bird_day?: number | null;
+  ration_amen_kcal_kg?: number | null;
+  reference_amen_kcal_kg?: number | null;
   eggs_per_bird_cumulative?: number | null;
   bodyweight_g?: number | null;
 
@@ -76,6 +82,7 @@ type MetricKey =
   | "mortality"
   | "eggWeight"
   | "feed"
+  | "energy"
   | "water"
   | "eggsPerBird"
   | "bodyweight";
@@ -135,6 +142,27 @@ function waterStandard(row: PerformanceRow) {
   return litres === null ? null : litres * 1000;
 }
 
+// A value is only plotted when both feed intake and a ration-specific AMEn are known.
+// The alternate precomputed fields let the backend perform the calculation using
+// historical feed receipts, formulation versions and daily ration transitions.
+function energyActual(row: PerformanceRow): number | null {
+  const ready = finite(row.energy_kcal_bird_day);
+  if (ready !== null && ready > 0) return ready;
+  const intake = finite(row.feed_g_bird_day);
+  const amen = finite(row.ration_amen_kcal_kg);
+  return intake !== null && intake > 0 && intake <= 200 && amen !== null && amen > 0
+    ? intake * amen / 1000 : null;
+}
+
+function energyStandard(row: PerformanceRow): number | null {
+  const ready = finite(row.energy_standard_kcal_bird_day);
+  if (ready !== null && ready > 0) return ready;
+  const intake = finite(row.feed_standard_g_bird_day);
+  const reference = finite(row.reference_amen_kcal_kg);
+  return intake !== null && intake > 0 && reference !== null && reference > 0
+    ? intake * reference / 1000 : null;
+}
+
 const METRICS: MetricDefinition[] = [
   {
     key: "production",
@@ -175,6 +203,16 @@ const METRICS: MetricDefinition[] = [
     colour: "#f97316",
     actual: (row) => finite(row.feed_g_bird_day),
     standard: (row) => finite(row.feed_standard_g_bird_day),
+  },
+  {
+    key: "energy",
+    label: "Estimated energy intake (kcal/bird/day)",
+    shortLabel: "Energy kcal",
+    unit: "kcal",
+    decimals: 1,
+    colour: "#be3f86",
+    actual: energyActual,
+    standard: energyStandard,
   },
   {
     key: "water",
@@ -1321,6 +1359,7 @@ function ProfessionalLayerChart({
     mortality: 0,
     eggWeight: 0,
     feed: 0,
+    energy: 0,
     water: 0,
     eggsPerBird: 0,
     bodyweight: 0,
@@ -1394,6 +1433,18 @@ function ProfessionalLayerChart({
         production_pct: average(sorted, "production_pct"),
         egg_weight_g: average(sorted, "egg_weight_g"),
         feed_g_bird_day: average(sorted, "feed_g_bird_day"),
+        // Weekly energy is the average of each recorded day's calculated energy.
+        // Do not multiply weekly feed mean by the last ration's energy concentration.
+        energy_kcal_bird_day: (() => {
+          const valid = sorted.map(energyActual).filter((v): v is number => v !== null);
+          return valid.length ? valid.reduce((a, b) => a + b, 0) / valid.length : null;
+        })(),
+        energy_standard_kcal_bird_day: (() => {
+          const valid = sorted.map(energyStandard).filter((v): v is number => v !== null);
+          return valid.length ? valid.reduce((a, b) => a + b, 0) / valid.length : null;
+        })(),
+        ration_amen_kcal_kg: null,
+        reference_amen_kcal_kg: null,
         water_ml_bird_day: average(sorted, "water_ml_bird_day"),
         water_intake_ml_bird_day: average(sorted, "water_intake_ml_bird_day"),
         water_l_bird_day: average(sorted, "water_l_bird_day"),
@@ -1432,6 +1483,7 @@ function ProfessionalLayerChart({
       if (comparisonMetric === "mortality") row.cumulative_mortality_pct = value;
       if (comparisonMetric === "eggWeight") row.egg_weight_g = value;
       if (comparisonMetric === "feed") row.feed_g_bird_day = value;
+      if (comparisonMetric === "energy") {row.energy_kcal_bird_day = value; row.ration_amen_kcal_kg = null;}
       if (comparisonMetric === "water") {row.water_ml_bird_day = value; row.water_intake_ml_bird_day = value;row.water_l_bird_day = null;}
       if (comparisonMetric === "eggsPerBird") row.eggs_per_bird_cumulative = value;
       if (comparisonMetric === "bodyweight") row.bodyweight_g = value;
@@ -2151,6 +2203,11 @@ function ProfessionalLayerChart({
           return <span>{`Current ${current === null ? "—" : current.toFixed(metric.decimals)} | ${comparisonLabel} ${other === null ? "—" : other.toFixed(metric.decimals)} | Δ ${current===null||other===null?"—":(current-other).toFixed(metric.decimals)} ${metric.unit}`}</span>;
         })()}
       </div>}
+      {selectedMetrics.includes("energy") && !rows.some(row => energyActual(row) !== null) && (
+        <div role="status" style={{fontSize:11,color:"#8b5f29",padding:"4px 8px"}}>
+          Energy (kcal/bird/day) is unavailable: no dated ration AMEn is linked to this flock's feed records. No assumed energy value has been plotted.
+        </div>
+      )}
       <div className="legend" aria-label="Graph metric controls">
         {METRICS.map((metric) => {
           const active = selectedMetrics.includes(metric.key);
@@ -2171,7 +2228,7 @@ function ProfessionalLayerChart({
               {showStandards ? (
                 <>
                   <span className="dashed" style={{ borderColor: metric.colour }} />
-                  {metric.key === "water" ? "standard unavailable" : "standard"}
+                  {metric.key === "water" || metric.key === "energy" ? "standard if available" : "standard"}
                 </>
               ) : null}
             </button>
