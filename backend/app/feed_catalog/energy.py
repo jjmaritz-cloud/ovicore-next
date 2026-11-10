@@ -1,7 +1,8 @@
-"""Validated, snapshot-based poultry AMEn estimation and dated flock ration assignments.
+"""Snapshot-based energy estimates and dated flock ration assignments.
 
-This estimates AMEn from supplied AS-FED ingredient values. It does not claim a
-mill-formulated or measured energy specification. No default values are assumed.
+The existing ingredient form stores Energy in MJ/kg. Converted kcal/kg is an
+estimated poultry AMEn only if the entered values are confirmed as AMEn, as-fed.
+No default energy values are assumed.
 """
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -32,12 +33,20 @@ def declare_energy_model(Base):
     return FlockRationEnergyAssignment
 
 
-def parse_amen(value):
-    """Only explicit numeric kcal/kg as-fed energy values are acceptable.
+# The existing Diet Ingredients form labels its stored `energy` value "Energy (MJ/kg)".
+# This conversion is exact: 1 kcal = 4.184 kJ, so 1 MJ = 1000/4.184 kcal.
+# It is the nutritionist/user's responsibility to confirm that the entered
+# energy is poultry AMEn on an as-fed basis (not GE, DE, or dry-matter ME).
+KCAL_PER_MJ = Decimal(1000) / Decimal("4.184")
 
-    A bare number is accepted by this calculator only because this endpoint
-    explicitly defines its input as AMEn kcal/kg as-fed. Labels/units in strings
-    are rejected to prevent confusion with MJ/kg, gross energy or dry matter.
+
+def parse_amen(value):
+    """Convert the Ingredient Register's numeric MJ/kg energy into kcal/kg.
+
+    Missing, explicitly suffixed, negative, and implausible MJ/kg values are
+    rejected. Explicit unit strings are rejected because the existing UI only
+    accepts numeric MJ/kg and silently guessing units would be unsafe.
+    A zero is valid for non-energy ingredients such as limestone.
     """
     if isinstance(value, bool) or value is None:
         return None
@@ -45,9 +54,9 @@ def parse_amen(value):
         num = Decimal(str(value).strip())
     except (InvalidOperation, ValueError):
         return None
-    if not num.is_finite() or num < 0 or num > 12000:
+    if not num.is_finite() or num < 0 or num > 40:
         return None
-    return num
+    return num * KCAL_PER_MJ
 
 
 def estimate_ration_amen(ration, ingredient_by_id):
@@ -72,10 +81,12 @@ def estimate_ration_amen(ration, ingredient_by_id):
             raise ValueError("Invalid ingredient inclusion")
         amen = parse_amen(ingredient.energy)
         if amen is None:
-            raise ValueError(f"AMEn kcal/kg as-fed missing or invalid for {ingredient.code} ({ingredient.name})")
+            raise ValueError(f"Energy (MJ/kg) missing or invalid for {ingredient.code} ({ingredient.name})")
         total += inclusion * amen / Decimal(100)
         snapshot.append({"ingredientId": ingredient.id, "code": ingredient.code,
                          "name": ingredient.name, "inclusionPct": float(inclusion),
+                         "energyMjKgAsFed": float(Decimal(str(ingredient.energy).strip())),
+                         "estimatedAmenKcalKgAsFed": float(amen),
                          "amenKcalKgAsFed": float(amen)})
     if total <= 0 or total > 10000:
         raise ValueError("Calculated ration AMEn outside plausible range")
