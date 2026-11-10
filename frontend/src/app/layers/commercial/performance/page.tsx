@@ -77,6 +77,9 @@ type PerformanceRow = {
   notes?: string | null;
 };
 
+type EnergyRation = { id: string; code: string; name: string; mill_id: string; amen_kcal_kg: number | null; error: string | null };
+type EnergyAssignment = { id: string; effective_from: string; ration_code: string; ration_name: string; amen_kcal_kg: number; source: string };
+
 type MetricKey =
   | "production"
   | "mortality"
@@ -434,6 +437,15 @@ function CommercialLayerPerformanceContent() {
 
   const [flocks, setFlocks] = useState<Flock[]>([]);
   const [rows, setRows] = useState<PerformanceRow[]>([]);
+  const [energyPanelOpen, setEnergyPanelOpen] = useState(false);
+  const [energyRations, setEnergyRations] = useState<EnergyRation[]>([]);
+  const [energyAssignments, setEnergyAssignments] = useState<EnergyAssignment[]>([]);
+  const [energyRationId, setEnergyRationId] = useState("");
+  const [energyStartDate, setEnergyStartDate] = useState("");
+  const [energyConfirm, setEnergyConfirm] = useState(false);
+  const [energyMessage, setEnergyMessage] = useState("");
+  const [energyBusy, setEnergyBusy] = useState(false);
+
   const [selectedFarmId, setSelectedFarmId] =
     useState<number | "">("");
   const [selectedShedId, setSelectedShedId] =
@@ -546,6 +558,64 @@ function CommercialLayerPerformanceContent() {
   useEffect(() => {
     void loadPerformance();
   }, [loadPerformance]);
+
+  const loadEnergyAssignments = useCallback(async () => {
+    if (!companyId || !selectedFlockId) { setEnergyAssignments([]); return; }
+    try {
+      const response = await authenticatedFetch(
+        `/api/feed-operations/energy/assignments?company_id=${companyId}&flock_id=${selectedFlockId}`,
+        { cache: "no-store" },
+      );
+      if (!response.ok) throw new Error(`Ration assignments unavailable (${response.status})`);
+      setEnergyAssignments(await response.json());
+    } catch (reason) {
+      setEnergyAssignments([]);
+      setEnergyMessage(reason instanceof Error ? reason.message : "Unable to load assignments");
+    }
+  }, [companyId, selectedFlockId]);
+
+  useEffect(() => {
+    void loadEnergyAssignments();
+    setEnergyMessage("");
+    setEnergyConfirm(false);
+  }, [loadEnergyAssignments]);
+
+  useEffect(() => {
+    if (!companyId || !energyPanelOpen) return;
+    void (async () => {
+      try {
+        const response = await authenticatedFetch(`/api/feed-operations/energy/rations?company_id=${companyId}`);
+        if (!response.ok) throw new Error(`Energy ration catalogue unavailable (${response.status})`);
+        const data: EnergyRation[] = await response.json();
+        setEnergyRations(data);
+      } catch (reason) {
+        setEnergyMessage(reason instanceof Error ? reason.message : "Unable to load energy rations");
+      }
+    })();
+  }, [companyId, energyPanelOpen]);
+
+  const saveEnergyAssignment = async () => {
+    if (!companyId || !selectedFlockId || !energyRationId || !energyStartDate || !energyConfirm) return;
+    setEnergyBusy(true);
+    setEnergyMessage("");
+    try {
+      const response = await authenticatedFetch(`/api/feed-operations/energy/assignments?company_id=${companyId}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ flock_id: selectedFlockId, ration_id: energyRationId,
+          effective_from: energyStartDate, confirmed_actual_change: true }),
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => null);
+        throw new Error(typeof error?.detail === "string" ? error.detail : `Unable to save (${response.status})`);
+      }
+      setEnergyMessage("Confirmed dated ration assignment saved. Energy graph refreshed.");
+      setEnergyConfirm(false);
+      await loadEnergyAssignments();
+      await loadPerformance();
+    } catch (reason) {
+      setEnergyMessage(reason instanceof Error ? reason.message : "Unable to save ration assignment");
+    } finally { setEnergyBusy(false); }
+  };
 
   const farms = useMemo(() => {
     const map = new Map<number, string>();
@@ -793,6 +863,47 @@ function CommercialLayerPerformanceContent() {
             ? `Showing ${selectedFlock.farm_name} / ${selectedFlock.shed_name} / ${selectedFlock.flock_code}${selectedFlock.source_rearing_flock_code ? ` · Reared as: ${selectedFlock.source_rearing_flock_code}` : ""}`
             : "No Commercial Layer flock is available yet."}
         </p>
+      </section>
+
+      <section style={{padding:"7px 10px",border:"1px solid #dce8e2",borderRadius:12,background:"#fff"}}>
+        <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+          <strong style={{fontSize:12,color:"#174a34"}}>Ration energy history</strong>
+          <span style={{fontSize:11,color:"#60776b"}}>
+            {energyAssignments.length ? `${energyAssignments.length} confirmed ration change(s)` : "No confirmed ration changes recorded"}
+          </span>
+          {(currentUser?.is_global_admin || currentUser?.is_company_admin) && <button type="button" onClick={()=>setEnergyPanelOpen(!energyPanelOpen)}
+            style={{marginLeft:"auto",padding:"5px 10px",border:"1px solid #d0ded5",borderRadius:8,background:"#f4faf6",color:"#19563b",fontSize:11,cursor:"pointer"}}>
+            {energyPanelOpen ? "Close assignment" : "Assign actual ration + energy"}
+          </button>}
+        </div>
+        {energyAssignments.length>0 && <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:6}}>
+          {energyAssignments.map(a=><span key={a.id} title={a.source} style={{fontSize:10,border:"1px solid #dce8e2",borderRadius:7,padding:"4px 7px"}}>
+            {a.effective_from} · {a.ration_code} · Estimated AMEn {a.amen_kcal_kg.toFixed(0)} kcal/kg
+          </span>)}
+        </div>}
+        {energyPanelOpen && (currentUser?.is_global_admin || currentUser?.is_company_admin) && <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"end",paddingTop:9}}>
+          <label style={{fontSize:11}}>Actual ration fed
+            <select value={energyRationId} onChange={e=>setEnergyRationId(e.target.value)} style={{display:"block",height:32,maxWidth:340}}>
+              <option value="">Select approved ration</option>
+              {energyRations.map(r=><option key={r.id} value={r.id} disabled={r.amen_kcal_kg===null}>
+                {r.code} · {r.name} {r.amen_kcal_kg!==null ? `(${r.amen_kcal_kg.toFixed(0)} kcal/kg estimated)` : `(Unavailable: ${r.error})`}
+              </option>)}
+            </select>
+          </label>
+          <label style={{fontSize:11}}>Actually fed from date
+            <input type="date" value={energyStartDate} onChange={e=>setEnergyStartDate(e.target.value)} style={{display:"block",height:30}}/>
+          </label>
+          <label style={{display:"flex",alignItems:"center",gap:5,fontSize:11,maxWidth:240}}>
+            <input type="checkbox" checked={energyConfirm} onChange={e=>setEnergyConfirm(e.target.checked)}/>
+            Confirm actual ration change (not automatic by age)
+          </label>
+          <button type="button" disabled={energyBusy || !energyConfirm || !energyRationId || !energyStartDate}
+            onClick={()=>void saveEnergyAssignment()} style={{height:33,padding:"0 12px",background:"#176a47",color:"white",border:0,borderRadius:8,opacity:energyBusy?.6:1}}>
+            {energyBusy ? "Saving…" : "Save historical assignment"}
+          </button>
+          <div style={{fontSize:10,color:"#65786f",width:"100%"}}>AMEn is estimated from complete, numeric ingredient kcal/kg as-fed values. Historical snapshots cannot be edited. A change remains effective until the next confirmed change. Feed silo carryover and mixed rations are not yet modelled.</div>
+        </div>}
+        {energyMessage && <p role="status" style={{fontSize:11,color:energyMessage.startsWith("Confirmed")?"#176a47":"#b45309",margin:"5px 0 0"}}>{energyMessage}</p>}
       </section>
 
       <FlockCompareSelector

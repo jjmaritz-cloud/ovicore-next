@@ -1416,6 +1416,11 @@ class CommercialLayerPerformanceOut(BaseModel):
     cumulative_mortality_pct: Optional[float] = None
     egg_weight_g: Optional[float] = None
     feed_g_bird_day: Optional[float] = None
+    # Estimated AMEn from explicitly dated flock ration assignments (no age inference).
+    ration_amen_kcal_kg: Optional[float] = None
+    reference_amen_kcal_kg: Optional[float] = None
+    energy_kcal_bird_day: Optional[float] = None
+    energy_standard_kcal_bird_day: Optional[float] = None
     # Total recorded drinking water and calculated daily intake per closing bird.
     water_litres: Optional[float] = None
     water_ml_bird_day: Optional[float] = None

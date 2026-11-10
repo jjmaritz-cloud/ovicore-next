@@ -7,6 +7,7 @@ import urllib.request
 from .routers.auth import get_current_user
 from .feed_catalog.models import declare_models
 from .feed_catalog.router import make_feed_catalog_router
+from .feed_catalog.energy import declare_energy_model, make_energy_router, estimate_ration_amen
 from datetime import date, datetime, timedelta
 from io import BytesIO
 from fastapi import Body, Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
@@ -32,6 +33,7 @@ from app.routers import ai_intelligence
 from .db import Base, engine, SessionLocal, get_db
 # Register Feed Operations models with the existing OviCore database.
 FeedMill, FeedIngredient, FeedRation = declare_models(Base)
+FlockRationEnergyAssignment = declare_energy_model(Base)
 
 from .models import (
     Company,
@@ -127,6 +129,17 @@ app.include_router(
         require_feed_editor=require_feed_editor,
     )
 )
+
+# Dated energy assignments are immutable snapshots of approved rations.
+app.include_router(make_energy_router(
+    get_db=get_db,
+    get_current_user=get_current_user,
+    resolve_company_id=lambda user, cid: resolve_company_id(user, cid),
+    has_farm_access=access.user_has_farm_access,
+    layer_models=models.CommercialLayerFlock,
+    feed_models=(FeedIngredient, FeedRation),
+    assignment_model=FlockRationEnergyAssignment,
+))
 
 origins = [
     "http://localhost:3000",
@@ -6988,6 +7001,16 @@ def list_commercial_layer_performance(
         .all()
     )
 
+    energy_assignments_by_flock = {}
+    if entries:
+        ids = {entry.flock_id for entry in entries}
+        energy_assignments = db.query(FlockRationEnergyAssignment).filter(
+            FlockRationEnergyAssignment.company_id == resolved_company_id,
+            FlockRationEnergyAssignment.flock_id.in_(ids),
+        ).order_by(FlockRationEnergyAssignment.effective_from).all()
+        for assignment in energy_assignments:
+            energy_assignments_by_flock.setdefault(assignment.flock_id, []).append(assignment)
+
     cumulative_mortality_by_flock: dict[int, int] = {}
     cumulative_eggs_by_flock: dict[int, int] = {}
     output: list[CommercialLayerPerformanceOut] = []
@@ -7054,6 +7077,20 @@ def list_commercial_layer_performance(
             else None
         )
 
+        # A dated assignment uses the snapshotted estimated AMEn for that date.
+        # No age-based ration inference; no backfilling before the first confirmed assignment.
+        current_energy_assignment = next((a for a in reversed(
+            energy_assignments_by_flock.get(flock_id_key, []))
+            if a.effective_from <= entry.entry_date), None)
+        energy_amen = (float(current_energy_assignment.amen_kcal_kg)
+                       if current_energy_assignment else None)
+        energy_intake = (round(feed_g_bird_day * energy_amen / 1000, 3)
+                         if feed_g_bird_day is not None and 0 < feed_g_bird_day <= 200
+                         and energy_amen is not None else None)
+        reference_energy = (round(float(entry.feed_standard_g_bird_day) * energy_amen / 1000, 3)
+                            if entry.feed_standard_g_bird_day is not None
+                            and 0 < float(entry.feed_standard_g_bird_day) <= 200
+                            and energy_amen is not None else None)
         output.append(
             CommercialLayerPerformanceOut(
                 id=entry.id,
@@ -7091,6 +7128,10 @@ def list_commercial_layer_performance(
                     else None
                 ),
                 feed_g_bird_day=feed_g_bird_day,
+                ration_amen_kcal_kg=energy_amen,
+                energy_kcal_bird_day=energy_intake,
+                reference_amen_kcal_kg=energy_amen,
+                energy_standard_kcal_bird_day=reference_energy,
                 # Water is stored in litres on the Daily House Card.
                 # Expose both the recorded total and the calculated mL/bird/day.
                 # Do not turn a missing entry into a false zero reading.

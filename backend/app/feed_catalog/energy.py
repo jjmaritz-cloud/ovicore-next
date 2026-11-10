@@ -1,0 +1,176 @@
+"""Validated, snapshot-based poultry AMEn estimation and dated flock ration assignments.
+
+This estimates AMEn from supplied AS-FED ingredient values. It does not claim a
+mill-formulated or measured energy specification. No default values are assumed.
+"""
+from datetime import date, datetime, timezone
+from decimal import Decimal, InvalidOperation
+from uuid import uuid4
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import Column, String, Integer, Date, DateTime, Numeric, JSON, ForeignKey, UniqueConstraint, select
+from sqlalchemy.orm import Session
+
+
+def declare_energy_model(Base):
+    class FlockRationEnergyAssignment(Base):
+        __tablename__ = "feed_flock_ration_energy_assignments"
+        id = Column(String(64), primary_key=True)
+        company_id = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
+        flock_id = Column(Integer, nullable=False, index=True)
+        ration_id = Column(String(64), nullable=False)
+        effective_from = Column(Date, nullable=False)
+        mill_id = Column(String(64), nullable=False)
+        ration_code = Column(String(32), nullable=False)
+        ration_name = Column(String(255), nullable=False)
+        amen_kcal_kg = Column(Numeric(12, 4), nullable=False)
+        ingredient_snapshot = Column(JSON, nullable=False)
+        source = Column(String(60), nullable=False, default="OviCore estimated AMEn")
+        created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+        created_by = Column(String(255), nullable=False)
+        __table_args__ = (UniqueConstraint("company_id", "flock_id", "effective_from", name="uq_feed_energy_flock_date"),)
+    return FlockRationEnergyAssignment
+
+
+def parse_amen(value):
+    """Only explicit numeric kcal/kg as-fed energy values are acceptable.
+
+    A bare number is accepted by this calculator only because this endpoint
+    explicitly defines its input as AMEn kcal/kg as-fed. Labels/units in strings
+    are rejected to prevent confusion with MJ/kg, gross energy or dry matter.
+    """
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        num = Decimal(str(value).strip())
+    except (InvalidOperation, ValueError):
+        return None
+    if not num.is_finite() or num < 0 or num > 12000:
+        return None
+    return num
+
+
+def estimate_ration_amen(ration, ingredient_by_id):
+    if ration.status != "Approved":
+        raise ValueError("Ration must be Approved")
+    lines = ration.lines or []
+    if not lines or abs(sum(float(line.get("percent", 0)) for line in lines) - 100) > 0.001:
+        raise ValueError("Ration inclusions must total 100%")
+    total = Decimal(0)
+    snapshot = []
+    seen = set()
+    for line in lines:
+        ingredient_id = line.get("ingredientId")
+        if ingredient_id in seen:
+            raise ValueError("Duplicate ingredient inclusion")
+        seen.add(ingredient_id)
+        ingredient = ingredient_by_id.get(ingredient_id)
+        if ingredient is None or ingredient.company_id != ration.company_id:
+            raise ValueError("Ingredient is not in this company")
+        inclusion = Decimal(str(line["percent"]))
+        if not inclusion.is_finite() or inclusion <= 0:
+            raise ValueError("Invalid ingredient inclusion")
+        amen = parse_amen(ingredient.energy)
+        if amen is None:
+            raise ValueError(f"AMEn kcal/kg as-fed missing or invalid for {ingredient.code} ({ingredient.name})")
+        total += inclusion * amen / Decimal(100)
+        snapshot.append({"ingredientId": ingredient.id, "code": ingredient.code,
+                         "name": ingredient.name, "inclusionPct": float(inclusion),
+                         "amenKcalKgAsFed": float(amen)})
+    if total <= 0 or total > 10000:
+        raise ValueError("Calculated ration AMEn outside plausible range")
+    return round(float(total), 4), snapshot
+
+
+class AssignmentIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    flock_id: int = Field(gt=0)
+    ration_id: str = Field(min_length=1, max_length=64)
+    effective_from: date
+    confirmed_actual_change: bool = False
+
+
+def make_energy_router(get_db, get_current_user, resolve_company_id, has_farm_access,
+                       layer_models, feed_models, assignment_model):
+    Flock = layer_models
+    Ingredient, Ration = feed_models
+    Assignment = assignment_model
+    router = APIRouter(prefix="/api/feed-operations/energy", tags=["Feed Energy"])
+
+    def check_flock(db, user, company_id, flock_id):
+        cid = resolve_company_id(user, company_id)
+        flock = db.execute(select(Flock).where(Flock.company_id == cid, Flock.id == flock_id)).scalar_one_or_none()
+        if not flock:
+            raise HTTPException(404, "Flock not found in selected company")
+        if not has_farm_access(db, user, flock.farm_id):
+            raise HTTPException(403, "No access to flock farm")
+        return cid, flock
+
+    def result(item):
+        return {"id": item.id, "flock_id": item.flock_id, "ration_id": item.ration_id,
+                "effective_from": item.effective_from.isoformat(), "mill_id": item.mill_id,
+                "ration_code": item.ration_code, "ration_name": item.ration_name,
+                "amen_kcal_kg": float(item.amen_kcal_kg), "source": item.source,
+                "created_at": item.created_at.isoformat() if item.created_at else None,
+                "created_by": item.created_by}
+
+    @router.get("/rations")
+    def ration_estimates(company_id: int | None = Query(default=None),
+                         db: Session = Depends(get_db), user=Depends(get_current_user)):
+        cid = resolve_company_id(user, company_id)
+        ingredients = {i.id: i for i in db.execute(select(Ingredient).where(Ingredient.company_id == cid)).scalars()}
+        response = []
+        for ration in db.execute(select(Ration).where(Ration.company_id == cid, Ration.status == "Approved")).scalars():
+            try:
+                value, _ = estimate_ration_amen(ration, ingredients)
+                error = None
+            except ValueError as ex:
+                value, error = None, str(ex)
+            response.append({"id": ration.id, "code": ration.code, "name": ration.name,
+                             "mill_id": ration.mill_id, "amen_kcal_kg": value, "error": error})
+        return response
+
+    @router.get("/assignments")
+    def list_assignments(flock_id: int = Query(gt=0), company_id: int | None = None,
+                         db: Session = Depends(get_db), user=Depends(get_current_user)):
+        cid, _ = check_flock(db, user, company_id, flock_id)
+        assignments = db.execute(select(Assignment).where(Assignment.company_id == cid,
+            Assignment.flock_id == flock_id).order_by(Assignment.effective_from)).scalars()
+        return [result(a) for a in assignments]
+
+    @router.post("/assignments", status_code=201)
+    def assign_ration(body: AssignmentIn, company_id: int | None = None,
+                      db: Session = Depends(get_db), user=Depends(get_current_user)):
+        cid, flock = check_flock(db, user, company_id, body.flock_id)
+        if not (user.is_global_admin or user.is_company_admin):
+            raise HTTPException(403, "Company Admin or Global Admin required to confirm ration history")
+        if not body.confirmed_actual_change:
+            raise HTTPException(422, "Confirm that this ration was actually fed from the entered date")
+        ration = db.execute(select(Ration).where(Ration.id == body.ration_id,
+            Ration.company_id == cid, Ration.status == "Approved")).scalar_one_or_none()
+        if ration is None:
+            raise HTTPException(404, "Approved ration not found")
+        existing = db.execute(select(Assignment.id).where(Assignment.company_id == cid,
+            Assignment.flock_id == flock.id, Assignment.effective_from == body.effective_from)).first()
+        if existing:
+            raise HTTPException(409, "An assignment already exists on this date; immutable records cannot be overwritten")
+        ingredients = {i.id: i for i in db.execute(select(Ingredient).where(Ingredient.company_id == cid)).scalars()}
+        try:
+            amen, snapshot = estimate_ration_amen(ration, ingredients)
+        except ValueError as ex:
+            raise HTTPException(422, str(ex)) from ex
+        item = Assignment(id=str(uuid4()), company_id=cid, flock_id=flock.id,
+            ration_id=ration.id, effective_from=body.effective_from,
+            mill_id=ration.mill_id, ration_code=ration.code, ration_name=ration.name,
+            amen_kcal_kg=amen, ingredient_snapshot=snapshot,
+            created_by=str(getattr(user, "email", "unknown")))
+        db.add(item)
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        db.refresh(item)
+        return result(item)
+
+    return router
