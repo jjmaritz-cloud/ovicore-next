@@ -181,4 +181,6 @@ def make_feed_catalog_router(get_db, get_current_user, models, require_feed_edit
             raise
         db.refresh(item)
         return serialize(item, kind)
+    from .bulk_import import attach_bulk_import
+    attach_bulk_import(router, get_db, get_current_user, require_feed_editor, company, models)
     return router

@@ -7,6 +7,23 @@ type Line={ingredientId:string;percent:number};
 const BLANK={millId:"",code:"",name:"",supplierCode:"",supplierName:"",phase:"Layer 1",type:"Base" as "Base"|"Medicated",baseId:"",status:"Draft" as "Draft"|"Approved"|"Inactive",notes:"",lines:[] as Line[]};
 export default function RationsPage(){
   const {catalog,save,ready,error}=useCatalog();const [form,setForm]=useState({...BLANK});const [edit,setEdit]=useState("");const [search,setSearch]=useState("");const [message,setMessage]=useState("");
+  const [importOpen,setImportOpen]=useState(false);const [importFile,setImportFile]=useState<File|null>(null);const [importMill,setImportMill]=useState("");const [importPreview,setImportPreview]=useState<any>(null);const [importConfirm,setImportConfirm]=useState(false);const [importBusy,setImportBusy]=useState(false);const [importError,setImportError]=useState("");const [importSuccess,setImportSuccess]=useState("");
+  const sendImport=async(action:"import-preview"|"import-apply")=>{
+    if(!importFile||!importMill)return;
+    setImportBusy(true);setImportError("");setImportSuccess("");
+    try{
+      const data=new FormData();data.append("file",importFile);data.append("mill_id",importMill);
+      if(action==="import-apply")data.append("confirm","true");
+      const params=new URLSearchParams(window.location.search);
+      const companyId=params.get("company_id");
+      const q=companyId?`?company_id=${encodeURIComponent(companyId)}`:"";
+      const response=await fetch(`/api/feed-operations/catalog/${action}${q}`,{method:"POST",body:data,credentials:"include"});
+      const result=await response.json();
+      if(!response.ok)throw new Error(typeof result.detail==="string"?result.detail:JSON.stringify(result.detail||result));
+      if(action==="import-preview"){setImportPreview(result);setImportConfirm(false);}else{setImportSuccess(`Imported ${result.imported_rations} draft rations and ${result.imported_ingredients} new ingredients. Reloading catalogue…`);setImportPreview(null);setImportConfirm(false);window.location.reload();}
+    }catch(error){setImportError(error instanceof Error?error.message:"Import failed");}
+    finally{setImportBusy(false);}
+  };
   const set=<K extends keyof typeof BLANK>(key:K,value:(typeof BLANK)[K])=>setForm(p=>({...p,[key]:value}));
   const reset=()=>{setForm({...BLANK,lines:[]});setEdit("");setMessage("");};
   const addLine=()=>{const next=catalog.ingredients.find(i=>i.status==="Active"&&!form.lines.some(l=>l.ingredientId===i.id));if(next)set("lines",[...form.lines,{ingredientId:next.id,percent:0}]);};
@@ -48,6 +65,30 @@ export default function RationsPage(){
   return <main className={s.root}><div className={s.wrap}><header className={s.header}><div><div className={s.eyebrow}>OVICORE ECOSYSTEM / FEED OPERATIONS</div><h1 className={s.title}>Ration Library</h1><div className={s.sub}>Company ration naming, mill supplier SKUs and ingredient composition</div></div><nav className={s.nav}><Link href="/feed-operations">Feed Operations</Link><Link href="/feed-operations/mills">Mill Management</Link><Link href="/feed-operations/ingredients">Diet Ingredients →</Link></nav></header>
     <div className={s.notice}><strong>Database mode:</strong> Requires an authenticated OviCore feed API. An “Approved” label here is a draft workflow status, not clinical, veterinary or nutritional approval. Review existing browser prototype records separately; they are not migrated automatically. Do not use prototype diets for feed manufacturing or medication instructions.</div>
     {error&&<div role="alert" className={s.error}>API: {error}. No changes have been saved.</div>}
+    <section className={s.section} style={{padding:"10px 12px",marginBottom:10}}>
+      <div className={s.heading}><div><strong>Bulk import rations</strong><p className={s.muted}>Upload a reviewed CFC formulation workbook. Preview before committing draft records.</p></div><button type="button" className={s.button} onClick={()=>setImportOpen(v=>!v)}>{importOpen?"Close importer":"Import Excel rations"}</button></div>
+      {importOpen&&<div style={{display:"grid",gap:10,maxWidth:850,marginTop:12}}>
+        <label className={s.field}>Destination mill (existing active mill)
+          <select value={importMill} onChange={e=>{setImportMill(e.target.value);setImportPreview(null);setImportConfirm(false);}}><option value="">Select target mill</option>{catalog.mills.filter(m=>m.status==="Active").map(m=><option key={m.id} value={m.id}>{m.name} ({m.code})</option>)}</select>
+        </label>
+        <label className={s.field}>Formulation workbook (.xlsx)
+          <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={e=>{setImportFile(e.target.files?.[0]||null);setImportPreview(null);setImportConfirm(false);}} />
+        </label>
+        <div><button type="button" className={s.button} disabled={!importMill||!importFile||importBusy} onClick={()=>void sendImport("import-preview")}>{importBusy?"Checking…":"Preview and validate"}</button></div>
+        {importPreview&&<div style={{border:"1px solid #cadbd3",borderRadius:10,padding:12,display:"grid",gap:8}}>
+          <strong>Import preview — {importPreview.rations} rations, {importPreview.ingredients} ingredients, {importPreview.inclusion_lines} formulation lines</strong>
+          <p className={s.muted}>{importPreview.new_ingredients} new ingredients · {importPreview.existing_ingredients} existing ingredient codes reused · destination: {importPreview.target_mill}</p>
+          <p className={s.muted}>Source mill: {importPreview.source_mills?.join(", ")}. Ration codes: {importPreview.ration_codes?.join(", ")}</p>
+          {importPreview.warnings?.map((warning:string,i:number)=><p className={s.muted} key={i} style={{margin:0}}>• {warning}</p>)}
+          {importPreview.errors?.map((error:string,i:number)=><div key={i} className={s.error}>{error}</div>)}
+          {!importPreview.errors?.length&&<><label style={{display:"flex",alignItems:"center",gap:8,fontSize:12}}><input type="checkbox" checked={importConfirm} onChange={e=>setImportConfirm(e.target.checked)}/>I confirm the company/mill selection and understand imported records will be Draft. Existing values will not be overwritten.</label>
+            <div><button type="button" className={s.button} disabled={!importConfirm||importBusy} onClick={()=>void sendImport("import-apply")}>{importBusy?"Importing…":"Import reviewed drafts"}</button></div></>}
+        </div>}
+        {importError&&<div role="alert" className={s.error}>{importError}</div>}
+        {importSuccess&&<div role="status" className={s.good}>{importSuccess}</div>}
+      </div>}
+    </section>
+
     <section className={s.section}><div className={s.heading}><h2>Ration Management</h2><span className={s.muted}>{ready?`${catalog.rations.length} rations` : "Loading"}</span></div><div className={s.cols}>
       <div className={s.card}><h3>{edit?"Edit Ration":"Create Ration"}</h3><form className={s.form} onSubmit={submit}>
         <label className={`${s.field} ${s.wide}`}>Supplying Mill *<select required value={form.millId} onChange={e=>setForm(p=>({...p,millId:e.target.value,baseId:""}))}><option value="">Select feed mill</option>{catalog.mills.filter(m=>m.status==="Active"||m.id===form.millId).map(m=><option key={m.id} value={m.id}>{m.name} ({m.code})</option>)}</select></label>
