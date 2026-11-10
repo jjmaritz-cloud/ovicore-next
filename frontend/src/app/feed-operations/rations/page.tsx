@@ -40,6 +40,29 @@ export default function RationsPage(){
     }catch(error){setImportError(error instanceof Error?error.message:"Import failed");}
     finally{setImportBusy(false);}
   };
+  const [amenOpen,setAmenOpen]=useState(false);
+  const [amenFile,setAmenFile]=useState<File|null>(null);
+  const [amenMill,setAmenMill]=useState("");
+  const [amenPreview,setAmenPreview]=useState<any>(null);
+  const [amenConfirm,setAmenConfirm]=useState(false);
+  const [amenBusy,setAmenBusy]=useState(false);
+  const [amenError,setAmenError]=useState("");
+  const sendAmen=async(action:"amen-update-preview"|"amen-update-apply")=>{
+    if(!amenFile||!amenMill)return;
+    setAmenBusy(true);setAmenError("");
+    try{
+      const fd=new FormData();fd.append("file",amenFile);fd.append("mill_id",amenMill);
+      if(action==="amen-update-apply")fd.append("confirm","true");
+      const cid=new URLSearchParams(window.location.search).get("company_id");
+      const suffix=cid?`?company_id=${encodeURIComponent(cid)}`:"";
+      const res=await fetch(`/api/feed-operations/catalog/${action}${suffix}`,{method:"POST",credentials:"include",body:fd});
+      const data=await res.json();
+      if(!res.ok)throw Error(typeof data.detail==="string"?data.detail:JSON.stringify(data.detail||data));
+      if(action==="amen-update-preview"){setAmenPreview(data);setAmenConfirm(false);}
+      else{window.alert(`Updated ${data.updated_ingredients} ingredient AMEn values. ${data.unchanged_ingredients} unchanged. Reloading.`);window.location.reload();}
+    }catch(err){setAmenError(err instanceof Error?err.message:"Unable to update AMEn");}
+    finally{setAmenBusy(false);}
+  };
   // Nutrition targets are independent immutable versions, not free-text notes.
   const [nutritionValues,setNutritionValues]=useState<Record<NutrientKey,string>>(blankNutrients);
   const [nutritionVersions,setNutritionVersions]=useState<NutritionVersion[]>([]);
@@ -159,6 +182,25 @@ export default function RationsPage(){
         </div>}
         {importError&&<div role="alert" className={s.error}>{importError}</div>}
         {importSuccess&&<div role="status" className={s.good}>{importSuccess}</div>}
+      </div>}
+    </section>
+
+    <section className={s.section} style={{padding:"10px 12px",marginBottom:10}}>
+      <div className={s.heading}><div><strong>Update existing ingredient AMEn</strong><p className={s.muted}>Sandbox only · update existing ingredient energy values from the provisional workbook. Does not import or modify rations.</p></div><button type="button" className={s.button} onClick={()=>setAmenOpen(p=>!p)}>{amenOpen?"Close AMEn update":"Update ingredient AMEn"}</button></div>
+      {amenOpen&&<div style={{display:"grid",gap:10,maxWidth:850,marginTop:12}}>
+        <label className={s.field}>Target mill<select value={amenMill} onChange={e=>{setAmenMill(e.target.value);setAmenPreview(null);setAmenConfirm(false);}}><option value="">Select target mill</option>{catalog.mills.filter(m=>m.status==="Active").map(m=><option key={m.id} value={m.id}>{m.name} ({m.code})</option>)}</select></label>
+        <label className={s.field}>AMEn provisional workbook (.xlsx)<input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={e=>{setAmenFile(e.target.files?.[0]||null);setAmenPreview(null);setAmenConfirm(false);}}/></label>
+        <div><button type="button" className={s.button} disabled={!amenMill||!amenFile||amenBusy} onClick={()=>void sendAmen("amen-update-preview")}>{amenBusy?"Checking…":"Preview AMEn changes"}</button></div>
+        {amenPreview&&<div style={{border:"1px solid #cadbd3",borderRadius:10,padding:12,display:"grid",gap:8}}>
+          <strong>{amenPreview.updates?.length||0} ingredient energy changes · {amenPreview.unchanged} unchanged</strong>
+          <p className={s.muted}>Destination: {amenPreview.target_mill} · {amenPreview.rations_checked} existing draft rations verified</p>
+          <p className={s.muted}>Provisional zero-assumption codes: {amenPreview.zero_assumptions?.join(", ")||"None"}</p>
+          {amenPreview.warnings?.map((w:string,i:number)=><p key={i} className={s.muted} style={{margin:0}}>• {w}</p>)}
+          <div style={{maxHeight:220,overflow:"auto"}}><table className={s.table}><thead><tr><th>Ingredient</th><th>Current MJ/kg</th><th>New MJ/kg</th></tr></thead><tbody>{amenPreview.updates?.map((u:any)=><tr key={u.code}><td>{u.code} · {u.name}</td><td>{u.old||"Blank"}</td><td>{u.new}</td></tr>)}</tbody></table></div>
+          {amenPreview.errors?.map((e:string,i:number)=><div key={i} className={s.error}>{e}</div>)}
+          {!amenPreview.errors?.length&&amenPreview.updates?.length>0&&<><label style={{display:"flex",alignItems:"center",gap:8,fontSize:12}}><input type="checkbox" checked={amenConfirm} onChange={e=>setAmenConfirm(e.target.checked)}/>I confirm these provisional sandbox energy updates; no rations are being imported.</label><div><button type="button" className={s.button} disabled={!amenConfirm||amenBusy} onClick={()=>void sendAmen("amen-update-apply")}>{amenBusy?"Applying…":"Apply reviewed AMEn updates"}</button></div></>}
+        </div>}
+        {amenError&&<div className={s.error} role="alert">{amenError}</div>}
       </div>}
     </section>
 

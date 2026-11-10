@@ -157,3 +157,144 @@ def attach_bulk_import(router, get_db, get_current_user, require_feed_editor, co
             db.rollback();raise HTTPException(422,str(exc)) from exc
         return {'imported_rations':len(rations),'imported_ingredients':summary['new_ingredients'],
                 'reused_ingredients':summary['existing_ingredients'],'target_mill':mill.name,'status':'Draft'}
+
+
+    # Distinct from formula import: update ONLY the existing ingredient.energy field.
+    # No ration, price, status, formulation or historical assignment is changed.
+    async def prepare_amen_update(file, mill_id, company_id, db, principal):
+        cid = company(db, principal, company_id)
+        mill = db.execute(select(Mill).where(Mill.company_id == cid, Mill.id == mill_id)).scalar_one_or_none()
+        if mill is None or mill.status != 'Active':
+            raise HTTPException(422, 'Select an active destination mill')
+        raw = await file.read(MAX_FILE_BYTES + 1)
+        try:
+            rations, ingredients, grouped = read_workbook(raw)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        saved_rations = {r.code.upper(): r for r in db.execute(select(Ration).where(
+            Ration.company_id == cid, Ration.mill_id == mill_id)).scalars().all()}
+        errors = []
+        for source in rations:
+            code = str(source['Ration Code']).strip().upper()
+            saved = saved_rations.get(code)
+            if saved is None:
+                errors.append(f'Ration {code} is not present in the selected destination mill')
+            elif saved.status != 'Draft':
+                errors.append(f'Ration {code} is {saved.status}; this sandbox update requires all imported rations to remain Draft')
+            else:
+                by_ingredient = {entry['ingredientId']: Decimal(str(entry['percent'])) for entry in (saved.lines or [])}
+                if len(by_ingredient) != len(grouped[code]):
+                    errors.append(f'Ration {code} has a different number of formulation lines')
+        saved_ingredients = {i.code.strip().upper(): i for i in db.execute(select(Ingredient).where(
+            Ingredient.company_id == cid)).scalars().all()}
+        # Ensure this workbook is for the exact existing formulations, not only matching ration codes.
+        for source in rations:
+            code = str(source['Ration Code']).strip().upper()
+            saved = saved_rations.get(code)
+            if saved is None:
+                continue
+            expected = {saved_ingredients[ingredient_code.upper()].id: percentage for ingredient_code, percentage in grouped[code]
+                        if ingredient_code.upper() in saved_ingredients}
+            actual = {line['ingredientId']: Decimal(str(line['percent'])) for line in (saved.lines or [])}
+            if set(expected) != set(actual) or any(abs(expected[k] - actual[k]) > Decimal('0.001') for k in expected if k in actual):
+                errors.append(f'Ration {code} formulation differs from workbook; refusing update')
+        updates = []
+        zero_assumptions = []
+        seen = set()
+        for source in ingredients:
+            code = str(source.get('Mill Ingredient Code') or '').strip().upper()
+            if code in seen:
+                errors.append(f'Duplicate ingredient code {code}')
+                continue
+            seen.add(code)
+            ingredient = saved_ingredients.get(code)
+            if ingredient is None:
+                errors.append(f'Ingredient {code} is not present in this company; this action never creates records')
+                continue
+            if ingredient.name.strip().casefold() != str(source.get('Ingredient Name') or '').strip().casefold():
+                errors.append(f'Ingredient code {code} name mismatch: {ingredient.name}')
+                continue
+            cell = source.get('Poultry AMEn MJ/kg as-fed (PROVISIONAL)')
+            if cell in (None, ''):
+                errors.append(f'Missing provisional AMEn for {code}')
+                continue
+            try:
+                value = Decimal(str(cell))
+                if not value.is_finite() or value < 0 or value > 50:
+                    raise ValueError()
+            except (TypeError, ValueError, ArithmeticError):
+                errors.append(f'Invalid AMEn for ingredient {code}')
+                continue
+            caution = str(source.get('Validation / caution') or '')
+            reference = str(source.get('Reference URL / assumption') or '')
+            if value == 0 and ('unverified' in caution.casefold() or 'assumption' in reference.casefold()):
+                zero_assumptions.append(code)
+            previous = str(ingredient.energy or '').strip()
+            if previous:
+                try:
+                    previous_number = Decimal(previous)
+                except Exception:
+                    errors.append(f'Existing AMEn for {code} is non-numeric; review manually')
+                    continue
+            else:
+                previous_number = None
+            if previous_number != value:
+                updates.append({'code': code, 'name': ingredient.name, 'old': previous,
+                                'new': str(value), 'reference': reference[:255], 'caution': caution[:450],
+                                'ingredient': ingredient})
+        # This import action may not change energy of an ingredient used by an Approved ration.
+        # This prevents silently altering estimated nutrition for approved formulations.
+        approved = db.execute(select(Ration).where(Ration.company_id == cid,
+            Ration.status == 'Approved')).scalars().all()
+        protected_ids = {line.get('ingredientId') for r in approved for line in (r.lines or [])}
+        for update in updates:
+            if update['ingredient'].id in protected_ids:
+                errors.append(f'Ingredient {update["code"]} is used by an Approved ration; update blocked to protect existing estimates')
+        source_mills = sorted({str(r.get('Mill') or '') for r in rations})
+        preview = {'target_mill': mill.name, 'source_mills': source_mills,
+                   'rations_checked': len(rations), 'ingredients_checked': len(ingredients),
+                   'updates': [{key: u[key] for key in ('code','name','old','new','reference','caution')} for u in updates],
+                   'unchanged': len(ingredients) - len(updates), 'zero_assumptions': zero_assumptions,
+                   'warnings': [
+                       'SANDBOX PROVISIONAL VALUES ONLY. Not formulated or lab-verified AMEn.',
+                       'Some zero entries are unverified assumptions for amino acids and additives; they are not measured zeros.',
+                       'Only ingredient energy (MJ/kg as-fed) changes. Ration formulation, price and status remain unchanged.',
+                       'Existing historical energy assignment snapshots are not recalculated. Confirm actual ration changes separately.',
+                   ], 'errors': errors}
+        if source_mills != [mill.name]:
+            preview['warnings'].append('Source mill differs from sandbox destination; confirm mapping before applying.')
+        return db, preview, updates
+
+    @router.post('/amen-update-preview')
+    async def amen_update_preview(file: UploadFile = File(...), mill_id: str = Form(...),
+                                  company_id: int | None = Query(default=None, ge=1),
+                                  db = Depends(get_db), principal = Depends(get_current_user),
+                                  _editor = Depends(require_feed_editor)):
+        _, preview, _ = await prepare_amen_update(file, mill_id, company_id, db, principal)
+        return preview
+
+    @router.post('/amen-update-apply')
+    async def amen_update_apply(file: UploadFile = File(...), mill_id: str = Form(...),
+                                confirm: bool = Form(False),
+                                company_id: int | None = Query(default=None, ge=1),
+                                db = Depends(get_db), principal = Depends(get_current_user),
+                                _editor = Depends(require_feed_editor)):
+        if not confirm:
+            raise HTTPException(400, 'Explicit confirmation required')
+        _, preview, updates = await prepare_amen_update(file, mill_id, company_id, db, principal)
+        if preview['errors']:
+            raise HTTPException(409, {'errors': preview['errors']})
+        try:
+            for change in updates:
+                item = change['ingredient']
+                item.energy = change['new']
+                provenance = ('SANDBOX AMEn reference/proxy, not verified; '
+                              f'Source: {change["reference"]}; Caution: {change["caution"]}')
+                if provenance not in (item.notes or ''):
+                    item.notes = ((item.notes or '').rstrip() + '\n' + provenance).strip()[:4000]
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        return {'updated_ingredients': len(updates), 'unchanged_ingredients': preview['unchanged'],
+                'destination_mill': preview['target_mill'], 'status': 'Provisional AMEn reference values'}
