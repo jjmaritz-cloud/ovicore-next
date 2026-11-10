@@ -59,8 +59,8 @@ def parse_amen(value):
     return num * KCAL_PER_MJ
 
 
-def estimate_ration_amen(ration, ingredient_by_id):
-    if ration.status != "Approved":
+def estimate_ration_amen(ration, ingredient_by_id, *, allow_draft_preview=False):
+    if ration.status != "Approved" and not (allow_draft_preview and ration.status == "Draft"):
         raise ValueError("Ration must be Approved")
     lines = ration.lines or []
     if not lines or abs(sum(float(line.get("percent", 0)) for line in lines) - 100) > 0.001:
@@ -125,20 +125,48 @@ def make_energy_router(get_db, get_current_user, resolve_company_id, has_farm_ac
                 "created_at": item.created_at.isoformat() if item.created_at else None,
                 "created_by": item.created_by}
 
+    def choose_energy(db, cid, ration, ingredients, effective_from):
+        """Prefer an explicitly mill-formulated, dated AMEn specification.
+
+        An AMEn value in a generic reference-estimate nutrition version does not
+        outrank the ingredient calculation. There is no retrospective editing of
+        saved flock assignments; their source and numeric snapshot are immutable.
+        """
+        Spec = getattr(Ration, "NutritionSpec", None)
+        if Spec is not None:
+            versions = db.execute(select(Spec).where(
+                Spec.company_id == cid, Spec.ration_id == ration.id,
+                Spec.effective_from <= effective_from,
+                Spec.source == "Mill formulated",
+            ).order_by(Spec.effective_from.desc(), Spec.version.desc())).scalars()
+            for spec in versions:
+                raw = (spec.values or {}).get("amen_mj_kg")
+                mj = parse_amen(raw) if raw is not None else None
+                if mj is not None and mj > 0:
+                    # Store both the mill declaration and its version reference.
+                    snapshot = [{"nutritionSpecId": spec.id, "version": spec.version,
+                        "effectiveFrom": spec.effective_from.isoformat(),
+                        "reference": spec.reference, "millFormulatedAmenMjKgAsFed": float(raw)}]
+                    return round(float(mj), 4), snapshot, "Mill formulated AMEn"
+        kcal, snapshot = estimate_ration_amen(ration, ingredients)
+        return kcal, snapshot, "OviCore estimated AMEn"
+
     @router.get("/rations")
     def ration_estimates(company_id: int | None = Query(default=None),
                          db: Session = Depends(get_db), user=Depends(get_current_user)):
         cid = resolve_company_id(user, company_id)
         ingredients = {i.id: i for i in db.execute(select(Ingredient).where(Ingredient.company_id == cid)).scalars()}
         response = []
-        for ration in db.execute(select(Ration).where(Ration.company_id == cid, Ration.status == "Approved")).scalars():
+        for ration in db.execute(select(Ration).where(Ration.company_id == cid, Ration.status.in_(["Draft", "Approved"]))).scalars():
             try:
-                value, _ = estimate_ration_amen(ration, ingredients)
+                value, _ = estimate_ration_amen(ration, ingredients, allow_draft_preview=True)
                 error = None
             except ValueError as ex:
                 value, error = None, str(ex)
             response.append({"id": ration.id, "code": ration.code, "name": ration.name,
-                             "mill_id": ration.mill_id, "amen_kcal_kg": value, "error": error})
+                             "mill_id": ration.mill_id, "status": ration.status,
+                             "amen_kcal_kg": value, "amen_mj_kg": round(value / float(KCAL_PER_MJ), 4) if value is not None else None,
+                             "source": "OviCore estimated AMEn", "error": error})
         return response
 
     @router.get("/assignments")
@@ -167,13 +195,13 @@ def make_energy_router(get_db, get_current_user, resolve_company_id, has_farm_ac
             raise HTTPException(409, "An assignment already exists on this date; immutable records cannot be overwritten")
         ingredients = {i.id: i for i in db.execute(select(Ingredient).where(Ingredient.company_id == cid)).scalars()}
         try:
-            amen, snapshot = estimate_ration_amen(ration, ingredients)
+            amen, snapshot, source = choose_energy(db, cid, ration, ingredients, body.effective_from)
         except ValueError as ex:
             raise HTTPException(422, str(ex)) from ex
         item = Assignment(id=str(uuid4()), company_id=cid, flock_id=flock.id,
             ration_id=ration.id, effective_from=body.effective_from,
             mill_id=ration.mill_id, ration_code=ration.code, ration_name=ration.name,
-            amen_kcal_kg=amen, ingredient_snapshot=snapshot,
+            amen_kcal_kg=amen, ingredient_snapshot=snapshot, source=source,
             created_by=str(getattr(user, "email", "unknown")))
         db.add(item)
         try:

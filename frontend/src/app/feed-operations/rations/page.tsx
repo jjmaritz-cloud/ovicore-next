@@ -19,6 +19,7 @@ const nutrientFields = [
   {key:"sodium_pct",label:"Sodium",unit:"%"},
 ] as const;
 type NutrientKey = (typeof nutrientFields)[number]["key"];
+type EnergyPreview={id:string;code:string;status:string;amen_kcal_kg:number|null;amen_mj_kg:number|null;source:string;error:string|null};
 type NutritionVersion={id:string;version:number;effective_from:string;source:string;reference:string;values:Partial<Record<NutrientKey,number|null>>};
 const blankNutrients=():Record<NutrientKey,string>=>Object.fromEntries(nutrientFields.map(f=>[f.key,""])) as Record<NutrientKey,string>;
 export default function RationsPage(){
@@ -64,6 +65,21 @@ export default function RationsPage(){
     finally{setAmenBusy(false);}
   };
   // Nutrition targets are independent immutable versions, not free-text notes.
+  const [energyPreviews,setEnergyPreviews]=useState<EnergyPreview[]>([]);
+  const [energyPreviewError,setEnergyPreviewError]=useState("");
+  useEffect(()=>{
+    if(!ready)return;
+    let active=true;
+    const cid=new URLSearchParams(window.location.search).get("company_id");
+    const url=`/api/feed-operations/energy/rations${cid?`?company_id=${encodeURIComponent(cid)}`:""}`;
+    fetch(url,{credentials:"include"}).then(async res=>{
+      if(!res.ok)throw new Error(`AMEn estimates unavailable (HTTP ${res.status})`);
+      return res.json();
+    }).then(data=>{if(active)setEnergyPreviews(Array.isArray(data)?data:[]);})
+      .catch(err=>{if(active)setEnergyPreviewError(err instanceof Error?err.message:"AMEn preview unavailable");});
+    return ()=>{active=false};
+  },[ready,catalog.rations,catalog.ingredients]);
+  const energyFor=(id:string)=>energyPreviews.find(r=>r.id===id);
   const [nutritionValues,setNutritionValues]=useState<Record<NutrientKey,string>>(blankNutrients);
   const [nutritionVersions,setNutritionVersions]=useState<NutritionVersion[]>([]);
   const [nutritionDate,setNutritionDate]=useState("");
@@ -228,6 +244,14 @@ export default function RationsPage(){
           <p className={s.muted}>Select Edit on a saved ration to manage immutable, effective-dated mill formulation targets. Blank means unknown, not zero. The Beresfield report does not provide formulated AMEn or lysine specifications.</p>
           {!edit?<p className={s.muted}>Save a ration, then select Edit to add its nutrient targets.</p>:<>
             <strong>{form.code} · {form.name}</strong>
+            <div style={{border:"1px solid #cbded7",borderRadius:8,padding:12,display:"grid",gap:5,background:"#f1f8f4"}}>
+              <strong>OviCore Estimated AMEn — ingredient calculation</strong>
+              {energyFor(edit)?.amen_kcal_kg!=null?<>
+                <div style={{fontSize:19,fontWeight:700}}>{energyFor(edit)!.amen_mj_kg!.toFixed(3)} MJ/kg as-fed · {energyFor(edit)!.amen_kcal_kg!.toFixed(0)} kcal/kg</div>
+                <div className={s.muted}>Calculated from the current ingredient values and formulation; provisional reference estimate, not Mehdi&apos;s mill-formulated AMEn. Saving a flock assignment fixes a historical snapshot.</div>
+                <div className={s.muted}>At {validFeed?Number(nutritionFeed):115} g/bird/day: {((validFeed?Number(nutritionFeed):115)*energyFor(edit)!.amen_kcal_kg!/1000).toFixed(1)} kcal/bird/day (illustrative)</div>
+              </>:<p className={s.muted}>Not available: {energyFor(edit)?.error||energyPreviewError||"Loading or missing ingredient AMEn"}</p>}
+            </div>
             {nutritionLoading?<p className={s.muted}>Loading specifications…</p>:<p className={s.muted}>{nutritionVersions.length} saved specification version(s). A new version cannot overwrite an existing date.</p>}
             <div className={s.form}>
               <label className={s.field}>Formulation effective from *<input type="date" required value={nutritionDate} onChange={e=>setNutritionDate(e.target.value)}/></label>
@@ -255,5 +279,5 @@ export default function RationsPage(){
         </section>
         {message&&<div className={message.startsWith("Ration saved")?s.good:s.error}>{message}</div>}</div>
       <div className={s.card}><div className={s.heading}><h3>Ration Register</h3><select className={s.search} style={{maxWidth:170}} aria-label="Filter mill" value={millFilter} onChange={e=>setMillFilter(e.target.value)}><option value="all">All mills</option>{catalog.mills.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select><input className={s.search} style={{maxWidth:190}} aria-label="Search rations" placeholder="Search rations…" value={search} onChange={e=>setSearch(e.target.value)}/></div>
-      <div className={s.tableWrap}><table className={s.table}><thead><tr><th>Mill</th><th>Company Code</th><th>Company Ration</th><th>Supplier SKU</th><th>Supplier Description</th><th>Phase</th><th>Type</th><th>Inclusion</th><th>Ingredient Cost</th><th>Status</th><th>Actions</th></tr></thead><tbody>{visible.map(r=>{const c=knownCost(r,catalog.ingredients);return <tr key={r.id}><td>{catalog.mills.find(m=>m.id===r.millId)?.name||"Unassigned — edit"}</td><td><strong>{r.code}</strong></td><td>{r.name}</td><td>{r.supplierCode||"Needs mapping"}</td><td>{r.supplierName||"Needs mapping"}</td><td>{r.phase}</td><td><span className={`${s.pill} ${r.type==="Medicated"?s.warn:""}`}>{r.type}</span></td><td>{totalInclusion(r).toFixed(2)}%</td><td>{r.lines.length&&c.complete?`$${c.cost.toFixed(2)}/t`:"—"}</td><td>{r.status}</td><td><button className={s.action} type="button" onClick={()=>choose(r)}>Edit</button>{" "}<button className={s.action} type="button" onClick={()=>duplicate(r)} aria-label={`Duplicate ${r.code}`}>Duplicate</button></td></tr>})}{visible.length===0&&<tr><td colSpan={11} className={s.muted}>No rations found. Add a mill and ingredients first, then create a ration.</td></tr>}</tbody></table></div></div></div></section><div className={s.foot}>OviCore Ecosystem · Intelligence That Drives Performance.</div></div></main>;
+      <div className={s.tableWrap}><table className={s.table}><thead><tr><th>Mill</th><th>Company Code</th><th>Company Ration</th><th>Supplier SKU</th><th>Supplier Description</th><th>Phase</th><th>Type</th><th>Inclusion</th><th>Ingredient Cost</th><th>Estimated AMEn</th><th>Status</th><th>Actions</th></tr></thead><tbody>{visible.map(r=>{const c=knownCost(r,catalog.ingredients);return <tr key={r.id}><td>{catalog.mills.find(m=>m.id===r.millId)?.name||"Unassigned — edit"}</td><td><strong>{r.code}</strong></td><td>{r.name}</td><td>{r.supplierCode||"Needs mapping"}</td><td>{r.supplierName||"Needs mapping"}</td><td>{r.phase}</td><td><span className={`${s.pill} ${r.type==="Medicated"?s.warn:""}`}>{r.type}</span></td><td>{totalInclusion(r).toFixed(2)}%</td><td>{r.lines.length&&c.complete?`$${c.cost.toFixed(2)}/t`:"—"}</td><td title={energyFor(r.id)?.error||"OviCore provisional ingredient-based estimate; not mill verified"}>{energyFor(r.id)?.amen_kcal_kg!=null?`${energyFor(r.id)!.amen_mj_kg!.toFixed(2)} MJ/kg`:"—"}</td><td>{r.status}</td><td><button className={s.action} type="button" onClick={()=>choose(r)}>Edit</button>{" "}<button className={s.action} type="button" onClick={()=>duplicate(r)} aria-label={`Duplicate ${r.code}`}>Duplicate</button></td></tr>})}{visible.length===0&&<tr><td colSpan={12} className={s.muted}>No rations found. Add a mill and ingredients first, then create a ration.</td></tr>}</tbody></table></div></div></div></section><div className={s.foot}>OviCore Ecosystem · Intelligence That Drives Performance.</div></div></main>;
 }

@@ -77,7 +77,7 @@ type PerformanceRow = {
   notes?: string | null;
 };
 
-type EnergyRation = { id: string; code: string; name: string; mill_id: string; amen_kcal_kg: number | null; error: string | null };
+type EnergyRation = { id: string; code: string; name: string; mill_id: string; amen_kcal_kg: number | null; error: string | null; status: string; source: string };
 type EnergyAssignment = { id: string; effective_from: string; ration_code: string; ration_name: string; amen_kcal_kg: number; source: string };
 
 type MetricKey =
@@ -886,7 +886,7 @@ function CommercialLayerPerformanceContent() {
                 <div style={{display:"flex",flexDirection:"column",gap:5,marginTop:7}}>
                   {energyAssignments.map(a=><div key={a.id} title={a.source}
                     style={{fontSize:11,color:"#264d39",borderBottom:"1px solid #e0ebe4",padding:"3px 0"}}>
-                    <strong>{a.effective_from}</strong> · {a.ration_code} · Estimated AMEn {a.amen_kcal_kg.toFixed(0)} kcal/kg
+                    <strong>{a.effective_from}</strong> · {a.ration_code} · {a.source} {a.amen_kcal_kg.toFixed(0)} kcal/kg
                   </div>)}
                 </div>
               )}
@@ -895,7 +895,7 @@ function CommercialLayerPerformanceContent() {
               <label style={{fontSize:11}}>Actual ration fed
                 <select value={energyRationId} onChange={e=>setEnergyRationId(e.target.value)} style={{display:"block",width:"100%",height:36}}>
                   <option value="">Select approved ration</option>
-                  {energyRations.map(r=><option key={r.id} value={r.id} disabled={r.amen_kcal_kg===null}>
+                  {energyRations.filter(r=>r.status==="Approved").map(r=><option key={r.id} value={r.id} disabled={r.amen_kcal_kg===null}>
                     {r.code} · {r.name} {r.amen_kcal_kg!==null ? `(${r.amen_kcal_kg.toFixed(0)} kcal/kg estimated)` : `(Unavailable: ${r.error})`}
                   </option>)}
                 </select>
@@ -917,7 +917,7 @@ function CommercialLayerPerformanceContent() {
             </div>
             {energyMessage && <p role="status" style={{fontSize:11,color:energyMessage.startsWith("Confirmed")?"#176a47":"#b45309",margin:0}}>{energyMessage}</p>}
             <p style={{fontSize:10,lineHeight:1.5,color:"#697b71",margin:0}}>
-              AMEn is estimated from complete ingredient energy specifications in MJ/kg (converted to kcal/kg). Assignments retain historical snapshots and remain effective until the next confirmed change. Feed silo carryover and mixed rations are not yet modelled.
+              AMEn uses the applicable dated mill-formulated value when provided; otherwise the ingredient-based OviCore estimate. The selected source and value are saved together. Assignments retain historical snapshots and remain effective until the next confirmed change. Feed silo carryover and mixed rations are not yet modelled.
             </p>
           </section>
         </div>
