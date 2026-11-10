@@ -67,4 +67,6 @@ def declare_models(Base):
             CheckConstraint("base_id IS NULL OR base_id <> id", name="ck_feed_ration_not_own_base"),
         )
 
+    from .nutrition import declare_nutrition_model
+    FeedRation.NutritionSpec = declare_nutrition_model(Base)
     return FeedMill, FeedIngredient, FeedRation

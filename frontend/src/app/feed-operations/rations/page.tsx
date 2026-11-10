@@ -1,10 +1,26 @@
 "use client";
 import Link from "next/link";
-import {useState} from "react";
+import {useEffect,useState} from "react";
 import {Ration,newId,useCatalog,totalInclusion,knownCost} from "../../../components/feed-operations/catalog";
 import s from "../../../components/feed-operations/catalog.module.css";
 type Line={ingredientId:string;percent:number};
 const BLANK={millId:"",code:"",name:"",supplierCode:"",supplierName:"",phase:"Layer 1",type:"Base" as "Base"|"Medicated",baseId:"",status:"Draft" as "Draft"|"Approved"|"Inactive",notes:"",lines:[] as Line[]};
+const nutrientFields = [
+  {key:"amen_mj_kg",label:"Mill formulated AMEn",unit:"MJ/kg as-fed"},
+  {key:"total_lysine_pct",label:"Total lysine",unit:"%"},
+  {key:"digestible_lysine_pct",label:"Digestible lysine",unit:"%"},
+  {key:"digestible_methionine_pct",label:"Digestible methionine",unit:"%"},
+  {key:"digestible_met_cys_pct",label:"Digestible methionine + cystine",unit:"%"},
+  {key:"digestible_threonine_pct",label:"Digestible threonine",unit:"%"},
+  {key:"digestible_tryptophan_pct",label:"Digestible tryptophan",unit:"%"},
+  {key:"crude_protein_pct",label:"Crude protein",unit:"%"},
+  {key:"calcium_pct",label:"Calcium",unit:"%"},
+  {key:"available_phosphorus_pct",label:"Available phosphorus",unit:"%"},
+  {key:"sodium_pct",label:"Sodium",unit:"%"},
+] as const;
+type NutrientKey = (typeof nutrientFields)[number]["key"];
+type NutritionVersion={id:string;version:number;effective_from:string;source:string;reference:string;values:Partial<Record<NutrientKey,number|null>>};
+const blankNutrients=():Record<NutrientKey,string>=>Object.fromEntries(nutrientFields.map(f=>[f.key,""])) as Record<NutrientKey,string>;
 export default function RationsPage(){
   const {catalog,save,ready,error}=useCatalog();const [form,setForm]=useState({...BLANK});const [edit,setEdit]=useState("");const [search,setSearch]=useState("");const [message,setMessage]=useState("");
   const [importOpen,setImportOpen]=useState(false);const [importFile,setImportFile]=useState<File|null>(null);const [importMill,setImportMill]=useState("");const [importPreview,setImportPreview]=useState<any>(null);const [importConfirm,setImportConfirm]=useState(false);const [importBusy,setImportBusy]=useState(false);const [importError,setImportError]=useState("");const [importSuccess,setImportSuccess]=useState("");
@@ -23,6 +39,63 @@ export default function RationsPage(){
       if(action==="import-preview"){setImportPreview(result);setImportConfirm(false);}else{setImportSuccess(`Imported ${result.imported_rations} draft rations and ${result.imported_ingredients} new ingredients. Reloading catalogue…`);setImportPreview(null);setImportConfirm(false);window.location.reload();}
     }catch(error){setImportError(error instanceof Error?error.message:"Import failed");}
     finally{setImportBusy(false);}
+  };
+  // Nutrition targets are independent immutable versions, not free-text notes.
+  const [nutritionValues,setNutritionValues]=useState<Record<NutrientKey,string>>(blankNutrients);
+  const [nutritionVersions,setNutritionVersions]=useState<NutritionVersion[]>([]);
+  const [nutritionDate,setNutritionDate]=useState("");
+  const [nutritionSource,setNutritionSource]=useState("Mill formulated");
+  const [nutritionReference,setNutritionReference]=useState("");
+  const [nutritionFeed,setNutritionFeed]=useState("115");
+  const [nutritionBusy,setNutritionBusy]=useState(false);
+  const [nutritionError,setNutritionError]=useState("");
+  const [nutritionSuccess,setNutritionSuccess]=useState("");
+  const [nutritionLoading,setNutritionLoading]=useState(false);
+  const nutritionURL=(rationId:string)=>{
+    const cid=new URLSearchParams(window.location.search).get("company_id");
+    return `/api/feed-operations/catalog/rations/${encodeURIComponent(rationId)}/nutrition${cid?`?company_id=${encodeURIComponent(cid)}`:""}`;
+  };
+  useEffect(()=>{
+    setNutritionValues(blankNutrients());setNutritionVersions([]);setNutritionError("");setNutritionSuccess("");
+    if(!edit)return;
+    let active=true;
+    setNutritionLoading(true);
+    fetch(nutritionURL(edit),{credentials:"include"}).then(async res=>{
+      const body=await res.json();
+      if(!res.ok)throw Error(body.detail||`HTTP ${res.status}`);
+      if(active)setNutritionVersions(body.versions||[]);
+    }).catch(err=>{if(active)setNutritionError(err instanceof Error?err.message:"Unable to retrieve specs");})
+      .finally(()=>{if(active)setNutritionLoading(false);});
+    return ()=>{active=false;};
+  },[edit]);
+  const saveNutrition=async()=>{
+    if(!edit||!nutritionDate)return;
+    const values:Record<string,number|null>={};
+    for(const field of nutrientFields){
+      const raw=nutritionValues[field.key].trim();
+      if(raw!==""&&(!Number.isFinite(Number(raw))||Number(raw)<=0)){
+        setNutritionError(`${field.label} must be positive or blank.`);return;
+      }
+      values[field.key]=raw===""?null:Number(raw);
+    }
+    if(!Object.values(values).some(v=>v!==null)){setNutritionError("Enter at least one nutrient specification.");return;}
+    setNutritionBusy(true);setNutritionError("");setNutritionSuccess("");
+    try{
+      const res=await fetch(nutritionURL(edit),{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({effective_from:nutritionDate,source:nutritionSource,reference:nutritionReference,values})});
+      const data=await res.json();
+      if(!res.ok)throw Error(typeof data.detail==="string"?data.detail:JSON.stringify(data.detail));
+      setNutritionVersions(prev=>[data,...prev]);
+      setNutritionValues(blankNutrients());
+      setNutritionSuccess(`Nutritional specification v${data.version} saved. Historical versions remain unchanged.`);
+    }catch(err){setNutritionError(err instanceof Error?err.message:"Save failed");}
+    finally{setNutritionBusy(false);}
+  };
+  const latestNutrition=nutritionVersions[0];
+  const validFeed=Number(nutritionFeed)>0&&Number(nutritionFeed)<=250;
+  const nutritionIntake=(key:NutrientKey,multiplier:number)=>{
+    const amount=latestNutrition?.values?.[key];
+    return validFeed&&amount!=null ? (Number(nutritionFeed)*amount*multiplier).toFixed(1) : "—";
   };
   const set=<K extends keyof typeof BLANK>(key:K,value:(typeof BLANK)[K])=>setForm(p=>({...p,[key]:value}));
   const reset=()=>{setForm({...BLANK,lines:[]});setEdit("");setMessage("");};
@@ -107,7 +180,38 @@ export default function RationsPage(){
         {form.lines.map((l,j)=><div className={s.lineGrid} key={j}><label className={s.field}>Ingredient<select value={l.ingredientId} onChange={e=>changeLine(j,{ingredientId:e.target.value})}>{catalog.ingredients.filter(i=>i.status==="Active"||i.id===l.ingredientId).map(i=><option key={i.id} value={i.id}>{i.code} · {i.name}</option>)}</select></label><label className={s.field}>Inclusion %<input type="number" min="0.0001" max="100" step="0.0001" value={l.percent} onChange={e=>changeLine(j,{percent:Number(e.target.value)})}/></label><button className={`${s.button} ${s.danger}`} type="button" onClick={()=>set("lines",form.lines.filter((_,k)=>k!==j))}>×</button></div>)}
         <div className={s.muted}>Total: <strong>{form.lines.reduce((a,l)=>a+l.percent,0).toFixed(3)}%</strong> / 100% · Indicative ingredient cost: <strong>{form.lines.length&&cost.complete?`$${cost.cost.toFixed(2)}/t`:"Not available"}</strong> (excludes milling, freight and medication costs)</div></div>
         <div className={`${s.controls} ${s.wide}`}><button className={s.button} type="submit">{edit?"Save Changes":"Create Ration"}</button><button type="button" className={`${s.button} ${s.secondary}`} onClick={reset}>Clear</button></div>
-      </form>{message&&<div className={message.startsWith("Ration saved")?s.good:s.error}>{message}</div>}</div>
+      </form>
+        <section style={{marginTop:16,borderTop:"1px solid #cbded7",paddingTop:14,display:"grid",gap:10}}>
+          <h3>Nutritional Specifications</h3>
+          <p className={s.muted}>Select Edit on a saved ration to manage immutable, effective-dated mill formulation targets. Blank means unknown, not zero. The Beresfield report does not provide formulated AMEn or lysine specifications.</p>
+          {!edit?<p className={s.muted}>Save a ration, then select Edit to add its nutrient targets.</p>:<>
+            <strong>{form.code} · {form.name}</strong>
+            {nutritionLoading?<p className={s.muted}>Loading specifications…</p>:<p className={s.muted}>{nutritionVersions.length} saved specification version(s). A new version cannot overwrite an existing date.</p>}
+            <div className={s.form}>
+              <label className={s.field}>Formulation effective from *<input type="date" required value={nutritionDate} onChange={e=>setNutritionDate(e.target.value)}/></label>
+              <label className={s.field}>Specification source<select value={nutritionSource} onChange={e=>setNutritionSource(e.target.value)}><option>Mill formulated</option><option>Reference estimate</option></select></label>
+              <label className={`${s.field} ${s.wide}`}>Mill report / approval reference<input maxLength={255} placeholder="e.g. Mehdi formulation nutrient report, version ..." value={nutritionReference} onChange={e=>setNutritionReference(e.target.value)}/></label>
+              {nutrientFields.map(item=><label key={item.key} className={s.field}>{item.label} ({item.unit})<input type="number" min="0.0001" max={item.key==="amen_mj_kg"?25:50} step="any" placeholder="Unknown" value={nutritionValues[item.key]} onChange={e=>setNutritionValues(prev=>({...prev,[item.key]:e.target.value}))}/></label>)}
+            </div>
+            <div><button type="button" className={s.button} disabled={nutritionBusy||!nutritionDate||nutritionLoading} onClick={()=>void saveNutrition()}>{nutritionBusy?"Saving…":"Save new nutrition version"}</button></div>
+            {nutritionError&&<div role="alert" className={s.error}>{nutritionError}</div>}
+            {nutritionSuccess&&<div role="status" className={s.good}>{nutritionSuccess}</div>}
+            {latestNutrition&&<div style={{border:"1px solid #cbded7",borderRadius:8,padding:10,display:"grid",gap:7}}>
+              <strong>Latest specification: v{latestNutrition.version} · {latestNutrition.effective_from}</strong>
+              <p className={s.muted}>{latestNutrition.source}{latestNutrition.reference?` · ${latestNutrition.reference}`:""}</p>
+              <label className={s.field}>Feed intake for illustration (g/bird/day)<input type="number" min="1" max="250" step="0.1" value={nutritionFeed} onChange={e=>setNutritionFeed(e.target.value)}/></label>
+              <p className={s.muted}>Calculated from the selected specification only; not a verified delivered-feed measurement or a live flock record.</p>
+              <div><strong>Energy:</strong> {nutritionIntake("amen_mj_kg",0.239005736)} kcal/bird/day</div>
+              <div><strong>Digestible lysine:</strong> {nutritionIntake("digestible_lysine_pct",10)} mg/bird/day</div>
+              <div><strong>Total lysine:</strong> {nutritionIntake("total_lysine_pct",10)} mg/bird/day</div>
+              <div><strong>Digestible Met+Cys:</strong> {nutritionIntake("digestible_met_cys_pct",10)} mg/bird/day</div>
+            </div>}
+            {nutritionVersions.length>0&&<div style={{display:"grid",gap:4}}><strong>Specification version history</strong>
+              {nutritionVersions.map(v=><div key={v.id} className={s.muted}>v{v.version} · {v.effective_from} · {v.source} · AMEn {v.values.amen_mj_kg??"—"} MJ/kg · digestible lysine {v.values.digestible_lysine_pct??"—"}%</div>)}
+            </div>}
+          </>}
+        </section>
+        {message&&<div className={message.startsWith("Ration saved")?s.good:s.error}>{message}</div>}</div>
       <div className={s.card}><div className={s.heading}><h3>Ration Register</h3><select className={s.search} style={{maxWidth:170}} aria-label="Filter mill" value={millFilter} onChange={e=>setMillFilter(e.target.value)}><option value="all">All mills</option>{catalog.mills.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select><input className={s.search} style={{maxWidth:190}} aria-label="Search rations" placeholder="Search rations…" value={search} onChange={e=>setSearch(e.target.value)}/></div>
       <div className={s.tableWrap}><table className={s.table}><thead><tr><th>Mill</th><th>Company Code</th><th>Company Ration</th><th>Supplier SKU</th><th>Supplier Description</th><th>Phase</th><th>Type</th><th>Inclusion</th><th>Ingredient Cost</th><th>Status</th><th>Actions</th></tr></thead><tbody>{visible.map(r=>{const c=knownCost(r,catalog.ingredients);return <tr key={r.id}><td>{catalog.mills.find(m=>m.id===r.millId)?.name||"Unassigned — edit"}</td><td><strong>{r.code}</strong></td><td>{r.name}</td><td>{r.supplierCode||"Needs mapping"}</td><td>{r.supplierName||"Needs mapping"}</td><td>{r.phase}</td><td><span className={`${s.pill} ${r.type==="Medicated"?s.warn:""}`}>{r.type}</span></td><td>{totalInclusion(r).toFixed(2)}%</td><td>{r.lines.length&&c.complete?`$${c.cost.toFixed(2)}/t`:"—"}</td><td>{r.status}</td><td><button className={s.action} type="button" onClick={()=>choose(r)}>Edit</button>{" "}<button className={s.action} type="button" onClick={()=>duplicate(r)} aria-label={`Duplicate ${r.code}`}>Duplicate</button></td></tr>})}{visible.length===0&&<tr><td colSpan={11} className={s.muted}>No rations found. Add a mill and ingredients first, then create a ration.</td></tr>}</tbody></table></div></div></div></section><div className={s.foot}>OviCore Ecosystem · Intelligence That Drives Performance.</div></div></main>;
 }
