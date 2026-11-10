@@ -865,46 +865,63 @@ function CommercialLayerPerformanceContent() {
         </p>
       </section>
 
-      <section style={{padding:"7px 10px",border:"1px solid #dce8e2",borderRadius:12,background:"#fff"}}>
-        <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
-          <strong style={{fontSize:12,color:"#174a34"}}>Ration energy history</strong>
-          <span style={{fontSize:11,color:"#60776b"}}>
-            {energyAssignments.length ? `${energyAssignments.length} confirmed ration change(s)` : "No confirmed ration changes recorded"}
-          </span>
-          {(currentUser?.is_global_admin || currentUser?.is_company_admin) && <button type="button" onClick={()=>setEnergyPanelOpen(!energyPanelOpen)}
-            style={{marginLeft:"auto",padding:"5px 10px",border:"1px solid #d0ded5",borderRadius:8,background:"#f4faf6",color:"#19563b",fontSize:11,cursor:"pointer"}}>
-            {energyPanelOpen ? "Close assignment" : "Assign actual ration + energy"}
-          </button>}
+      {energyPanelOpen && (currentUser?.is_global_admin || currentUser?.is_company_admin) && (
+        <div role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)setEnergyPanelOpen(false)}}
+          style={{position:"fixed",inset:0,zIndex:6000,background:"rgba(9,30,22,.53)",display:"flex",justifyContent:"center",alignItems:"center",padding:16}}>
+          <section role="dialog" aria-modal="true" aria-labelledby="ration-energy-dialog-title"
+            style={{width:"min(610px,100%)",maxHeight:"90vh",overflowY:"auto",background:"#fff",borderRadius:15,boxShadow:"0 22px 80px #09251b55",padding:"18px 20px",display:"grid",gap:13}}>
+            <div style={{display:"flex",alignItems:"start",justifyContent:"space-between",gap:12}}>
+              <div>
+                <h2 id="ration-energy-dialog-title" style={{fontSize:17,color:"#174a34",margin:0}}>Ration energy assignments</h2>
+                <p style={{fontSize:11,color:"#60776b",margin:"4px 0 0"}}>{selectedFlock?.flock_code ?? "Selected flock"} · Confirm actual ration changes and their effective dates.</p>
+              </div>
+              <button type="button" onClick={()=>setEnergyPanelOpen(false)} aria-label="Close ration assignments"
+                style={{border:"1px solid #dce8e2",background:"#f7faf8",borderRadius:8,padding:"5px 10px",fontSize:12,cursor:"pointer"}}>Close ×</button>
+            </div>
+            <div style={{background:"#f5faf7",border:"1px solid #e0ebe4",borderRadius:10,padding:10}}>
+              <strong style={{fontSize:11,color:"#174a34"}}>Confirmed ration history</strong>
+              {energyAssignments.length === 0 ? (
+                <p style={{fontSize:11,color:"#60776b",margin:"7px 0 0"}}>No confirmed ration changes recorded.</p>
+              ) : (
+                <div style={{display:"flex",flexDirection:"column",gap:5,marginTop:7}}>
+                  {energyAssignments.map(a=><div key={a.id} title={a.source}
+                    style={{fontSize:11,color:"#264d39",borderBottom:"1px solid #e0ebe4",padding:"3px 0"}}>
+                    <strong>{a.effective_from}</strong> · {a.ration_code} · Estimated AMEn {a.amen_kcal_kg.toFixed(0)} kcal/kg
+                  </div>)}
+                </div>
+              )}
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(210px,1fr))",gap:12}}>
+              <label style={{fontSize:11}}>Actual ration fed
+                <select value={energyRationId} onChange={e=>setEnergyRationId(e.target.value)} style={{display:"block",width:"100%",height:36}}>
+                  <option value="">Select approved ration</option>
+                  {energyRations.map(r=><option key={r.id} value={r.id} disabled={r.amen_kcal_kg===null}>
+                    {r.code} · {r.name} {r.amen_kcal_kg!==null ? `(${r.amen_kcal_kg.toFixed(0)} kcal/kg estimated)` : `(Unavailable: ${r.error})`}
+                  </option>)}
+                </select>
+              </label>
+              <label style={{fontSize:11}}>Actually fed from date
+                <input type="date" value={energyStartDate} onChange={e=>setEnergyStartDate(e.target.value)} style={{display:"block",width:"100%",height:36}}/>
+              </label>
+            </div>
+            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:11,color:"#304f40"}}>
+              <input type="checkbox" checked={energyConfirm} onChange={e=>setEnergyConfirm(e.target.checked)}/>
+              Confirm actual ration change (not automatic by age)
+            </label>
+            <div style={{display:"flex",justifyContent:"flex-end"}}>
+              <button type="button" disabled={energyBusy || !energyConfirm || !energyRationId || !energyStartDate}
+                onClick={()=>void saveEnergyAssignment()}
+                style={{minHeight:36,padding:"0 14px",background:"#176a47",color:"white",border:0,borderRadius:8,opacity:energyBusy?.6:1,cursor:"pointer"}}>
+                {energyBusy ? "Saving…" : "Save historical assignment"}
+              </button>
+            </div>
+            {energyMessage && <p role="status" style={{fontSize:11,color:energyMessage.startsWith("Confirmed")?"#176a47":"#b45309",margin:0}}>{energyMessage}</p>}
+            <p style={{fontSize:10,lineHeight:1.5,color:"#697b71",margin:0}}>
+              AMEn is estimated from complete ingredient energy specifications in MJ/kg (converted to kcal/kg). Assignments retain historical snapshots and remain effective until the next confirmed change. Feed silo carryover and mixed rations are not yet modelled.
+            </p>
+          </section>
         </div>
-        {energyAssignments.length>0 && <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:6}}>
-          {energyAssignments.map(a=><span key={a.id} title={a.source} style={{fontSize:10,border:"1px solid #dce8e2",borderRadius:7,padding:"4px 7px"}}>
-            {a.effective_from} · {a.ration_code} · Estimated AMEn {a.amen_kcal_kg.toFixed(0)} kcal/kg
-          </span>)}
-        </div>}
-        {energyPanelOpen && (currentUser?.is_global_admin || currentUser?.is_company_admin) && <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"end",paddingTop:9}}>
-          <label style={{fontSize:11}}>Actual ration fed
-            <select value={energyRationId} onChange={e=>setEnergyRationId(e.target.value)} style={{display:"block",height:32,maxWidth:340}}>
-              <option value="">Select approved ration</option>
-              {energyRations.map(r=><option key={r.id} value={r.id} disabled={r.amen_kcal_kg===null}>
-                {r.code} · {r.name} {r.amen_kcal_kg!==null ? `(${r.amen_kcal_kg.toFixed(0)} kcal/kg estimated)` : `(Unavailable: ${r.error})`}
-              </option>)}
-            </select>
-          </label>
-          <label style={{fontSize:11}}>Actually fed from date
-            <input type="date" value={energyStartDate} onChange={e=>setEnergyStartDate(e.target.value)} style={{display:"block",height:30}}/>
-          </label>
-          <label style={{display:"flex",alignItems:"center",gap:5,fontSize:11,maxWidth:240}}>
-            <input type="checkbox" checked={energyConfirm} onChange={e=>setEnergyConfirm(e.target.checked)}/>
-            Confirm actual ration change (not automatic by age)
-          </label>
-          <button type="button" disabled={energyBusy || !energyConfirm || !energyRationId || !energyStartDate}
-            onClick={()=>void saveEnergyAssignment()} style={{height:33,padding:"0 12px",background:"#176a47",color:"white",border:0,borderRadius:8,opacity:energyBusy?.6:1}}>
-            {energyBusy ? "Saving…" : "Save historical assignment"}
-          </button>
-          <div style={{fontSize:10,color:"#65786f",width:"100%"}}>AMEn is estimated from complete, numeric ingredient kcal/kg as-fed values. Historical snapshots cannot be edited. A change remains effective until the next confirmed change. Feed silo carryover and mixed rations are not yet modelled.</div>
-        </div>}
-        {energyMessage && <p role="status" style={{fontSize:11,color:energyMessage.startsWith("Confirmed")?"#176a47":"#b45309",margin:"5px 0 0"}}>{energyMessage}</p>}
-      </section>
+      )}
 
       <FlockCompareSelector
         flocks={flocks}
@@ -940,6 +957,13 @@ function CommercialLayerPerformanceContent() {
           </div>
 
           <div className="chart-head-actions">
+            {(currentUser?.is_global_admin || currentUser?.is_company_admin) && (
+              <button type="button" onClick={()=>setEnergyPanelOpen(true)}
+                title="Manage dated ration assignments without leaving the performance graph"
+                className="comments-toggle" style={{cursor:"pointer",color:"#426354"}}>
+                Ration setup{energyAssignments.length > 0 ? ` · ${energyAssignments.length}` : ""}
+              </button>
+            )}
             <label className="comments-toggle" title="Switch between daily and weekly graph data">
               <input
                 type="checkbox"
