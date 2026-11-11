@@ -711,12 +711,56 @@ export default function HomePage() {
         .home-notification-banner-counts { display:flex; align-items:center; gap:0; flex-wrap:wrap; font-size:12px; font-weight:800; }
         .home-notification-banner-counts span { border-left:1px solid rgba(255,255,255,.45); padding:0 12px; }
         .home-notification-banner-action { margin-left:auto; display:flex; align-items:center; justify-content:center; gap:8px; padding:10px 12px; flex-shrink:0; border-radius:10px; background:#fff; color:#8f2020; font-size:12px; font-weight:900; white-space:nowrap; }
-        .home-notification-banner-action svg { transition:transform .24s ease; }
-        .home-notification-chevron-up { transform:rotate(180deg); }
-        .home-notification-expander { display:grid; grid-template-rows:0fr; opacity:0; transition:grid-template-rows .35s ease, opacity .2s ease; }
-        .home-notification-expander.is-open { grid-template-rows:1fr; opacity:1; }
-        .home-notification-expander-inner { min-height:0; overflow:hidden; }
-        .home-notification-frame { margin: 8px 1px 2px; padding:20px; border-radius:16px; border:1px solid #acd6c9; background:linear-gradient(120deg,#fff,#f7fbfa); box-shadow:0 5px 15px rgba(3,72,58,.09); }
+        /* Ease the banner and chevron separately from the expanding page flow. */
+        .home-notification-banner { transition: box-shadow .26s ease, filter .26s ease, border-color .26s ease; }
+        .home-notification-banner:has(+ .home-notification-expander.is-open) {
+          box-shadow: 0 8px 23px rgba(163,25,30,.23);
+        }
+        .home-notification-banner-action svg {
+          transition: transform .46s cubic-bezier(.22,1,.36,1);
+        }
+        .home-notification-chevron-up { transform: rotate(180deg); }
+
+        /* Keep the panel in normal document flow. The grid row animates its actual
+           content height, so all module sections below move rather than overlap. */
+        .home-notification-expander {
+          display: grid;
+          grid-template-rows: 0fr;
+          opacity: 0;
+          pointer-events: none;
+          transition:
+            grid-template-rows .54s cubic-bezier(.22,1,.36,1),
+            opacity .28s ease;
+        }
+        .home-notification-expander.is-open {
+          grid-template-rows: 1fr;
+          opacity: 1;
+          pointer-events: auto;
+        }
+        .home-notification-expander-inner {
+          min-height: 0;
+          overflow: hidden;
+        }
+        /* Stagger the content reveal until the section has started unfolding.
+           No position:absolute/fixed: this remains a true full-width block. */
+        .home-notification-frame {
+          margin: 8px 1px 2px;
+          padding: 20px;
+          border-radius: 16px;
+          border: 1px solid #acd6c9;
+          background: linear-gradient(120deg,#fff,#f7fbfa);
+          box-shadow: 0 5px 15px rgba(3,72,58,.09);
+          opacity: 0;
+          transform: translate3d(0,-10px,0);
+          transition:
+            opacity .28s ease,
+            transform .43s cubic-bezier(.22,1,.36,1);
+        }
+        .home-notification-expander.is-open .home-notification-frame {
+          opacity: 1;
+          transform: translate3d(0,0,0);
+          transition-delay: .10s, .07s;
+        }
         .home-notification-frame-header { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:17px; }
         .home-notification-frame-heading { display:flex; align-items:center; gap:12px; }
         .home-notification-frame-icon { width:42px;height:42px;border-radius:50%;background:#fff4d7;color:#d48900;display:flex;align-items:center;justify-content:center;flex-shrink:0; }
@@ -755,7 +799,11 @@ export default function HomePage() {
         .home-notification-disclaimer {margin:8px 5px 0;font-size:10px;color:#6f7980;}
         @media (max-width:950px) { .home-notification-banner {flex-wrap:wrap;gap:10px;} .home-notification-banner-counts{order:3;width:100%;padding-left:47px;} .home-notification-frame-body{grid-template-columns:1fr;} .home-notification-row{grid-template-columns:28px minmax(120px,1fr) 84px;} .home-notification-row-location{grid-column:2 / 3;} .home-notification-row-due{grid-column:3;grid-row:1;} .home-notification-row-status{grid-column:3;grid-row:2;} }
         @media (max-width:600px) { .home-notifications{margin:10px 0;} .home-notification-banner{padding:11px;} .home-notification-banner-bell{flex-basis:34px;width:34px;height:34px;} .home-notification-banner-title{font-size:15px;} .home-notification-banner-action{margin-left:0;padding:8px;font-size:11px;} .home-notification-banner-counts{padding-left:0;font-size:10px;} .home-notification-banner-counts span{padding:0 8px 0 0;border-left:0;} .home-notification-frame{padding:12px;} .home-notification-frame-heading h2{font-size:16px;} .home-notification-frame-caption{display:none;} .home-notification-summary{gap:7px;} .home-notification-stat{min-height:69px;} }
-        @media (prefers-reduced-motion:reduce) { .home-notification-expander,.home-notification-banner-action svg,.home-notification-stat{transition:none;} }
+        @media (prefers-reduced-motion:reduce) {
+          .home-notification-expander, .home-notification-frame,
+          .home-notification-banner, .home-notification-banner-action svg,
+          .home-notification-stat { transition: none !important; }
+        }
 
         /* OviCore Intelligence: a distinct AI identity within the existing compact module grid. */
         .home-module-card-ai {
