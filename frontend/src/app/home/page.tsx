@@ -5,6 +5,16 @@ import { useMemo, useState } from "react";
 
 import {
   Bird,
+  Bell,
+  CalendarDays,
+  ChevronDown,
+  ClipboardCheck,
+  AlertTriangle,
+  CheckCircle2,
+  Clock3,
+  Syringe,
+  Sun,
+  Wheat,
   BrainCircuit,
   Compass,
   ChartNoAxesCombined,
@@ -263,6 +273,33 @@ const modules: ModuleCard[] = [
   },
 ];
 
+type DemoNotificationKind = "overdue" | "today" | "upcoming" | "signoff";
+type DemoNotification = {
+  id: string;
+  title: string;
+  location: string;
+  due: string;
+  kind: DemoNotificationKind;
+  icon: LucideIcon;
+};
+
+// Demo-only information: no real flock records, tasks, notifications, or approvals.
+const demoNotifications: DemoNotification[] = [
+  { id: "nd", title: "ND vaccination overdue", location: "Commercial Rearing · Example Farm / Shed 3", due: "2 days overdue", kind: "overdue", icon: Syringe },
+  { id: "house", title: "House preparation checklist overdue", location: "Breeder Rearing · Example Farm / Shed 1", due: "1 day overdue", kind: "overdue", icon: ClipboardCheck },
+  { id: "ib", title: "IB vaccination due today", location: "Commercial Rearing · Example Farm / Shed 5", due: "Due today", kind: "today", icon: Syringe },
+  { id: "review", title: "Feed transition review", location: "Commercial Layers · Example Farm / Shed 2", due: "Due today", kind: "today", icon: Wheat },
+  { id: "qc", title: "Flock quality-control checklist", location: "Breeder Production · Example Farm / Shed 4", due: "Due today", kind: "today", icon: ClipboardCheck },
+  { id: "lights", title: "Lighting program adjustment", location: "Commercial Layers · Example Farm / Shed 4", due: "Due tomorrow", kind: "upcoming", icon: Sun },
+  { id: "feed", title: "Next ration transition review", location: "Commercial Layers · Example Farm / Shed 6", due: "Due in 3 days", kind: "upcoming", icon: Wheat },
+  { id: "vacc-sign", title: "Vaccination verification required", location: "Breeder Rearing · Example Farm / Shed 1", due: "Awaiting sign-off", kind: "signoff", icon: CheckCircle2 },
+  { id: "treat-sign", title: "Treatment record verification", location: "Commercial Rearing · Example Farm / Shed 2", due: "Awaiting sign-off", kind: "signoff", icon: ClipboardCheck },
+];
+
+const demoStatusLabels: Record<DemoNotificationKind, string> = {
+  overdue: "Overdue", today: "Due today", upcoming: "Upcoming", signoff: "Sign-off",
+};
+
 const groupOrder: ModuleGroup[] = [
   "Egg Production",
   "Broiler Production",
@@ -375,6 +412,18 @@ function ModuleCardView({
 }
 
 export default function HomePage() {
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notificationFilter, setNotificationFilter] = useState<"all" | DemoNotificationKind>("all");
+  const [showAllDemoNotifications, setShowAllDemoNotifications] = useState(false);
+  const demoCounts = {
+    overdue: demoNotifications.filter((item) => item.kind === "overdue").length,
+    today: demoNotifications.filter((item) => item.kind === "today").length,
+    upcoming: demoNotifications.filter((item) => item.kind === "upcoming").length,
+    signoff: demoNotifications.filter((item) => item.kind === "signoff").length,
+  };
+  const visibleDemoNotifications = demoNotifications
+    .filter((item) => notificationFilter === "all" || item.kind === notificationFilter)
+    .slice(0, notificationFilter === "all" && !showAllDemoNotifications ? 5 : undefined);
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] =
     useState<FilterKey>("All");
@@ -464,6 +513,100 @@ export default function HomePage() {
             </button>
           ))}
         </nav>
+
+        <section className="home-notifications" aria-label="Demo notifications and action centre">
+          <button
+            type="button"
+            className={`home-notification-banner${demoCounts.overdue ? " home-notification-banner-urgent" : ""}`}
+            aria-expanded={notificationsOpen}
+            aria-controls="home-notification-details"
+            onClick={() => setNotificationsOpen((open) => !open)}
+          >
+            <span className="home-notification-banner-bell"><Bell size={24} aria-hidden="true" /></span>
+            <span className="home-notification-banner-title">{demoNotifications.length} Active Notifications <span className="home-notification-demo-label">DEMO</span></span>
+            <span className="home-notification-banner-counts">
+              <span>{demoCounts.overdue} Overdue</span>
+              <span>{demoCounts.today} Due today</span>
+              <span>{demoCounts.upcoming} Upcoming</span>
+              <span>{demoCounts.signoff} Sign-offs</span>
+            </span>
+            <span className="home-notification-banner-action">
+              {notificationsOpen ? "Hide notifications" : "View notifications"}
+              <ChevronDown size={17} className={notificationsOpen ? "home-notification-chevron-up" : ""} aria-hidden="true" />
+            </span>
+          </button>
+          <div
+            id="home-notification-details"
+            className={`home-notification-expander${notificationsOpen ? " is-open" : ""}`}
+            inert={!notificationsOpen}
+          >
+            <div className="home-notification-expander-inner">
+              <div className="home-notification-frame">
+                <header className="home-notification-frame-header">
+                  <div className="home-notification-frame-heading">
+                    <span className="home-notification-frame-icon"><Bell size={23} aria-hidden="true" /></span>
+                    <div>
+                      <h2>Notifications &amp; Action Centre <span className="home-notification-demo-heading">Demo</span></h2>
+                      <p>Upcoming tasks, overdue activities and approvals across your flocks.</p>
+                    </div>
+                  </div>
+                  <span className="home-notification-frame-caption">Illustrative examples only — no live BMP tasks</span>
+                </header>
+                <div className="home-notification-frame-body">
+                  <div className="home-notification-summary" aria-label="Filter demo notifications">
+                    {([
+                      { key: "overdue", label: "Overdue", icon: AlertTriangle },
+                      { key: "today", label: "Due today", icon: CalendarDays },
+                      { key: "upcoming", label: "Upcoming", icon: Clock3 },
+                      { key: "signoff", label: "Sign-offs", icon: CheckCircle2 },
+                    ] as const).map(({ key, label, icon: Icon }) => (
+                      <button
+                        type="button"
+                        key={key}
+                        className={`home-notification-stat home-notification-stat-${key}${notificationFilter === key ? " is-selected" : ""}`}
+                        aria-pressed={notificationFilter === key}
+                        onClick={() => { setNotificationFilter((current) => current === key ? "all" : key); setShowAllDemoNotifications(false); }}
+                      >
+                        <strong>{demoCounts[key]}</strong>
+                        <Icon size={20} aria-hidden="true" />
+                        <span>{label}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="home-notification-list">
+                    <div className="home-notification-list-heading">
+                      <strong>{notificationFilter === "all" ? "All example notifications" : demoStatusLabels[notificationFilter]}</strong>
+                      {notificationFilter !== "all" && <button type="button" onClick={() => setNotificationFilter("all")}>Show all categories</button>}
+                    </div>
+                    {visibleDemoNotifications.map((item) => {
+                      const Icon = item.icon;
+                      return (
+                        <div className={`home-notification-row home-notification-row-${item.kind}`} key={item.id}>
+                          <span className="home-notification-row-icon"><Icon size={17} aria-hidden="true" /></span>
+                          <strong>{item.title}</strong>
+                          <span className="home-notification-row-location">{item.location}</span>
+                          <span className="home-notification-row-due">{item.due}</span>
+                          <span className="home-notification-row-status">{demoStatusLabels[item.kind]}</span>
+                        </div>
+                      );
+                    })}
+                    {notificationFilter === "all" && !showAllDemoNotifications && (
+                      <button type="button" className="home-notification-show-more" onClick={() => setShowAllDemoNotifications(true)}>
+                        Show all {demoNotifications.length} demo notifications <ChevronDown size={15} aria-hidden="true" />
+                      </button>
+                    )}
+                    {notificationFilter === "all" && showAllDemoNotifications && (
+                      <button type="button" className="home-notification-show-more" onClick={() => setShowAllDemoNotifications(false)}>
+                        Show fewer notifications
+                      </button>
+                    )}
+                    <p className="home-notification-disclaimer">Demo data only. These are not live tasks, vaccination records, alerts or approvals. Actions and sign-off will be connected when BMP management is implemented.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
 
         {activeFilter === "Frequently Used" && (
           <section
@@ -556,6 +699,64 @@ export default function HomePage() {
 
 
       <style jsx global>{`
+        /* In-flow notifications accordion: intentionally not a flyout or overlay. */
+        .home-notifications { width: 100%; margin: 13px 0 19px; }
+        .home-notification-banner { display: flex; align-items: center; gap: 16px; width: 100%; min-height: 66px; border-radius: 16px; padding: 11px 16px; border: 2px solid #e7ac37; background: linear-gradient(105deg,#a42714,#dc3c20 55%,#b52719); color: white; box-shadow: 0 5px 17px rgba(154,46,29,.16); text-align: left; cursor: pointer; }
+        .home-notification-banner-urgent { background: linear-gradient(100deg, #a10e18, #df2b26 52%, #b4111d); box-shadow: 0 7px 19px rgba(163,25,30,.19); }
+        .home-notification-banner:hover { filter: brightness(1.035); }
+        .home-notification-banner:focus-visible, .home-notification-stat:focus-visible, .home-notification-show-more:focus-visible { outline: 3px solid #0c947e; outline-offset: 3px; }
+        .home-notification-banner-bell { display:flex; align-items:center; justify-content:center; flex:0 0 42px; width:42px; height:42px; border:1px solid #ffe6b0; border-radius:50%; color:#fff4cb; background:rgba(255,255,255,.09); }
+        .home-notification-banner-title { font-weight:900; font-size: clamp(15px,1.5vw,22px); line-height:1.2; white-space:nowrap; }
+        .home-notification-demo-label { font-size:10px; border-radius:5px; padding:3px 5px; background:rgba(255,255,255,.19); vertical-align:middle; letter-spacing:.06em; }
+        .home-notification-banner-counts { display:flex; align-items:center; gap:0; flex-wrap:wrap; font-size:12px; font-weight:800; }
+        .home-notification-banner-counts span { border-left:1px solid rgba(255,255,255,.45); padding:0 12px; }
+        .home-notification-banner-action { margin-left:auto; display:flex; align-items:center; justify-content:center; gap:8px; padding:10px 12px; flex-shrink:0; border-radius:10px; background:#fff; color:#8f2020; font-size:12px; font-weight:900; white-space:nowrap; }
+        .home-notification-banner-action svg { transition:transform .24s ease; }
+        .home-notification-chevron-up { transform:rotate(180deg); }
+        .home-notification-expander { display:grid; grid-template-rows:0fr; opacity:0; transition:grid-template-rows .35s ease, opacity .2s ease; }
+        .home-notification-expander.is-open { grid-template-rows:1fr; opacity:1; }
+        .home-notification-expander-inner { min-height:0; overflow:hidden; }
+        .home-notification-frame { margin: 8px 1px 2px; padding:20px; border-radius:16px; border:1px solid #acd6c9; background:linear-gradient(120deg,#fff,#f7fbfa); box-shadow:0 5px 15px rgba(3,72,58,.09); }
+        .home-notification-frame-header { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:17px; }
+        .home-notification-frame-heading { display:flex; align-items:center; gap:12px; }
+        .home-notification-frame-icon { width:42px;height:42px;border-radius:50%;background:#fff4d7;color:#d48900;display:flex;align-items:center;justify-content:center;flex-shrink:0; }
+        .home-notification-frame-heading h2 { color:#133e35;font-size:20px;line-height:1.25;margin:0;font-weight:900; }
+        .home-notification-frame-heading p { font-size:12px; color:#536c70; margin:3px 0 0; }
+        .home-notification-demo-heading { display:inline-block; vertical-align:middle; font-size:10px; color:#73530a;background:#fff1bd;padding:2px 5px;border-radius:4px; }
+        .home-notification-frame-caption { font-size:11px;color:#6d7880;text-align:right; }
+        .home-notification-frame-body { display:grid;grid-template-columns:minmax(200px, 290px) minmax(0, 1fr);gap:22px;align-items:start; }
+        .home-notification-summary { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px; }
+        .home-notification-stat { position:relative;display:flex; flex-direction:column; gap:2px; min-height:75px;text-align:left; border:2px solid transparent;border-radius:10px;padding:10px 12px;cursor:pointer;transition:border-color .18s ease,transform .18s ease; }
+        .home-notification-stat:hover { transform:translateY(-1px); }
+        .home-notification-stat.is-selected { border-color:currentColor; }
+        .home-notification-stat strong { font-size:28px;line-height:1;font-weight:900; }
+        .home-notification-stat span { font-size:12px; font-weight:800; }
+        .home-notification-stat svg { position:absolute;right:11px;top:11px; }
+        .home-notification-stat-overdue { color:#b91c1c;background:#ffeded; }
+        .home-notification-stat-today { color:#c35e09;background:#fff4e6; }
+        .home-notification-stat-upcoming { color:#1367be;background:#eaf4ff; }
+        .home-notification-stat-signoff { color:#6d3fbd;background:#f2ecff; }
+        .home-notification-list { min-width:0; }
+        .home-notification-list-heading { display:flex; justify-content:space-between;align-items:center;padding:1px 6px 7px;color:#174a3d;font-size:12px; }
+        .home-notification-list-heading button {color:#08735a;background:transparent;border:0;cursor:pointer;font-weight:800;text-decoration:underline;}
+        .home-notification-row { display:grid; grid-template-columns:30px minmax(130px,1fr) minmax(160px,1.25fr) minmax(80px,.53fr) 87px;align-items:center;gap:8px;min-height:40px;padding:5px 10px;border-bottom:1px solid #e0e8e7;font-size:11px;color:#283d40; }
+        .home-notification-row strong {font-size:11px;font-weight:850;}
+        .home-notification-row-icon {display:flex;align-items:center;justify-content:center;width:27px;height:27px;border-radius:50%;color:#147a54;background:#e1f4eb;}
+        .home-notification-row-location {color:#5d6d73;}
+        .home-notification-row-due {font-weight:800;}
+        .home-notification-row-status {border-radius:999px;padding:5px 7px;text-align:center;font-size:10px;font-weight:850;background:#e9f1fb;color:#2555a3;}
+        .home-notification-row-overdue .home-notification-row-due {color:#be2227;}
+        .home-notification-row-overdue .home-notification-row-status {background:#ffe0e1;color:#ad1520;}
+        .home-notification-row-today .home-notification-row-due {color:#ba600d;}
+        .home-notification-row-today .home-notification-row-status {background:#fff0d9;color:#aa5305;}
+        .home-notification-row-signoff .home-notification-row-due {color:#7240c1;}
+        .home-notification-row-signoff .home-notification-row-status {background:#f1e8ff;color:#7240c1;}
+        .home-notification-show-more {display:flex;align-items:center;justify-content:center;gap:7px;width:100%;padding:9px;border:0;background:transparent;color:#08735a;font-size:12px;font-weight:850;cursor:pointer;}
+        .home-notification-disclaimer {margin:8px 5px 0;font-size:10px;color:#6f7980;}
+        @media (max-width:950px) { .home-notification-banner {flex-wrap:wrap;gap:10px;} .home-notification-banner-counts{order:3;width:100%;padding-left:47px;} .home-notification-frame-body{grid-template-columns:1fr;} .home-notification-row{grid-template-columns:28px minmax(120px,1fr) 84px;} .home-notification-row-location{grid-column:2 / 3;} .home-notification-row-due{grid-column:3;grid-row:1;} .home-notification-row-status{grid-column:3;grid-row:2;} }
+        @media (max-width:600px) { .home-notifications{margin:10px 0;} .home-notification-banner{padding:11px;} .home-notification-banner-bell{flex-basis:34px;width:34px;height:34px;} .home-notification-banner-title{font-size:15px;} .home-notification-banner-action{margin-left:0;padding:8px;font-size:11px;} .home-notification-banner-counts{padding-left:0;font-size:10px;} .home-notification-banner-counts span{padding:0 8px 0 0;border-left:0;} .home-notification-frame{padding:12px;} .home-notification-frame-heading h2{font-size:16px;} .home-notification-frame-caption{display:none;} .home-notification-summary{gap:7px;} .home-notification-stat{min-height:69px;} }
+        @media (prefers-reduced-motion:reduce) { .home-notification-expander,.home-notification-banner-action svg,.home-notification-stat{transition:none;} }
+
         /* OviCore Intelligence: a distinct AI identity within the existing compact module grid. */
         .home-module-card-ai {
           position: relative;
