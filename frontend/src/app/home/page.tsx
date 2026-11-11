@@ -230,6 +230,19 @@ const modules: ModuleCard[] = [
     group: "People, Safety & Compliance",
   },
   {
+    name: "Flock Management",
+    eyebrow: "Batch management programs",
+    description: "Prepare feed, lighting, vaccination and treatment schedules in one reusable flock program.",
+    tags: ["BMP templates", "Programs", "Flock setup"],
+    href: "/management/flocks",
+    status: "New",
+    statusClass: "home-status-live",
+    icon: ClipboardCheck,
+    iconClass: "home-icon-admin",
+    group: "Management & Setup",
+    featured: true,
+  },
+  {
     name: "Guided Tour",
     eyebrow: "Explore OviCore",
     description:
