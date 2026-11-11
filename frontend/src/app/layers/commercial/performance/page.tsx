@@ -15,6 +15,10 @@ import FlockCompareSelector from "@/components/layers/FlockCompareSelector";
 import FlockComparisonCharts, { type ComparisonMetricChart } from "@/components/layers/FlockComparisonCharts";
 import FlockPerformanceReport from "@/components/layers/FlockPerformanceReport";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import {
+  readPreviewBMPs, readPreviewFlockBMP, writePreviewFlockBMP,
+  plannedFeedTasks, plannedTaskAtAge, type PreviewBMP,
+} from "@/lib/feedProgramBridge";
 
 const API_BASE = "";
 
@@ -442,7 +446,8 @@ function CommercialLayerPerformanceContent() {
   const [energyAssignments, setEnergyAssignments] = useState<EnergyAssignment[]>([]);
   const [energyRationId, setEnergyRationId] = useState("");
   const [energyStartDate, setEnergyStartDate] = useState("");
-  const [energyConfirm, setEnergyConfirm] = useState(false);
+  const [previewBMPs, setPreviewBMPs] = useState<PreviewBMP[]>([]);
+  const [previewBMPId, setPreviewBMPId] = useState("");
   const [energyMessage, setEnergyMessage] = useState("");
   const [energyBusy, setEnergyBusy] = useState(false);
 
@@ -470,6 +475,8 @@ function CommercialLayerPerformanceContent() {
       "mortality",
       "eggWeight",
       "feed",
+      "energy",
+      "water",
       "eggsPerBird",
       "bodyweight",
     ]);
@@ -577,7 +584,7 @@ function CommercialLayerPerformanceContent() {
   useEffect(() => {
     void loadEnergyAssignments();
     setEnergyMessage("");
-    setEnergyConfirm(false);
+
   }, [loadEnergyAssignments]);
 
   useEffect(() => {
@@ -594,8 +601,26 @@ function CommercialLayerPerformanceContent() {
     })();
   }, [companyId, energyPanelOpen]);
 
+  useEffect(() => {
+    if (!energyPanelOpen || !companyId || !selectedFlockId) return;
+    setPreviewBMPs(readPreviewBMPs());
+    setPreviewBMPId(readPreviewFlockBMP(companyId, selectedFlockId));
+  }, [energyPanelOpen, companyId, selectedFlockId]);
+
+  const selectedPreviewBMP = previewBMPs.find(p => p.id === previewBMPId);
+  const previewTasks = plannedFeedTasks(selectedPreviewBMP);
+  const selectedFlockAge = rows.length > 0 ? Math.max(...rows.map(r => r.age_weeks ?? -1)) : -1;
+  const plannedNow = plannedTaskAtAge(previewTasks, selectedFlockAge);
+  const selectPlannedRation = (code?: string) => {
+    if (!code) return;
+    const matches = energyRations.filter(r => r.status === "Approved" && r.amen_kcal_kg !== null && r.code.toUpperCase() === code.trim().toUpperCase());
+    if (matches.length === 1) { setEnergyRationId(matches[0].id); setEnergyMessage("Approved ration selected from plan. Enter the date it was actually fed before confirming."); }
+    else if (matches.length > 1) setEnergyMessage(`Multiple approved rations have code ${code}; select the correct mill ration manually.`);
+    else setEnergyMessage(`No approved ration with calculated AMEn matches ${code}. Check the Ration Library and mill.`);
+  };
+
   const saveEnergyAssignment = async () => {
-    if (!companyId || !selectedFlockId || !energyRationId || !energyStartDate || !energyConfirm) return;
+    if (!companyId || !selectedFlockId || !energyRationId || !energyStartDate) return;
     setEnergyBusy(true);
     setEnergyMessage("");
     try {
@@ -609,7 +634,7 @@ function CommercialLayerPerformanceContent() {
         throw new Error(typeof error?.detail === "string" ? error.detail : `Unable to save (${response.status})`);
       }
       setEnergyMessage("Confirmed dated ration assignment saved. Energy graph refreshed.");
-      setEnergyConfirm(false);
+  
       await loadEnergyAssignments();
       await loadPerformance();
     } catch (reason) {
@@ -872,11 +897,33 @@ function CommercialLayerPerformanceContent() {
             style={{width:"min(610px,100%)",maxHeight:"90vh",overflowY:"auto",background:"#fff",borderRadius:15,boxShadow:"0 22px 80px #09251b55",padding:"18px 20px",display:"grid",gap:13}}>
             <div style={{display:"flex",alignItems:"start",justifyContent:"space-between",gap:12}}>
               <div>
-                <h2 id="ration-energy-dialog-title" style={{fontSize:17,color:"#174a34",margin:0}}>Ration energy assignments</h2>
-                <p style={{fontSize:11,color:"#60776b",margin:"4px 0 0"}}>{selectedFlock?.flock_code ?? "Selected flock"} · Confirm actual ration changes and their effective dates.</p>
+                <h2 id="ration-energy-dialog-title" style={{fontSize:17,color:"#174a34",margin:0}}>Feeding program & actual changes</h2>
+                <p style={{fontSize:11,color:"#60776b",margin:"4px 0 0"}}>{selectedFlock?.flock_code ?? "Selected flock"} · Planned schedule is a browser preview; only confirmed actual changes affect energy.</p>
               </div>
               <button type="button" onClick={()=>setEnergyPanelOpen(false)} aria-label="Close ration assignments"
                 style={{border:"1px solid #dce8e2",background:"#f7faf8",borderRadius:8,padding:"5px 10px",fontSize:12,cursor:"pointer"}}>Close ×</button>
+            </div>
+            <div style={{background:"#f0f8f3",border:"1px solid #c9e4d5",borderRadius:11,padding:12,display:"grid",gap:8}}>
+              <label style={{fontSize:12,fontWeight:700,color:"#174a34"}}>Flock feeding program (local sandbox preview)
+                <select value={previewBMPId} onChange={event=>{
+                  const id = event.target.value;
+                  if (!companyId || !selectedFlockId) return;
+                  try { writePreviewFlockBMP(companyId, selectedFlockId, id); setPreviewBMPId(id); setEnergyMessage(id ? "Planning template linked in this browser. No actual ration has changed." : "Planning template removed from this browser. Historical assignments are unaffected."); }
+                  catch { setEnergyMessage("Could not save browser preview program link."); }
+                }} style={{display:"block",width:"100%",minHeight:36,marginTop:5,borderRadius:7,border:"1px solid #b4d8c7",background:"white",padding:"0 7px"}}>
+                  <option value="">No program linked</option>
+                  {previewBMPs.map(p=><option key={p.id} value={p.id}>{p.name} (Draft v{p.version})</option>)}
+                </select>
+              </label>
+              {selectedPreviewBMP ? <>
+                <div style={{fontSize:11,color:"#46675b"}}>Draft plan · {selectedPreviewBMP.productionSystem} · latest recorded age {selectedFlockAge>=0 ? `${selectedFlockAge.toFixed(1)} weeks` : "not available"}. No automatic switching.</div>
+                {previewTasks.map(t=><div key={t.id} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderTop:"1px solid #dcece3",fontSize:11}}>
+                  <span style={{minWidth:65,fontWeight:700}}>{t.startWeek}{t.endWeek ? `–${t.endWeek}` : "+"} wk</span>
+                  <span style={{flex:1}}>{t.title}{t.rationCode ? ` · ${t.rationCode}` : ""}{plannedNow?.id===t.id ? " · Planned at recorded age" : ""}</span>
+                  {t.rationCode&&<button type="button" onClick={()=>selectPlannedRation(t.rationCode)} style={{padding:"5px 8px",background:"#e4f3e9",border:"1px solid #bbd9c7",borderRadius:7,color:"#175a41",fontSize:10,fontWeight:700}}>Select</button>}
+                </div>)}
+                <p style={{margin:0,fontSize:10,color:"#805b24"}}>Browser-only BMP draft; not approved and not shared. For real feeding, select the approved mill ration and confirm its actual switch date below.</p>
+              </> : <p style={{margin:0,fontSize:11,color:"#60776b"}}>Create and save a BMP draft in Management & Setup → Flock Management to preview its feeding stages here. This does not assign a production BMP. <a href="/management/flocks" style={{color:"#176a47",fontWeight:700}}>Open Flock Management</a></p>}
             </div>
             <div style={{background:"#f5faf7",border:"1px solid #e0ebe4",borderRadius:10,padding:10}}>
               <strong style={{fontSize:11,color:"#174a34"}}>Confirmed ration history</strong>
@@ -904,15 +951,12 @@ function CommercialLayerPerformanceContent() {
                 <input type="date" value={energyStartDate} onChange={e=>setEnergyStartDate(e.target.value)} style={{display:"block",width:"100%",height:36}}/>
               </label>
             </div>
-            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:11,color:"#304f40"}}>
-              <input type="checkbox" checked={energyConfirm} onChange={e=>setEnergyConfirm(e.target.checked)}/>
-              Confirm actual ration change (not automatic by age)
-            </label>
+            <p style={{fontSize:11,color:"#7b4b21",background:"#fff7e8",borderRadius:8,padding:9,margin:0}}>Saving below is an explicit confirmation that this approved ration was actually fed from the selected date. Program age ranges never change actual ration history automatically.</p>
             <div style={{display:"flex",justifyContent:"flex-end"}}>
-              <button type="button" disabled={energyBusy || !energyConfirm || !energyRationId || !energyStartDate}
+              <button type="button" disabled={energyBusy || !energyRationId || !energyStartDate}
                 onClick={()=>void saveEnergyAssignment()}
                 style={{minHeight:36,padding:"0 14px",background:"#176a47",color:"white",border:0,borderRadius:8,opacity:energyBusy?.6:1,cursor:"pointer"}}>
-                {energyBusy ? "Saving…" : "Save historical assignment"}
+                {energyBusy ? "Saving…" : "Confirm actual ration change"}
               </button>
             </div>
             {energyMessage && <p role="status" style={{fontSize:11,color:energyMessage.startsWith("Confirmed")?"#176a47":"#b45309",margin:0}}>{energyMessage}</p>}
@@ -961,7 +1005,7 @@ function CommercialLayerPerformanceContent() {
               <button type="button" onClick={()=>setEnergyPanelOpen(true)}
                 title="Manage dated ration assignments without leaving the performance graph"
                 className="comments-toggle" style={{cursor:"pointer",color:"#426354"}}>
-                Ration setup{energyAssignments.length > 0 ? ` · ${energyAssignments.length}` : ""}
+                Feeding program{energyAssignments.length > 0 ? ` · ${energyAssignments.length}` : ""}
               </button>
             )}
             <label className="comments-toggle" title="Switch between daily and weekly graph data">
