@@ -15,10 +15,6 @@ import FlockCompareSelector from "@/components/layers/FlockCompareSelector";
 import FlockComparisonCharts, { type ComparisonMetricChart } from "@/components/layers/FlockComparisonCharts";
 import FlockPerformanceReport from "@/components/layers/FlockPerformanceReport";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import {
-  readPreviewBMPs, readPreviewFlockBMP, writePreviewFlockBMP,
-  plannedFeedTasks, plannedTaskAtAge, type PreviewBMP,
-} from "@/lib/feedProgramBridge";
 
 const API_BASE = "";
 
@@ -81,8 +77,8 @@ type PerformanceRow = {
   notes?: string | null;
 };
 
-type EnergyRation = { id: string; code: string; name: string; mill_id: string; amen_kcal_kg: number | null; error: string | null; status: string; source: string };
 type EnergyAssignment = { id: string; effective_from: string; ration_code: string; ration_name: string; amen_kcal_kg: number; source: string };
+type AssignedProgram = { id: string; name: string; version: number; mill_id: string; stages: { start_week: number; end_week: number; ration_code: string; ration_name: string }[] };
 
 type MetricKey =
   | "production"
@@ -442,14 +438,9 @@ function CommercialLayerPerformanceContent() {
   const [flocks, setFlocks] = useState<Flock[]>([]);
   const [rows, setRows] = useState<PerformanceRow[]>([]);
   const [energyPanelOpen, setEnergyPanelOpen] = useState(false);
-  const [energyRations, setEnergyRations] = useState<EnergyRation[]>([]);
   const [energyAssignments, setEnergyAssignments] = useState<EnergyAssignment[]>([]);
-  const [energyRationId, setEnergyRationId] = useState("");
-  const [energyStartDate, setEnergyStartDate] = useState("");
-  const [previewBMPs, setPreviewBMPs] = useState<PreviewBMP[]>([]);
-  const [previewBMPId, setPreviewBMPId] = useState("");
-  const [energyMessage, setEnergyMessage] = useState("");
-  const [energyBusy, setEnergyBusy] = useState(false);
+  const [assignedProgram, setAssignedProgram] = useState<AssignedProgram | null>(null);
+  const [, setEnergyMessage] = useState("");
 
   const [selectedFarmId, setSelectedFarmId] =
     useState<number | "">("");
@@ -587,60 +578,17 @@ function CommercialLayerPerformanceContent() {
 
   }, [loadEnergyAssignments]);
 
+  // Approved program is read from the server, never the local browser preview.
   useEffect(() => {
-    if (!companyId || !energyPanelOpen) return;
-    void (async () => {
-      try {
-        const response = await authenticatedFetch(`/api/feed-operations/energy/rations?company_id=${companyId}`);
-        if (!response.ok) throw new Error(`Energy ration catalogue unavailable (${response.status})`);
-        const data: EnergyRation[] = await response.json();
-        setEnergyRations(data);
-      } catch (reason) {
-        setEnergyMessage(reason instanceof Error ? reason.message : "Unable to load energy rations");
-      }
-    })();
-  }, [companyId, energyPanelOpen]);
-
-  useEffect(() => {
-    if (!energyPanelOpen || !companyId || !selectedFlockId) return;
-    setPreviewBMPs(readPreviewBMPs());
-    setPreviewBMPId(readPreviewFlockBMP(companyId, selectedFlockId));
-  }, [energyPanelOpen, companyId, selectedFlockId]);
-
-  const selectedPreviewBMP = previewBMPs.find(p => p.id === previewBMPId);
-  const previewTasks = plannedFeedTasks(selectedPreviewBMP);
-  const selectedFlockAge = rows.length > 0 ? Math.max(...rows.map(r => r.age_weeks ?? -1)) : -1;
-  const plannedNow = plannedTaskAtAge(previewTasks, selectedFlockAge);
-  const selectPlannedRation = (code?: string) => {
-    if (!code) return;
-    const matches = energyRations.filter(r => r.status === "Approved" && r.amen_kcal_kg !== null && r.code.toUpperCase() === code.trim().toUpperCase());
-    if (matches.length === 1) { setEnergyRationId(matches[0].id); setEnergyMessage("Approved ration selected from plan. Enter the date it was actually fed before confirming."); }
-    else if (matches.length > 1) setEnergyMessage(`Multiple approved rations have code ${code}; select the correct mill ration manually.`);
-    else setEnergyMessage(`No approved ration with calculated AMEn matches ${code}. Check the Ration Library and mill.`);
-  };
-
-  const saveEnergyAssignment = async () => {
-    if (!companyId || !selectedFlockId || !energyRationId || !energyStartDate) return;
-    setEnergyBusy(true);
-    setEnergyMessage("");
-    try {
-      const response = await authenticatedFetch(`/api/feed-operations/energy/assignments?company_id=${companyId}`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ flock_id: selectedFlockId, ration_id: energyRationId,
-          effective_from: energyStartDate, confirmed_actual_change: true }),
-      });
-      if (!response.ok) {
-        const error = await response.json().catch(() => null);
-        throw new Error(typeof error?.detail === "string" ? error.detail : `Unable to save (${response.status})`);
-      }
-      setEnergyMessage("Confirmed dated ration assignment saved. Energy graph refreshed.");
-  
-      await loadEnergyAssignments();
-      await loadPerformance();
-    } catch (reason) {
-      setEnergyMessage(reason instanceof Error ? reason.message : "Unable to save ration assignment");
-    } finally { setEnergyBusy(false); }
-  };
+    if (!companyId || !selectedFlockId) { setAssignedProgram(null); return; }
+    let live = true;
+    setAssignedProgram(null);
+    void authenticatedFetch(`/api/feed-operations/programs/flock?company_id=${companyId}&flock_id=${selectedFlockId}`)
+      .then(r => { if (!r.ok) throw new Error(`Feeding program unavailable (${r.status})`); return r.json(); })
+      .then(data => { if (live) setAssignedProgram(data.program || null); })
+      .catch(() => { if (live) setAssignedProgram(null); });
+    return () => { live = false; };
+  }, [companyId, selectedFlockId]);
 
   const farms = useMemo(() => {
     const map = new Map<number, string>();
@@ -904,26 +852,15 @@ function CommercialLayerPerformanceContent() {
                 style={{border:"1px solid #dce8e2",background:"#f7faf8",borderRadius:8,padding:"5px 10px",fontSize:12,cursor:"pointer"}}>Close ×</button>
             </div>
             <div style={{background:"#f0f8f3",border:"1px solid #c9e4d5",borderRadius:11,padding:12,display:"grid",gap:8}}>
-              <label style={{fontSize:12,fontWeight:700,color:"#174a34"}}>Flock feeding program (local sandbox preview)
-                <select value={previewBMPId} onChange={event=>{
-                  const id = event.target.value;
-                  if (!companyId || !selectedFlockId) return;
-                  try { writePreviewFlockBMP(companyId, selectedFlockId, id); setPreviewBMPId(id); setEnergyMessage(id ? "Planning template linked in this browser. No actual ration has changed." : "Planning template removed from this browser. Historical assignments are unaffected."); }
-                  catch { setEnergyMessage("Could not save browser preview program link."); }
-                }} style={{display:"block",width:"100%",minHeight:36,marginTop:5,borderRadius:7,border:"1px solid #b4d8c7",background:"white",padding:"0 7px"}}>
-                  <option value="">No program linked</option>
-                  {previewBMPs.map(p=><option key={p.id} value={p.id}>{p.name} (Draft v{p.version})</option>)}
-                </select>
-              </label>
-              {selectedPreviewBMP ? <>
-                <div style={{fontSize:11,color:"#46675b"}}>Draft plan · {selectedPreviewBMP.productionSystem} · latest recorded age {selectedFlockAge>=0 ? `${selectedFlockAge.toFixed(1)} weeks` : "not available"}. No automatic switching.</div>
-                {previewTasks.map(t=><div key={t.id} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderTop:"1px solid #dcece3",fontSize:11}}>
-                  <span style={{minWidth:65,fontWeight:700}}>{t.startWeek}{t.endWeek ? `–${t.endWeek}` : "+"} wk</span>
-                  <span style={{flex:1}}>{t.title}{t.rationCode ? ` · ${t.rationCode}` : ""}{plannedNow?.id===t.id ? " · Planned at recorded age" : ""}</span>
-                  {t.rationCode&&<button type="button" onClick={()=>selectPlannedRation(t.rationCode)} style={{padding:"5px 8px",background:"#e4f3e9",border:"1px solid #bbd9c7",borderRadius:7,color:"#175a41",fontSize:10,fontWeight:700}}>Select</button>}
+              <strong style={{fontSize:12,color:"#174a34"}}>Approved flock feeding program</strong>
+              {assignedProgram ? <>
+                <div style={{fontSize:12}}>{assignedProgram.name} · version {assignedProgram.version}</div>
+                {assignedProgram.stages.map((stage,i)=><div key={i} style={{fontSize:11,borderTop:"1px solid #dcece3",paddingTop:6}}>
+                  {stage.start_week}–{stage.end_week} weeks · {stage.ration_code} · {stage.ration_name}
                 </div>)}
-                <p style={{margin:0,fontSize:10,color:"#805b24"}}>Browser-only BMP draft; not approved and not shared. For real feeding, select the approved mill ration and confirm its actual switch date below.</p>
-              </> : <p style={{margin:0,fontSize:11,color:"#60776b"}}>Create and save a BMP draft in Management & Setup → Flock Management to preview its feeding stages here. This does not assign a production BMP. <a href="/management/flocks" style={{color:"#176a47",fontWeight:700}}>Open Flock Management</a></p>}
+                <p style={{fontSize:11,color:"#845d26",margin:0}}>Planned schedule only. Actual feeding changes require confirmation below; energy is not inferred from age alone.</p>
+              </> : <p style={{fontSize:11,margin:0}}>No approved program assigned to this flock.</p>}
+              <a href={`/feed-operations/feeding-programs?company_id=${companyId}`} style={{fontSize:12,fontWeight:700,color:"#176a47"}}>Manage feeding programs & flock assignments</a>
             </div>
             <div style={{background:"#f5faf7",border:"1px solid #e0ebe4",borderRadius:10,padding:10}}>
               <strong style={{fontSize:11,color:"#174a34"}}>Confirmed ration history</strong>
@@ -938,28 +875,10 @@ function CommercialLayerPerformanceContent() {
                 </div>
               )}
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(210px,1fr))",gap:12}}>
-              <label style={{fontSize:11}}>Actual ration fed
-                <select value={energyRationId} onChange={e=>setEnergyRationId(e.target.value)} style={{display:"block",width:"100%",height:36}}>
-                  <option value="">Select approved ration</option>
-                  {energyRations.filter(r=>r.status==="Approved").map(r=><option key={r.id} value={r.id} disabled={r.amen_kcal_kg===null}>
-                    {r.code} · {r.name} {r.amen_kcal_kg!==null ? `(${r.amen_kcal_kg.toFixed(0)} kcal/kg estimated)` : `(Unavailable: ${r.error})`}
-                  </option>)}
-                </select>
-              </label>
-              <label style={{fontSize:11}}>Actually fed from date
-                <input type="date" value={energyStartDate} onChange={e=>setEnergyStartDate(e.target.value)} style={{display:"block",width:"100%",height:36}}/>
-              </label>
+            <div style={{fontSize:12,color:"#46675b",padding:10,background:"#f5faf7",borderRadius:8}}>
+              Actual ration confirmations are managed centrally in Feed Operations. This graph only reports dated, confirmed AMEn history.
+              <a href={`/feed-operations/feeding-programs?company_id=${companyId}`} style={{display:"block",marginTop:8,fontWeight:700,color:"#176a47"}}>Open Feeding Program Management</a>
             </div>
-            <p style={{fontSize:11,color:"#7b4b21",background:"#fff7e8",borderRadius:8,padding:9,margin:0}}>Saving below is an explicit confirmation that this approved ration was actually fed from the selected date. Program age ranges never change actual ration history automatically.</p>
-            <div style={{display:"flex",justifyContent:"flex-end"}}>
-              <button type="button" disabled={energyBusy || !energyRationId || !energyStartDate}
-                onClick={()=>void saveEnergyAssignment()}
-                style={{minHeight:36,padding:"0 14px",background:"#176a47",color:"white",border:0,borderRadius:8,opacity:energyBusy?.6:1,cursor:"pointer"}}>
-                {energyBusy ? "Saving…" : "Confirm actual ration change"}
-              </button>
-            </div>
-            {energyMessage && <p role="status" style={{fontSize:11,color:energyMessage.startsWith("Confirmed")?"#176a47":"#b45309",margin:0}}>{energyMessage}</p>}
             <p style={{fontSize:10,lineHeight:1.5,color:"#697b71",margin:0}}>
               AMEn uses the applicable dated mill-formulated value when provided; otherwise the ingredient-based OviCore estimate. The selected source and value are saved together. Assignments retain historical snapshots and remain effective until the next confirmed change. Feed silo carryover and mixed rations are not yet modelled.
             </p>
@@ -1003,9 +922,9 @@ function CommercialLayerPerformanceContent() {
           <div className="chart-head-actions">
             {(currentUser?.is_global_admin || currentUser?.is_company_admin) && (
               <button type="button" onClick={()=>setEnergyPanelOpen(true)}
-                title="Manage dated ration assignments without leaving the performance graph"
+                title="View approved feeding program and confirmed ration history"
                 className="comments-toggle" style={{cursor:"pointer",color:"#426354"}}>
-                Feeding program{energyAssignments.length > 0 ? ` · ${energyAssignments.length}` : ""}
+                Feeding program{assignedProgram ? ` · ${assignedProgram.name} v${assignedProgram.version}` : ""}
               </button>
             )}
             <label className="comments-toggle" title="Switch between daily and weekly graph data">

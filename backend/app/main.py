@@ -8,6 +8,7 @@ from .routers.auth import get_current_user
 from .feed_catalog.models import declare_models
 from .feed_catalog.router import make_feed_catalog_router
 from .feed_catalog.energy import declare_energy_model, make_energy_router, estimate_ration_amen
+from .feed_catalog.programs import declare_program_models, make_program_router
 from datetime import date, datetime, timedelta
 from io import BytesIO
 from fastapi import Body, Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
@@ -36,6 +37,7 @@ from .db import Base, engine, SessionLocal, get_db
 # Register Feed Operations models with the existing OviCore database.
 FeedMill, FeedIngredient, FeedRation = declare_models(Base)
 FlockRationEnergyAssignment = declare_energy_model(Base)
+FeedProgram, FlockFeedProgram = declare_program_models(Base)
 
 from .models import (
     Company,
@@ -142,6 +144,19 @@ app.include_router(make_energy_router(
     layer_models=models.CommercialLayerFlock,
     feed_models=(FeedIngredient, FeedRation),
     assignment_model=FlockRationEnergyAssignment,
+))
+
+# Immutable approved feeding programs and flock links (no automatic actual changes).
+app.include_router(make_program_router(
+    get_db=get_db,
+    get_current_user=get_current_user,
+    resolve_company_id=resolve_company_id,
+    has_farm_access=access.user_has_farm_access,
+    flock_model=models.CommercialLayerFlock,
+    ration_model=FeedRation,
+    mill_model=FeedMill,
+    program_model=FeedProgram,
+    link_model=FlockFeedProgram,
 ))
 
 origins = [
