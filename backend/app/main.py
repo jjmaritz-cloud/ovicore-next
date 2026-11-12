@@ -150,7 +150,7 @@ app.include_router(make_energy_router(
 app.include_router(make_program_router(
     get_db=get_db,
     get_current_user=get_current_user,
-    resolve_company_id=resolve_company_id,
+    resolve_company_id=lambda user, cid: resolve_company_id(user, cid),
     has_farm_access=access.user_has_farm_access,
     flock_model=models.CommercialLayerFlock,
     ration_model=FeedRation,
