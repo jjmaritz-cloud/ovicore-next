@@ -28,6 +28,8 @@ from app.routers import company_deletion
 from app.routers import daily_data_import
 from app.routers.standards import PerformanceStandard
 from app import models
+from app import grading_models
+from app.routers import egg_storage
 from app.routers import ai_intelligence
 
 from .db import Base, engine, SessionLocal, get_db
@@ -116,6 +118,7 @@ app.include_router(broiler_supply.router)
 app.include_router(hatchery.router)
 app.include_router(access.router)
 app.include_router(auth.router)
+app.include_router(egg_storage.router)
 app.include_router(standards.router)
 app.include_router(daily_data_import.router)
 app.include_router(flock_purge.router)
