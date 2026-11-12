@@ -91,8 +91,9 @@ const modules: ModuleCard[] = [
     description:
       "Egg receipts, grading results, pack sizes, rejects, stock movements and dispatch.",
     tags: ["Egg receipts", "Pack sizes", "Dispatch"],
-    status: "Paid add-on",
-    statusClass: "home-status-future",
+    href: "/grading",
+    status: "Admin pilot",
+    statusClass: "home-status-live",
     icon: PackageCheck,
     iconClass: "home-icon-grading",
     group: "Egg Production",
