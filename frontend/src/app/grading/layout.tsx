@@ -4,6 +4,7 @@ import type { SidebarMenuConfig } from "@/components/sidebar/OviCoreSidebar.type
 import "./grading.css";
 
 const gradingMenu: SidebarMenuConfig = {
+  module: "grading",
   title: "OviCore",
   subtitle: "GRADING",
   sections: [

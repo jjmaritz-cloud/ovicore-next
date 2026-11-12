@@ -7,6 +7,7 @@ import { layersMenu } from "./menus/layers.menu";
 import { planningMenu } from "./menus/planning.menu";
 import { processingMenu } from "./menus/processing.menu";
 import { feedOperationsMenu } from "./menus/feed-operations.menu";
+import { gradingMenu } from "./menus/grading.menu";
 
 import type {
   OviCoreModule,
@@ -24,7 +25,8 @@ export const sidebarMenuRegistry: Record<
   hatchery: hatcheryMenu,
   layers: layersMenu,
   processing: processingMenu,
-  "feed-operations": feedOperationsMenu,
+	"feed-operations": feedOperationsMenu,
+	grading: gradingMenu,
 };
 
 export function getSidebarMenu(

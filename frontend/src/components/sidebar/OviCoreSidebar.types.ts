@@ -7,7 +7,8 @@ export type OviCoreModule =
   | "hatchery"
   | "layers"
   | "processing"
-  | "feed-operations";
+  | "feed-operations"
+  | "grading";
 
 export type OviCoreUserRole =
   | "global_admin"
