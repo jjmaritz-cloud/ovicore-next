@@ -98,7 +98,7 @@ async function authenticatedFetch(url: string, signal?: AbortSignal) {
   return response;
 }
 function exportCsv(rows: Array<{ plan: Plan; point: Point }>) {
-  const header = ["Company scoped report", "Farm", "Shed", "Flock", "Date", "Age (days)", "Opening birds", "Mortality birds", "Culls", "Closing birds", "Bodyweight kg", "Cum mortality %", "Feed g/bird/day", "Water mL/bird/day", "Est feed/liveweight ratio", "Comments"];
+  const header = ["Source", "Farm", "Shed", "Flock", "Date", "Age (days)", "Opening birds", "Mortality birds", "Culls", "Closing birds", "Bodyweight kg", "Cum mortality %", "Feed g/bird/day", "Water mL/bird/day", "Est feed/liveweight ratio", "Comments"];
   const value = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const lines = [header.map(value).join(","), ...rows.map(({ plan, point }) => [
     "OviCore", plan.farm_name, plan.shed_name, plan.cycle_code, point.date, point.age,
@@ -213,7 +213,7 @@ export default function BroilerPerformanceWorkspacePage() {
   />;
 
   return <div className="page-shell"><BroilerSidebar /><main className="main-panel broiler-performance">
-    <header className="bp-header"><div><h1>Broiler Performance</h1><p>Actual flock performance across bodyweight, mortality, feed, water and estimated feed efficiency.</p></div>
+    <header className="bp-header"><div><h1>Broiler Performance</h1><span className="bp-version">Performance V2 · Layers parity</span><p>Actual flock performance across bodyweight, mortality, feed, water and estimated feed efficiency.</p></div>
       <button onClick={() => void loadData()} type="button">Refresh</button></header>
     <section className="bp-card bp-selectors"><div className="bp-three">
       <label>Farm<select value={effectiveFarm} onChange={e => { setFarm(e.target.value); setShed(""); setPrimaryId(""); setCompareIds([]); }}>{farms.map(n => <option key={n}>{n}</option>)}</select></label>
@@ -250,7 +250,7 @@ export default function BroilerPerformanceWorkspacePage() {
       .broiler-performance { min-width:0; padding:8px 10px 18px; display:grid; align-content:start; gap:7px; color:#183f2e; }
       .bp-header,.bp-card{background:#fff;border:1px solid #dce8e2;border-radius:12px;box-shadow:0 5px 18px #1346330a;}
       .bp-header{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:8px 11px;}
-      .bp-header h1{font-size:18px;margin:0;color:#123f2b}.bp-header p,.bp-graph-header p,.bp-report-header p,.bp-compare p{font-size:10px;margin:3px 0;color:#72847a}
+      .bp-version{display:inline-block;font-size:9px;font-weight:800;color:#0b7953;margin-top:2px}.bp-header h1{font-size:18px;margin:0;color:#123f2b}.bp-header p,.bp-graph-header p,.bp-report-header p,.bp-compare p{font-size:10px;margin:3px 0;color:#72847a}
       .bp-card{padding:9px 11px}.bp-three{display:grid;grid-template-columns:1fr 1fr 1.45fr;gap:9px}
       label{display:grid;gap:4px;font-size:10px;font-weight:800;color:#415b4d}label:has(input[type=checkbox]){display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
       input[type=checkbox]{accent-color:#13845c;margin:0}select,input[type=date]{width:100%;min-height:30px;border:1px solid #cddbd2;background:#fff;border-radius:7px;padding:4px 8px;color:#173f2c;font-size:11px;box-sizing:border-box}
@@ -278,58 +278,110 @@ function BroilerChart({ series, selectedMetrics, onToggleMetric, showStandards, 
   showStandards: boolean; showComments: boolean; expanded: boolean; daily: boolean; compare: boolean;
 }) {
   const [hoverAge, setHoverAge] = useState<number | null>(null);
-  const [commentOpen, setCommentOpen] = useState(false);
-  const width = expanded ? 1560 : 1400, height = expanded ? 680 : 460;
-  const left = 65, right = 175, top = 17, bottom = 54;
+  const [openedComment, setOpenedComment] = useState<string | null>(null);
+  const [axisOffsets, setAxisOffsets] = useState<Record<Metric, number>>({bodyweight:0,mortality:0,feed:0,water:0,fcr:0});
+  const [drag, setDrag] = useState<{key:Metric; startY:number; offset:number} | null>(null);
+  const width = expanded ? 1600 : 1400;
+  const height = expanded ? 660 : 455;
+  const left = 72, right = 175, top = 14, bottom = 58;
   const plotWidth = width - left - right, plotHeight = height - top - bottom;
   const all = series.flatMap(s => s.points);
-  const ages = [...new Set(all.map(p => daily ? p.age : Math.floor(p.age / 7)))].sort((a,b)=>a-b);
+  const ageKey = (p: Point) => daily ? p.age : Math.floor(p.age / 7);
+  const ages = [...new Set(all.map(ageKey))].sort((a,b) => a-b);
   const maxAge = Math.max(daily ? 42 : 6, ...ages, 1);
-  const minAge = 0;
-  const x = (age: number) => left + (age - minAge) / (maxAge - minAge) * plotWidth;
-  const colour = (m: Metric) => METRICS.find(item => item.key === m)!.colour;
+  const x = (age: number) => left + age / maxAge * plotWidth;
   const active = METRICS.filter(m => selectedMetrics.includes(m.key));
-  const ranges = new Map<Metric, { min: number; max: number }>();
-  for (const m of active) {
-    const values = all.flatMap(p => [p.values[m.key], ...(showStandards ? [p.standards[m.key]] : [])]).filter((v): v is number => v !== null && v >= 0);
-    const high = Math.max(...values, 1);
-    ranges.set(m.key, { min: 0, max: high * 1.12 });
-  }
-  const y = (key: Metric, value: number) => top + plotHeight - (value / (ranges.get(key)?.max || 1)) * plotHeight;
-  const tickStep = maxAge <= 14 ? 2 : maxAge <= 56 ? 7 : Math.ceil(maxAge / 9);
-  const ticks = Array.from({length:Math.floor(maxAge/tickStep)+1},(_,i)=>i*tickStep);
-  if (ticks[ticks.length-1] !== maxAge) ticks.push(maxAge);
-  const ageKey = (p: Point) => daily ? p.age : Math.floor(p.age/7);
-  const hoverRows = hoverAge === null ? [] : series.flatMap(s => {
-    const point = s.points.find(p => ageKey(p) === hoverAge);
-    return point ? [{ label: s.label, point }] : [];
+  const ranges = new Map<Metric, {min:number;max:number}>();
+  active.forEach(m => {
+    const values = all.flatMap(p => [p.values[m.key],...(showStandards?[p.standards[m.key]]:[])]).filter((v):v is number => v!==null && Number.isFinite(v) && v>=0);
+    const highest = Math.max(...values, 1);
+    ranges.set(m.key, {min:0,max:highest*1.12});
   });
-  const move = (e: MouseEvent<SVGRectElement>) => {
-    const bounds = e.currentTarget.ownerSVGElement?.getBoundingClientRect(); if (!bounds || !ages.length) return;
-    const chartX = (e.clientX-bounds.left)/bounds.width*width;
-    const atAge = Math.max(minAge,Math.min(maxAge,(chartX-left)/plotWidth*(maxAge-minAge)));
-    setHoverAge(ages.reduce((best, current)=>Math.abs(current-atAge)<Math.abs(best-atAge)?current:best));
-    setCommentOpen(false);
+  const y = (key:Metric, value:number) => {
+    const r = ranges.get(key) ?? {min:0,max:1};
+    return top + plotHeight - ((value-r.min)/(r.max-r.min))*plotHeight + (axisOffsets[key] ?? 0);
   };
-  return <div className="bp-chart"><svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Broiler performance graph">
-    <rect x={left} y={top} width={plotWidth} height={plotHeight} fill="#fbfdfc" />
-    {Array.from({length:6},(_,i)=>{const yy=top+i*plotHeight/5; return <line key={i} x1={left} x2={left+plotWidth} y1={yy} y2={yy} stroke="#dfe9e3" strokeDasharray="3 7" opacity=".7"/>;})}
-    {ticks.map(t=><g key={t}><line x1={x(t)} x2={x(t)} y1={top} y2={top+plotHeight} stroke="#ecf1ee"/><text x={x(t)} y={top+plotHeight+24} textAnchor="middle" fontSize="11" fill="#687970">{t}</text></g>)}
-    {active.map((metric,index)=>{const max = ranges.get(metric.key)?.max ?? 1; const axisX=left+plotWidth+18+index*30;return <g key={metric.key}><line x1={axisX} x2={axisX} y1={top} y2={top+plotHeight} stroke={metric.colour} opacity=".75"/>{[0,.25,.5,.75,1].map(r=><text key={r} x={axisX+5} y={top+plotHeight*r+3} fontSize="7.5" fill={metric.colour}>{(max*(1-r)).toFixed(metric.decimals)}</text>)}</g>;})}
-    {series.flatMap((s,index)=>active.map(metric=>{
-      const points = s.points.filter(p=>p.values[metric.key] !== null && p.values[metric.key]! >= 0).map(p=>`${x(ageKey(p))},${y(metric.key,p.values[metric.key]!)}`).join(" ");
-      const standards = s.points.filter(p=>p.standards[metric.key] !== null && p.standards[metric.key]! >= 0).map(p=>`${x(ageKey(p))},${y(metric.key,p.standards[metric.key]!)}`).join(" ");
-      return <g key={`${s.plan.id}-${metric.key}`}>
-        {showStandards && standards && <polyline points={standards} stroke={metric.colour} fill="none" strokeWidth="1.2" strokeDasharray="3 6" opacity=".45"/>}
-        {points && <polyline points={points} stroke={metric.colour} fill="none" strokeWidth={index===0?2.7:2} opacity={compare && index>0?Math.max(.35,1-index*.13):1} strokeLinecap="round" strokeLinejoin="round"/>}
-      </g>;
-    }))}
-    {hoverAge !== null && <line x1={x(hoverAge)} x2={x(hoverAge)} y1={top} y2={top+plotHeight} stroke="#74867a" strokeDasharray="4 5" pointerEvents="none"/>}
-    {hoverRows.flatMap(row => active.map(metric=>{const val=row.point.values[metric.key];return val!==null?<circle key={`${row.label}-${metric.key}`} cx={x(hoverAge!)} cy={y(metric.key,val)} r="4.5" stroke={metric.colour} fill="white" strokeWidth="2" pointerEvents="none"/>:null;}))}
-    <rect x={left} y={top} width={plotWidth} height={plotHeight} fill="transparent" style={{cursor:"crosshair"}} onMouseMove={move} onClick={move} onMouseLeave={()=>{setHoverAge(null);setCommentOpen(false);}}/>
-    {showComments && series.flatMap(s=>s.points.filter(p=>p.comment).map(p=><g key={`${s.plan.id}-${p.age}`} onClick={()=>{setHoverAge(ageKey(p));setCommentOpen(true);}} style={{cursor:"pointer"}}><circle cx={x(ageKey(p))} cy={top+12} r="8" fill="#f5ad29" stroke="white" strokeWidth="2"/><text x={x(ageKey(p))} y={top+15} fontSize="10" textAnchor="middle" fill="#563600" pointerEvents="none">!</text></g>))}
-    {hoverRows.length>0 && <foreignObject x={hoverAge! < maxAge/2 ? left+plotWidth-285 : left+12} y={top+24} width="275" height={Math.min(plotHeight-20,55+hoverRows.length*(32+selectedMetrics.length*18))} pointerEvents="none"><div xmlns="http://www.w3.org/1999/xhtml" style={{background:"#ffffffed",border:"1px solid #dbe7e1",borderRadius:9,padding:"8px 10px",fontFamily:"system-ui",fontSize:10,color:"#173f2d",boxShadow:"0 4px 14px #00000010",maxHeight:"100%",overflow:"hidden"}}><b>{daily?`Day ${hoverAge}`:`Week ${hoverAge}`}</b>{hoverRows.map(row=><div key={row.label} style={{borderTop:"1px solid #e3ede7",marginTop:5,paddingTop:5}}><strong style={{fontSize:9}}>{row.label}</strong>{active.map(metric=><div key={metric.key} style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:9,marginTop:2}}><span style={{color:metric.colour}}>{metric.short}</span><span>{fmt(row.point.values[metric.key],metric.key)}{showStandards&&row.point.standards[metric.key]!==null?` / std ${fmt(row.point.standards[metric.key],metric.key)}`:""}</span></div>)}{commentOpen&&row.point.comment&&<div style={{color:"#805c13"}}>Comment: {row.point.comment}</div>}</div>)}</div></foreignObject>}
-    <text x={left+plotWidth/2} y={height-6} textAnchor="middle" fill="#596c61" fontSize="12" fontWeight="700">Age ({daily?"days":"weeks"})</text>
-  </svg><div className="bp-metric-legend">{METRICS.map(m=><button key={m.key} className={selectedMetrics.includes(m.key)?"active":""} onClick={()=>onToggleMetric(m.key)}><i style={{background:m.colour}}/>{m.name}{showStandards?" · actual / standard":""}</button>)}</div>
-    <style jsx>{`.bp-chart{width:100%;min-width:0}.bp-chart svg{display:block;width:100%;height:auto}.bp-metric-legend{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}.bp-metric-legend button{display:flex;align-items:center;gap:5px;border-radius:30px;border:1px solid #dce8e2;background:#fff;color:#4c6858;padding:6px 8px;font-size:9px;font-weight:750;cursor:pointer;opacity:.4}.bp-metric-legend button.active{opacity:1;background:#f6faf8}.bp-metric-legend i{width:8px;height:8px;border-radius:50%;display:inline-block}`}</style></div>;
+  const ticks = Array.from({length:9},(_,i)=>i*maxAge/8);
+  const hoverRows = hoverAge === null ? [] : series.flatMap(s => {
+    const point = s.points.find(p => ageKey(p)===hoverAge);
+    return point ? [{series:s,point}] : [];
+  });
+  const move = (e:MouseEvent<SVGRectElement>) => {
+    const bounds=e.currentTarget.ownerSVGElement?.getBoundingClientRect(); if (!bounds || !ages.length) return;
+    const relative=(e.clientX-bounds.left)/bounds.width*width;
+    const target=Math.max(0,Math.min(maxAge, (relative-left)/plotWidth*maxAge));
+    setHoverAge(ages.reduce((best,a)=>Math.abs(a-target)<Math.abs(best-target)?a:best));
+    setOpenedComment(null);
+  };
+  const handleDrag=(e:MouseEvent<SVGSVGElement>)=>{
+    if (!drag) return;
+    const svg=e.currentTarget;
+    const rect=svg.getBoundingClientRect();
+    const delta=(e.clientY-drag.startY)*height/rect.height;
+    const limit=plotHeight*.32;
+    setAxisOffsets(o=>({...o,[drag.key]:Math.max(-limit,Math.min(limit,drag.offset+delta))}));
+  };
+  const tooltipWidth = compare ? 360 : 300;
+  const tooltipHeight = Math.min(plotHeight - 20, 55 + hoverRows.length * (compare ? 28 : 0) + active.length * (compare ? 22 * Math.max(hoverRows.length,1) : 22) + 16);
+  const flyoutX = hoverAge !== null && hoverAge < maxAge/2 ? left+plotWidth-tooltipWidth-12 : left+12;
+  const flyoutValue = (v:number|null,decimals:number)=>v===null?"—":v.toFixed(decimals);
+  return <div className="bp-chart">
+    <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMin meet" role="img" aria-label="Broiler performance: actual versus breed standards, with draggable metric axes"
+      onMouseMove={handleDrag} onMouseUp={()=>setDrag(null)} onMouseLeave={()=>{setDrag(null);setHoverAge(null);}}>
+      <defs><clipPath id={expanded?"bp-clip-expanded":"bp-clip"}><rect x={left} y={top} width={plotWidth} height={plotHeight}/></clipPath></defs>
+      <rect x={left} y={top} width={plotWidth} height={plotHeight} rx="10" fill="#fbfdfc"/>
+      {Array.from({length:6},(_,i)=>{const yy=top+i*plotHeight/5;return <line key={i} x1={left} x2={left+plotWidth} y1={yy} y2={yy} stroke="#dfe8e3" strokeDasharray="3 7" opacity=".65"/>;})}
+      {ticks.map((t,i)=><g key={i}><line x1={x(t)} x2={x(t)} y1={top} y2={top+plotHeight} stroke="#edf2ef"/><text x={x(t)} y={top+plotHeight+24} textAnchor="middle" fontSize="10" fill="#687970">{t.toFixed(0)}</text></g>)}
+      {active.map((m,index)=>{
+        const r=ranges.get(m.key)??{min:0,max:1};
+        const axisX=left+plotWidth+20+index*30;
+        const offset=axisOffsets[m.key]??0;
+        return <g key={m.key}>
+          <line x1={axisX} x2={axisX} y1={top} y2={top+plotHeight} stroke={m.colour} opacity=".8"/>
+          {[0,.25,.5,.75,1].map(frac=>{
+            const value=r.min+(r.max-r.min)*(1-frac);
+            const pos=top+plotHeight*frac+offset;
+            return <g key={frac}><line x1={axisX} x2={axisX+4} y1={pos} y2={pos} stroke={m.colour}/><text x={axisX+6} y={pos+3} fontSize="7.7" fill={m.colour}>{value.toFixed(m.decimals)}</text></g>;
+          })}
+          {index>0 && <><rect x={axisX-5} y={top} width="28" height={plotHeight} fill="transparent" style={{cursor:"ns-resize"}}
+            onMouseDown={e=>{e.stopPropagation();setDrag({key:m.key,startY:e.clientY,offset});}}
+            onDoubleClick={e=>{e.stopPropagation();setAxisOffsets(o=>({...o,[m.key]:0}));}}/>
+            <text x={axisX+3} y={top-5} textAnchor="middle" fontSize="9" fill={m.colour} pointerEvents="none">↕</text></>}
+        </g>;
+      })}
+      {series.flatMap((s,si)=>active.map(m=>{
+        const actualPoints=s.points.filter(p=>p.values[m.key]!==null && p.values[m.key]!>=0).map(p=>`${x(ageKey(p))},${y(m.key,p.values[m.key]!)}`).join(" ");
+        const stdPoints=s.points.filter(p=>p.standards[m.key]!==null && p.standards[m.key]!>=0).map(p=>`${x(ageKey(p))},${y(m.key,p.standards[m.key]!)}`).join(" ");
+        return <g key={`${s.plan.id}-${m.key}`} clipPath={`url(#${expanded?"bp-clip-expanded":"bp-clip"})`}>
+          {showStandards && stdPoints && <polyline points={stdPoints} stroke={m.colour} fill="none" strokeWidth=".9" strokeDasharray="3 6" opacity=".48"/>}
+          {actualPoints && <polyline points={actualPoints} stroke={m.colour} fill="none" strokeWidth={si===0?2.15:1.9} opacity={compare&&si>0?.55:1} strokeLinecap="round" strokeLinejoin="round"/>}
+        </g>;
+      }))}
+      {hoverRows.flatMap(({series:s,point})=>active.map(m=>{
+        const v=point.values[m.key];
+        return v===null?null:<circle key={`${s.plan.id}-${m.key}`} cx={x(ageKey(point))} cy={y(m.key,v)} r="5.2" fill="white" stroke={m.colour} strokeWidth="2.4" pointerEvents="none"/>;
+      }))}
+      <rect x={left} y={top} width={plotWidth} height={plotHeight} fill="transparent" style={{cursor:"crosshair"}} onMouseMove={move} onClick={move} onMouseLeave={()=>setHoverAge(null)}/>
+      {showComments&&series.flatMap(s=>s.points.filter(p=>p.comment).map(p=><g key={`${s.plan.id}-${p.record.id}`} role="button" tabIndex={0} style={{cursor:"pointer"}}
+        onClick={()=>{setHoverAge(ageKey(p));setOpenedComment(`${s.plan.id}-${p.record.id}`);}} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){setHoverAge(ageKey(p));setOpenedComment(`${s.plan.id}-${p.record.id}`);}}}>
+        <circle cx={x(ageKey(p))} cy={top+12} r="9" fill="#f5ad29" stroke="white" strokeWidth="2"/><text x={x(ageKey(p))} y={top+15.5} textAnchor="middle" fontSize="10" fill="#563600" pointerEvents="none">!</text></g>))}
+      {hoverAge!==null && <line x1={x(hoverAge)} x2={x(hoverAge)} y1={top} y2={top+plotHeight} stroke="#65796d" strokeDasharray="4 5" pointerEvents="none"/>}
+      {hoverRows.length>0 && <foreignObject x={flyoutX} y={top+12} width={tooltipWidth} height={tooltipHeight} pointerEvents="none" style={{overflow:"visible"}}>
+        <div style={{width:"100%",height:"100%",boxSizing:"border-box",overflow:"auto",background:"rgba(255,255,255,.96)",border:"1px solid #dbe7e1",borderRadius:9,boxShadow:"0 3px 10px #0f322414",padding:"7px 9px",fontFamily:"system-ui,sans-serif",color:"#173f2d"}}>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:5}}><strong>{daily?`Day ${hoverAge}`:`Week ${hoverAge}`}</strong><span style={{fontSize:9,color:"#73877d"}}>{hoverRows[0]?.point.date}</span></div>
+          {hoverRows.map(({series:s,point})=><div key={s.plan.id}>
+            {compare&&<div style={{fontWeight:800,fontSize:9,padding:"5px 0"}}>{s.label}</div>}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 48px 48px 48px",gap:2,padding:"3px 0",borderBottom:"1px solid #e5eee9",fontSize:8,color:"#809188"}}><span>Metric</span><span style={{textAlign:"right"}}>Actual</span><span style={{textAlign:"right"}}>Std</span><span style={{textAlign:"right"}}>Δ</span></div>
+            {active.map(m=>{const v=point.values[m.key],st=point.standards[m.key];const diff=v===null||st===null?null:v-st;return <div key={m.key} style={{display:"grid",gridTemplateColumns:"1fr 48px 48px 48px",gap:2,padding:"4px 0",borderBottom:"1px solid #eef3ef",fontSize:9,alignItems:"center"}}><span style={{color:m.colour,fontWeight:800}}>{m.short}</span><span style={{textAlign:"right",fontWeight:800}}>{flyoutValue(v,m.decimals)}</span><span style={{textAlign:"right",color:"#7c8d84"}}>{flyoutValue(st,m.decimals)}</span><span style={{textAlign:"right",fontWeight:800,color:diff===null?"#7c8d84":"#b14c36"}}>{diff===null?"—":`${diff>0?"+":""}${diff.toFixed(m.decimals)}`}</span></div>;})}
+            {openedComment&&point.comment&&<div style={{marginTop:5,fontSize:9,color:"#805c13"}}>Comment: {point.comment}</div>}
+          </div>)}
+          {!showStandards&&<div style={{marginTop:5,fontSize:8,color:"#7a8981"}}>Standards hidden or unavailable from API</div>}
+        </div>
+      </foreignObject>}
+      <text x={left+plotWidth/2} y={height-7} textAnchor="middle" fontSize="12" fontWeight="700" fill="#53645b">Age in {daily?"days":"weeks"}</text>
+    </svg>
+    <div className="bp-metric-legend">{METRICS.map(m=><button key={m.key} type="button" className={selectedMetrics.includes(m.key)?"active":""} onClick={()=>onToggleMetric(m.key)}><i style={{background:m.colour}}/>{m.short} actual{showStandards&&" · standard"}</button>)}</div>
+    <p className="axis-hint">Drag a coloured right-hand scale vertically to reposition its metric. Double-click a scale to reset it. The underlying figures are unchanged.</p>
+    <style jsx>{`.bp-chart{width:100%;min-width:0}.bp-chart svg{display:block;width:100%;height:auto}.bp-metric-legend{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}.bp-metric-legend button{display:flex;align-items:center;gap:5px;border-radius:30px;border:1px solid #dce8e2;background:#fff;color:#4c6858;padding:4px 7px;font-size:9px;font-weight:750;cursor:pointer;opacity:.35}.bp-metric-legend button.active{opacity:1;background:#f6faf8}.bp-metric-legend i{width:8px;height:8px;border-radius:50%;display:inline-block}.axis-hint{font-size:9px;color:#72847a;margin:4px 0 0}`}</style>
+  </div>;
 }
