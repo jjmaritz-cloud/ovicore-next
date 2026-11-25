@@ -26,6 +26,10 @@ export const broilersMenu: SidebarMenuConfig = {
       title: "Operations",
       items: [
         {
+          label: "Flock Register",
+          href: "/broilers/cycles",
+        },
+        {
           label: "Daily Data Entry",
           href: "/broilers/performance",
         },

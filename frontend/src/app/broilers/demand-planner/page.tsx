@@ -1179,7 +1179,6 @@ function BroilerDemandPlannerPageContent() {
 					growout_days: Number(row.growoutDays),
 					chick_allowance_pct: Number(row.chickAllowancePct),
 					notes: row.notes ?? "",
-					status: "Saved",
 					last_saved_by: "JJ",
 				};
 
