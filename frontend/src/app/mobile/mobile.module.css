@@ -3055,3 +3055,74 @@
     font-size: 16px;
   }
 }
+
+/* Compact mobile operations workspace — retain existing entry/capture controls. */
+.app { background: #f7f9f8; padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+.appHeader { min-height: 52px; padding: max(4px, env(safe-area-inset-top)) 8px 4px; gap: 5px; box-shadow: none; background: #103e32; }
+.brand { gap: 6px; flex: 1; min-width: 0; }
+.brand img { width: 28px; height: 28px; border-radius: 7px; flex-shrink: 0; box-shadow: none; }
+.brand strong { font-size: 16px; }
+.brand small { font-size: 10px; margin-top: 1px; max-width: 100%; }
+.headerActions { gap: 2px; flex-shrink: 0; }
+.notificationButton { width: 44px; height: 44px; font-size: 17px; border: 0; background: transparent; border-radius: 6px; }
+.connectionBadge { padding: 3px 4px; font-size: 10px; gap: 3px; }
+.screen { padding: 10px; }
+.screenTitle { margin-bottom: 10px; }
+.screenTitle h1 { font-size: 20px; line-height: 1.2; }
+.screenTitle p { font-size: 12px; line-height: 1.4; }
+.screenTitle small, .sectionHeading small { font-size: 10px; letter-spacing: .04em; }
+.sectionHeading { margin: 12px 0 6px; }
+.sectionHeading h2 { font-size: 16px; }
+.backButton { font-size: 13px; min-height: 44px; margin: 0; }
+.bottomNav { padding: 2px 3px max(4px, env(safe-area-inset-bottom)); box-shadow: none; box-sizing: border-box; }
+.bottomNav button { min-height: 48px; padding: 4px 0; }
+.bottomNav span { font-size: 19px; line-height: 20px; }
+.bottomNav small { font-size: 10px; font-weight: 600; margin-top: 2px; }
+.bottomNav .navActive::before { top: -2px; }
+.operationsHome { display: grid; gap: 10px; }
+.operationsHeading { margin: 4px 0 8px; }
+.operationsHeading h1, .operationsHeading h2, .liveStatusPanel h2 { margin: 0; font-size: 18px; font-weight: 700; line-height: 1.25; }
+.operationsHeading h2, .liveStatusPanel h2 { font-size: 15px; }
+.operationsHeading p { margin: 3px 0 0; font-size: 12px; color: var(--muted); }
+.operationsKpis { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 6px; margin-bottom: 8px; }
+.operationsKpi { border: 1px solid var(--border); border-radius: 8px; background: white; padding: 8px; min-width: 0; }
+.operationsKpi span, .operationsKpi strong { display: block; }
+.operationsKpi span { font-size: 11px; color: #53665f; }
+.operationsKpi strong { font-size: 21px; font-weight: 700; line-height: 1.3; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.liveStatusPanel { background: #fff; border: 1px solid var(--border); border-radius: 9px; padding: 9px; display: grid; gap: 7px; margin-bottom: 8px; }
+.metricSelect { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.metricSelect select { flex: 1; min-width: 0; min-height: 44px; border: 1px solid var(--border); border-radius: 6px; padding: 5px; background: #fff; color: var(--ink); font: inherit; }
+.exceptionFilter { display: flex; align-items: center; min-height: 44px; gap: 7px; font-size: 12px; }
+.exceptionFilter input { width: 18px; height: 18px; accent-color: #176443; }
+.statusLegend { display: flex; flex-wrap: wrap; gap: 5px 12px; font-size: 11px; }
+.statusLegend span { display: flex; align-items: center; gap: 4px; }
+.statusLegend i { width: 9px; height: 9px; border-radius: 2px; }
+.statusFarmRow { display: grid; gap: 3px; padding: 4px 0; border-top: 1px solid #edf1ee; min-width: 0; }
+.statusFarmName { display: flex; justify-content: space-between; align-items: center; gap: 6px; min-height: 44px; text-align: left; border: 0; background: none; color: var(--ink); padding: 0; }
+.statusFarmName strong { font-size: 12px; overflow-wrap: anywhere; }
+.statusFarmName small { font-size: 10px; white-space: nowrap; color: var(--muted); }
+.statusBlocks { display: grid; grid-template-columns: repeat(auto-fill,minmax(44px,1fr)); gap: 4px; }
+.statusBlock { min-width: 0; min-height: 44px; border: 0; border-radius: 5px; color: white; font-size: 12px !important; font-weight: 700 !important; line-height: 1.1; padding: 3px; overflow-wrap: anywhere; }
+.statusSymbol { display: block; font-size: 10px; margin-top: 2px; }
+.statusBlock[data-status="normal"], .statusLegend i[data-status="normal"] { background: #287451; }
+.statusBlock[data-status="warning"], .statusLegend i[data-status="warning"] { background: #9a650b; }
+.statusBlock[data-status="critical"], .statusLegend i[data-status="critical"] { background: #b83939; }
+.statusBlock[data-status="incomplete"], .statusLegend i[data-status="incomplete"] { background: #666f72; }
+.statusBlock[data-muted="true"] { background: #edf1ee; color: #53665f; }
+.statusBlock:focus-visible, .statusFarmName:focus-visible { outline: 2px solid #124c38; outline-offset: 2px; }
+.statusHint { margin: 0; font-size: 11px; color: #53665f; line-height: 1.4; }
+.shedOverviewList { gap: 6px; }
+.shedOverviewCard, .rootCauseHero { border-radius: 8px; box-shadow: none; }
+.shedOverviewMain, .rootCauseHero { padding: 9px; }
+.shedOverviewHeader strong { font-size: 14px; }
+.shedOverviewHeader span, .shedExceptionSummary small { font-size: 11px; }
+.shedMetricsRow, .shedExceptionSummary { margin-top: 5px; }
+.shedMetricsRow span { font-size: 11px; padding: 3px 5px; }
+/* Dense overview matrix; farm detail retains larger individual shed cards. */
+.operationsHome .statusFarmRow { grid-template-columns: minmax(76px, 26%) minmax(0, 1fr); align-items: center; gap: 5px; }
+.operationsHome .statusFarmName { display: grid; align-content: center; gap: 2px; min-height: 44px; }
+.operationsHome .statusFarmName strong { font-size: 11px; line-height: 1.2; }
+.operationsHome .statusFarmName small { font-size: 9px; }
+.operationsHome .statusBlocks { gap: 2px; }
+.operationsHome .statusBlock { padding: 2px 1px; min-height: 36px; font-size: 11px !important; }
+@media (max-width: 340px) { .operationsHome .statusFarmRow { grid-template-columns: 1fr; } .operationsHome .statusFarmName { display: flex; } }

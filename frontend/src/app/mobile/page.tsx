@@ -140,6 +140,7 @@ type DemandPlan = {
   placement_date?: string;
   processing_date?: string;
   planned_birds?: number;
+  status?: string | null;
   breed?: string | null;
   breed_code?: string | null;
 };
@@ -2466,9 +2467,10 @@ export default function MobileBroilerApp() {
               type="button"
               className={styles.notificationButton}
               aria-label="Change module"
+              title="Change module"
               onClick={changeModule}
             >
-              ⇄
+              ▦
             </button>
           </div>
         </header>
@@ -2531,9 +2533,10 @@ export default function MobileBroilerApp() {
               type="button"
               className={styles.notificationButton}
               aria-label="Change module"
+              title="Change module"
               onClick={changeModule}
             >
-              ⇄
+              ▦
             </button>
           </div>
         </header>
@@ -2610,9 +2613,10 @@ export default function MobileBroilerApp() {
               type="button"
               className={styles.notificationButton}
               aria-label="Change module"
+              title="Change module"
               onClick={changeModule}
             >
-              ⇄
+              ▦
             </button>
           )}
           {currentUser?.is_global_admin && (
@@ -2620,6 +2624,7 @@ export default function MobileBroilerApp() {
               type="button"
               className={styles.notificationButton}
               aria-label="Change company"
+              title="Change company"
               onClick={() => {
                 setSelectedCompanyId(null);
                 window.localStorage.removeItem(
@@ -2673,13 +2678,10 @@ export default function MobileBroilerApp() {
 
         {tab === "home" && (
           <HomeScreen
-            displayName={displayName}
-            companyName={companyName}
             loading={loading}
             dataRefreshing={dataRefreshing}
             plans={plans}
             records={records}
-            managerInsights={managerInsights}
             openEntryForPlan={openEntryForPlan}
             resetKey={homeResetKey}
           />
@@ -2807,7 +2809,7 @@ export default function MobileBroilerApp() {
         />
         <NavButton
           active={tab === "entry"}
-          label="Daily Entry"
+          label="Record"
           icon="＋"
           onClick={() => {
             setEntryStage("select");
@@ -2822,7 +2824,7 @@ export default function MobileBroilerApp() {
         />
         <NavButton
           active={tab === "insights"}
-          label="Insights"
+          label="Performance"
           icon="↗"
           onClick={() => setTab("insights")}
         />
@@ -2838,43 +2840,33 @@ export default function MobileBroilerApp() {
 }
 
 function HomeScreen({
-  displayName,
-  companyName,
   loading,
   dataRefreshing,
   plans,
   records,
-  managerInsights,
   openEntryForPlan,
   resetKey,
 }: {
-  displayName: string;
-  companyName: string;
   loading: boolean;
   dataRefreshing: boolean;
   plans: DemandPlan[];
   records: PerformanceRecord[];
-  managerInsights: {
-    missing: DemandPlan[];
-    mortalityWatch: {
-      record: PerformanceRecord;
-      mortality: number;
-      rate: number;
-    }[];
-    waterWatch: PerformanceRecord[];
-    todayRecords: PerformanceRecord[];
-    totalBirds: number;
-    liveWeight: number | null;
-    mortalityRate: number;
-  };
   openEntryForPlan: (planId?: number) => void;
   resetKey: number;
 }) {
+  // The demand-plan endpoint also returns future and closed cycles. Only
+  // placed/growing cycles and legacy records with unspecified status belong here.
+  const monitoredPlans = useMemo(() => plans.filter((plan) => {
+    const status = (plan.status ?? "").trim().toLowerCase();
+    return status === "placed" || status === "growing" || !status;
+  }), [plans]);
   const farms = useMemo(
-    () => buildFarmOverviews(plans, records),
-    [plans, records],
+    () => buildFarmOverviews(monitoredPlans, records),
+    [monitoredPlans, records],
   );
-  const isDivisionalView = farms.length > 1;
+  const isDivisionalView = true;
+  const [metric, setMetric] = useState<ShedStatusMetric>("overall");
+  const [exceptionsOnly, setExceptionsOnly] = useState(false);
   const [selectedFarmName, setSelectedFarmName] = useState<string | null>(
     null,
   );
@@ -2917,163 +2909,78 @@ function HomeScreen({
     );
   }
 
-  const firstName = displayName.split(/\s+/)[0] || "there";
-
+  const allSheds = farms.flatMap((farm) => farm.sheds);
+  const reported = allSheds.filter((shed) => shed.today).length;
+  const counts = statusOptions.map(({ value }) => allSheds.filter((shed) => statusForMetric(shed, metric) === value).length);
+  const visibleFarms = farms.filter((farm) => !exceptionsOnly || farm.sheds.some((shed) => statusForMetric(shed, metric) !== "normal"));
   return (
-    <>
-      <section className={styles.welcomePanel}>
-        <div>
-          <p>Good morning,</p>
-          <h1>{firstName}</h1>
-          <span>{companyName}</span>
-        </div>
-        <button
-          type="button"
-          className={styles.avatarButton}
-          aria-label="User profile"
-        >
-          {displayName
-            .split(" ")
-            .slice(0, 2)
-            .map((part) => part[0])
-            .join("")
-            .toUpperCase()}
-        </button>
-      </section>
-
-      <div className={styles.sectionHeading}>
-        <div>
-          <small>PRIORITY ORDER</small>
-          <h2>Farms</h2>
-        </div>
+    <div className={styles.operationsHome}>
+      <div className={styles.operationsHeading}>
+        <h1>Operations Centre</h1>
+        <p>Broilers · {farms.length} farms · {allSheds.length} monitored flocks</p>
       </div>
-
-      <section className={styles.farmList}>
-        {loading && farms.length === 0 ? (
-          <div className={styles.emptyState}>
-            Syncing latest data…
-            <br />
-            <small>Please wait a moment.</small>
-          </div>
-        ) : farms.length === 0 ? (
-          <div className={styles.emptyState}>No active farms found.</div>
-        ) : (
-          <>
-            {dataRefreshing && (
-              <div className={styles.emptyState}>
-                <small>Syncing latest data…</small>
-              </div>
-            )}
-            {farms.map((farm) => (
-              <FarmOverviewCard
-                key={farm.farmName}
-                farm={farm}
-                onClick={() => setSelectedFarmName(farm.farmName)}
-              />
-            ))}
-          </>
-        )}
-      </section>
-
-      <div className={styles.sectionHeading}>
-        <div>
-          <small>DIVISION SNAPSHOT</small>
-          <h2>Overall position</h2>
-        </div>
+      <div className={styles.operationsKpis}>
+        <CompactKpi label="Monitored flocks" value={String(allSheds.length)} />
+        <CompactKpi label="Birds · latest / planned" value={formatNumber(farms.reduce((sum, farm) => sum + farm.totalBirds, 0))} />
+        <CompactKpi label="Critical flocks" value={String(allSheds.filter((shed) => shed.severity === "critical").length)} />
+        <CompactKpi label="Reported today" value={`${reported}/${allSheds.length}`} />
       </div>
-
-      <section className={styles.kpiGrid}>
-        <KpiCard
-          icon="🐔"
-          label="Total Birds"
-          value={formatNumber(managerInsights.totalBirds)}
-          detail={`${plans.length} active sheds`}
-        />
-        <KpiCard
-          icon="⚖"
-          label="Live Weight"
-          value={
-            managerInsights.liveWeight === null
-              ? "—"
-              : `${formatDecimal(managerInsights.liveWeight)} kg`
-          }
-          detail="Weighted average"
-        />
-        <KpiCard
-          icon="♡"
-          label="Mortality"
-          value={`${managerInsights.mortalityRate.toFixed(2)}%`}
-          detail="Division today"
-          warning={managerInsights.mortalityWatch.length > 0}
-        />
-        <KpiCard
-          icon="✓"
-          label="Reported"
-          value={`${managerInsights.todayRecords.length}/${plans.length}`}
-          detail="Daily house sheets"
-        />
+      <section className={styles.liveStatusPanel}>
+        <h2>Live Shed Status</h2>
+        <label className={styles.metricSelect}>Metric
+          <select value={metric} onChange={(e) => setMetric(e.target.value as ShedStatusMetric)}>
+            <option value="overall">Overall exceptions</option>
+            <option value="mortality">Daily mortality</option>
+            <option value="weight">Bodyweight change</option>
+            <option value="water">Water / feed ratio</option>
+            <option value="reporting">Daily reporting</option>
+          </select>
+        </label>
+        <label className={styles.exceptionFilter}><input type="checkbox" checked={exceptionsOnly} onChange={(e) => setExceptionsOnly(e.target.checked)} /> Exceptions only</label>
+        <div className={styles.statusLegend}>
+          {statusOptions.map(({value, label}, i) => <span key={value}><i data-status={value}/>{counts[i]} {label}</span>)}
+        </div>
+        {loading || dataRefreshing ? <p className={styles.statusHint}>Refreshing production data…</p> : null}
+        {farms.length === 0 ? <p className={styles.statusHint}>No placed or growing flocks available. Check cycle status in Flock Management.</p> : visibleFarms.length === 0 ? <p className={styles.statusHint}>No exceptions in this view.</p> : null}
+        {visibleFarms.map((farm) => <ShedStatusRow key={farm.farmName} farm={farm} metric={metric} exceptionsOnly={exceptionsOnly} onFarm={() => setSelectedFarmName(farm.farmName)} onShed={(id) => {setSelectedFarmName(farm.farmName); setSelectedShedId(id);}} />)}
+        {plans.length > monitoredPlans.length && <p className={styles.statusHint}>{plans.length - monitoredPlans.length} non-active planning cycles excluded from this view.</p>}
+        <p className={styles.statusHint}>Placed/growing and legacy unspecified-status cycles only. Based on available records and existing mobile exception rules. Green means no detected exception, not verified compliance.</p>
       </section>
-    </>
+    </div>
   );
 }
 
-function FarmOverviewCard({
-  farm,
-  onClick,
-}: {
-  farm: FarmOverview;
-  onClick: () => void;
-}) {
-  const topIssues = farm.sheds
-    .flatMap((shed) =>
-      shed.exceptions.map((exception) => ({ shed, exception })),
-    )
-    .slice(0, 2);
-
-  return (
-    <button
-      type="button"
-      className={`${styles.farmOverviewCard} ${
-        styles[`severity${farm.severity[0].toUpperCase()}${farm.severity.slice(1)}`]
-      }`}
-      onClick={onClick}
-    >
-      <div className={styles.farmCardHeader}>
-        <div>
-          <strong>{farm.farmName}</strong>
-          <span>
-            {farm.sheds.length} active flocks · {formatNumber(farm.totalBirds)} birds
-          </span>
-        </div>
-        <b>›</b>
-      </div>
-
-      <div className={styles.statusPills}>
-        {farm.critical > 0 && <span className={styles.statusCritical}>{farm.critical} critical</span>}
-        {farm.warning > 0 && <span className={styles.statusWarning}>{farm.warning} warning</span>}
-        {farm.incomplete > 0 && <span className={styles.statusIncomplete}>{farm.incomplete} incomplete</span>}
-        {farm.severity === "normal" && <span className={styles.statusNormal}>All sheds within range</span>}
-      </div>
-
-      <div className={styles.farmIssueList}>
-        {topIssues.length === 0 ? (
-          <small>No current anomalies detected.</small>
-        ) : (
-          topIssues.map(({ shed, exception }) => (
-            <small key={`${shed.plan.id}-${exception.metric}`}>
-              <i className={styles[`dot${exception.severity[0].toUpperCase()}${exception.severity.slice(1)}`]} />
-              {shed.plan.shed_name ?? "Shed"} · {ageLabel(shed.plan)}: {exception.label}
-            </small>
-          ))
-        )}
-      </div>
-
-      <div className={styles.reportingLine}>
-        <span>Reporting</span>
-        <strong>{farm.reported}/{farm.sheds.length}</strong>
-      </div>
-    </button>
-  );
+type ShedStatusMetric = "overall" | ShedException["metric"];
+const statusOptions: {value: ExceptionSeverity; label: string}[] = [
+  {value: "normal", label: "Clear"}, {value: "warning", label: "Warning"},
+  {value: "critical", label: "Critical"}, {value: "incomplete", label: "Missing"},
+];
+function statusForMetric(shed: ShedOverview, metric: ShedStatusMetric): ExceptionSeverity {
+  if (metric === "overall") return shed.severity;
+  if (!shed.today) return "incomplete";
+  if (metric === "reporting") return "normal";
+  if (metric === "mortality" && (numberOrZero(shed.today.opening_birds) <= 0 || [shed.today.mortality_birds, shed.today.mortality_front, shed.today.mortality_middle, shed.today.mortality_back, shed.today.mortality_other].every((value) => value == null))) return "incomplete";
+  if (metric === "weight" && (!(numberOrZero(shed.today.body_weight_kg ?? shed.today.avg_weight_kg) > 0) || !(numberOrZero(shed.previous?.body_weight_kg ?? shed.previous?.avg_weight_kg) > 0))) return "incomplete";
+  if (metric === "water" && shed.waterFeedRatio === null) return "incomplete";
+  return shed.exceptions.filter((item) => item.metric === metric).reduce<ExceptionSeverity>((current, item) => severityRank[item.severity] < severityRank[current] ? item.severity : current, "normal");
+}
+function CompactKpi({label, value}: {label: string; value: string}) {
+  return <div className={styles.operationsKpi}><span>{label}</span><strong>{value}</strong></div>;
+}
+function ShedStatusRow({farm, metric, exceptionsOnly = false, onFarm, onShed}: {farm: FarmOverview; metric: ShedStatusMetric; exceptionsOnly?: boolean; onFarm?: () => void; onShed: (id: number) => void}) {
+  const ordered = [...farm.sheds].sort((a,b) => (a.plan.shed_name ?? "").localeCompare(b.plan.shed_name ?? "", undefined, {numeric: true}) || a.plan.id-b.plan.id);
+  return <div className={styles.statusFarmRow}>
+    {onFarm && <button type="button" className={styles.statusFarmName} onClick={onFarm}><strong>{farm.farmName}</strong><small>{farm.reported}/{farm.sheds.length} reported ›</small></button>}
+    <div className={styles.statusBlocks} style={{ gridTemplateColumns: `repeat(${Math.min(ordered.length, 10) || 1}, minmax(0, 1fr))` }}>
+      {ordered.map((shed) => {
+        const status = statusForMetric(shed, metric);
+        const name = shed.plan.shed_name ?? `Flock ${shed.plan.id}`;
+        const shortName = name.replace(/^shed\s+/i, "");
+        const label = statusOptions.find((item) => item.value === status)?.label ?? status;
+        return <button type="button" key={shed.plan.id} className={styles.statusBlock} data-status={status} data-muted={exceptionsOnly && status === "normal"} aria-label={`${farm.farmName}, ${name}, ${label}`} title={`${name}: ${label}`} onClick={() => onShed(shed.plan.id)}>{shortName}<span className={styles.statusSymbol} aria-hidden="true">{status === "normal" ? "✓" : status === "incomplete" ? "–" : "!"}</span></button>;
+      })}
+    </div>
+  </div>;
 }
 
 function FarmDetailScreen({
@@ -3093,33 +3000,22 @@ function FarmDetailScreen({
     <>
       {showDivisionBack && (
         <button type="button" className={styles.backButton} onClick={onBack}>
-          ‹ Division overview
+          ‹ Operations Centre
         </button>
       )}
 
-      <ScreenTitle
-        eyebrow="FARM OVERVIEW"
-        title={farm.farmName}
-        detail={`${new Set(farm.sheds.map((shed) => shed.plan.shed_name ?? "Shed")).size} sheds · ${farm.sheds.length} active flocks · ${formatNumber(farm.totalBirds)} birds · ${farm.reported}/${farm.sheds.length} reported today`}
-      />
-
-      <section className={styles.farmAttentionStrip}>
-        <strong>
-          {farm.severity === "normal"
-            ? "All sheds are within range"
-            : `${farm.critical + farm.warning + farm.incomplete} flocks need review`}
-        </strong>
-        <span>
-          {farm.critical} critical · {farm.warning} warning · {farm.incomplete} incomplete
-        </span>
-      </section>
-
-      <div className={styles.sectionHeading}>
-        <div>
-          <small>FARM FLOCKS</small>
-          <h2>Sheds and active flocks</h2>
-        </div>
+      <div className={styles.operationsHeading}><h1>{farm.farmName}</h1><p>{farm.sheds.length} monitored flocks</p></div>
+      <div className={styles.operationsKpis}>
+        <CompactKpi label="Birds · latest / planned" value={formatNumber(farm.totalBirds)} />
+        <CompactKpi label="Reported today" value={`${farm.reported}/${farm.sheds.length}`} />
+        <CompactKpi label="Critical" value={String(farm.critical)} />
+        <CompactKpi label="Warning / incomplete" value={`${farm.warning} / ${farm.incomplete}`} />
       </div>
+      <section className={styles.liveStatusPanel}>
+        <h2>Shed status</h2>
+        <ShedStatusRow farm={farm} metric="overall" onShed={onSelectShed} />
+      </section>
+      <div className={styles.operationsHeading}><h2>Shed details</h2></div>
 
       <div className={styles.shedOverviewList}>
         {farm.sheds.map((shed) => (
@@ -3162,7 +3058,7 @@ function FarmDetailScreen({
       <button
         type="button"
         className={styles.secondaryButton}
-        onClick={() => onOpenEntry(farm.sheds[0]?.plan.id)}
+        onClick={() => onOpenEntry()}
         disabled={farm.sheds.length === 0}
       >
         Open daily entry
@@ -5865,6 +5761,7 @@ function NavButton({
     <button
       type="button"
       className={active ? styles.navActive : ""}
+      aria-current={active ? "page" : undefined}
       onClick={onClick}
     >
       <span>{icon}</span>
