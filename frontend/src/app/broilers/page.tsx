@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import OviCoreModuleHeader from "@/components/OviCoreModuleHeader";
-import OviCoreShell from "@/components/ovicore/OviCoreShell";
+import OviCoreMasterPage from "@/components/ovicore/OviCoreMasterPage";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 const API_BASE = "";
@@ -563,15 +562,14 @@ export default function BroilerHomePage() {
   }, [farmSummaries]);
 
   return (
-    <OviCoreShell module="broilers">
-      <OviCoreModuleHeader
+    <OviCoreMasterPage module="broilers"
         eyebrow="OviCore Broiler Production"
         title="Broiler Overview"
         description="Farm-level command view: see which farms are stable, which need attention, and where to drill into shed-level Intelligence."
         actions={[
           {
             label: "Supply & Demand",
-            href: "/broilers/demand-planner",
+            href: `/broilers/demand-planner${activeCompanyId ? `?company_id=${activeCompanyId}` : ""}`,
             type: "default",
           },
           {
@@ -580,7 +578,7 @@ export default function BroilerHomePage() {
             onClick: loadData,
           },
         ]}
-      />
+      >
 
       {userError || message ? (
         <div className="bf-message">{userError || message}</div>
@@ -824,14 +822,14 @@ export default function BroilerHomePage() {
         .bf-kpis {
           display: grid;
           grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 9px;
-          margin: 14px 0 10px;
+          gap: 8px;
+          margin: 0;
         }
 
         .bf-kpis article {
-          padding: 13px 14px;
+          padding: 8px 12px;
           border: 1px solid #dce9e2;
-          border-radius: 12px;
+          border-radius: 8px;
           background: #fff;
           box-shadow: 0 7px 18px rgba(22, 71, 54, 0.05);
         }
@@ -849,11 +847,11 @@ export default function BroilerHomePage() {
           display: block;
           margin-top: 4px;
           color: #0c573d;
-          font-size: 26px;
+          font-size: 24px;
         }
 
         .bf-kpis p {
-          margin: 3px 0 0;
+          margin: 2px 0 0;
           color: #71847c;
           font-size: 11px;
           line-height: 1.35;
@@ -1206,6 +1204,6 @@ export default function BroilerHomePage() {
           }
         }
       `}</style>
-    </OviCoreShell>
+    </OviCoreMasterPage>
   );
 }

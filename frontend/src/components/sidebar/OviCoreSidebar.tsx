@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { Home, LayoutDashboard, Layers, CalendarDays, ClipboardList, BarChart3, Settings } from "lucide-react";
 import Link from "next/link";
 import {
   usePathname,
@@ -43,6 +44,7 @@ type CompanyRow = {
 type OviCoreSidebarProps = {
   menu: SidebarMenuConfig;
   defaultCollapsed?: boolean;
+  decorativeRail?: boolean;
 };
 
 const API_BASE = "";
@@ -162,6 +164,7 @@ function buildCompanyHref(
 export default function OviCoreSidebar({
   menu,
   defaultCollapsed = true,
+  decorativeRail = false,
 }: OviCoreSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -684,6 +687,14 @@ export default function OviCoreSidebar({
           )}
         </span>
         </button>
+
+        {collapsed && decorativeRail && (
+          <div className={styles.decorativeRail} aria-hidden="true">
+            {[Home, LayoutDashboard, Layers, CalendarDays, ClipboardList, BarChart3, Settings].map((Icon, index) => (
+              <Icon key={index} size={16} strokeWidth={1.6} />
+            ))}
+          </div>
+        )}
 
         <div
           className={[

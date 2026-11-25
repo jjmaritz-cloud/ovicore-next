@@ -18,6 +18,7 @@ import type { OviCoreModule } from "@/components/sidebar/OviCoreSidebar.types";
 type OviCoreShellProps = {
   module: OviCoreModule;
   children: ReactNode;
+  masterPilot?: boolean;
 };
 
 const SELECTED_COMPANY_STORAGE_KEY =
@@ -26,6 +27,7 @@ const SELECTED_COMPANY_STORAGE_KEY =
 export default function OviCoreShell({
   module,
   children,
+  masterPilot = false,
 }: OviCoreShellProps) {
   const menu = getSidebarMenu(module);
   const pathname = usePathname();
@@ -89,7 +91,7 @@ export default function OviCoreShell({
 
   return (
     <div className="ovicore-app-shell">
-      <OviCoreSidebar menu={menu} />
+      <OviCoreSidebar menu={menu} decorativeRail={masterPilot} />
 
       <main className="ovicore-app-main">
         {children}

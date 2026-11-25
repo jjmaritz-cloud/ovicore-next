@@ -6,8 +6,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import BroilerSidebar from "@/components/BroilerSidebar";
-import OviCorePageHeader from "@/components/ovicore/OviCorePageHeader";
+import OviCoreMasterPage from "@/components/ovicore/OviCoreMasterPage";
 
 const API_BASE = "";
 
@@ -777,20 +776,17 @@ export default function BroilerPerformanceWorkspacePage() {
     METRICS[metric];
 
   return (
-    <div className="page-shell">
-      <BroilerSidebar />
-
-      <main className="main-panel performance-workspace">
-        {/*
-         * Keep Broiler Performance aligned with the cleaner OviCore graph shell.
-         * The large module banner was intentionally removed from this page only;
-         * Broiler Intelligence remains untouched.
-         */}
-        <OviCorePageHeader
-          title="Broiler Performance"
-          subtitle="Actual-versus-standard flock performance across bodyweight, mortality, feed, water and estimated FCR."
-        />
-
+    <OviCoreMasterPage
+      module="broilers"
+      eyebrow="OviCore Broiler Production"
+      title="Broiler Performance"
+      description="Actual-versus-standard flock performance across bodyweight, mortality, feed, water and estimated FCR."
+      actions={[
+        { label: "Broiler Overview", href: `/broilers${companyId ? `?company_id=${companyId}` : ""}`, type: "home" },
+        { label: "Refresh", onClick: () => void loadData(), type: "refresh" },
+      ]}
+    >
+      <div className="performance-workspace">
         <section className="workspace-switcher">
           <button
             type="button"
@@ -824,19 +820,6 @@ export default function BroilerPerformanceWorkspacePage() {
             Same selection · same data
           </span>
 
-          <div className="workspace-actions">
-            <button
-              type="button"
-              onClick={() => {
-                window.location.href = "/broilers";
-              }}
-            >
-              Broiler Overview
-            </button>
-            <button type="button" onClick={() => void loadData()}>
-              Refresh
-            </button>
-          </div>
         </section>
 
         <section className="compare-toolbar">
@@ -2069,8 +2052,8 @@ export default function BroilerPerformanceWorkspacePage() {
             }
           }
         `}</style>
-      </main>
-    </div>
+      </div>
+    </OviCoreMasterPage>
   );
 }
 

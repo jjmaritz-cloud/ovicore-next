@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { AlertTriangle, Home, RefreshCw } from "lucide-react";
 
-type HeaderAction = {
+export type HeaderAction = {
   label: string;
   href?: string;
   type?: "home" | "refresh" | "warning" | "default";
@@ -15,6 +15,7 @@ type OviCoreModuleHeaderProps = {
   title: string;
   description: string;
   actions?: HeaderAction[];
+  compact?: boolean;
 };
 
 function HeaderActionButton({ action }: { action: HeaderAction }) {
@@ -53,13 +54,14 @@ export default function OviCoreModuleHeader({
   title,
   description,
   actions = [],
+  compact = false,
 }: OviCoreModuleHeaderProps) {
   return (
-    <section className="ovicore-module-header">
+    <section className={`ovicore-module-header${compact ? " compact" : ""}`}>
       <div className="ovicore-module-header-content">
         <p>{eyebrow}</p>
         <h1>{title}</h1>
-        <span>{description}</span>
+        {compact ? null : <span>{description}</span>}
       </div>
 
       {actions.length > 0 && (
@@ -192,6 +194,50 @@ export default function OviCoreModuleHeader({
 					background: rgba(245, 158, 11, 0.18);
 					color: #fef3c7;
 				}
+
+                .ovicore-module-header.compact {
+                    min-height: 64px;
+                    height: 64px;
+                    margin: 0;
+                    padding: 8px 16px;
+                    border: 0;
+                    border-radius: 0;
+                    box-shadow: none;
+                    gap: 12px;
+                }
+                .compact .ovicore-module-header-content p {
+                    font-size: 10px;
+                    letter-spacing: 0.12em;
+                    font-weight: 700;
+                    line-height: 1.2;
+                }
+                .compact .ovicore-module-header-content h1 {
+                    font-size: 22px;
+                    line-height: 1.15;
+                    margin: 3px 0 0;
+                    font-weight: 750;
+                    letter-spacing: -0.025em;
+                }
+                .compact :global(.ovicore-module-header-action) {
+                    min-height: 32px;
+                    padding: 0 10px;
+                    border-radius: 6px;
+                    font-weight: 650;
+                }
+                @media (max-width: 900px) {
+                    .ovicore-module-header.compact {
+                        flex-direction: row;
+                        align-items: center;
+                        height: auto;
+                        min-height: 64px;
+                        padding: 8px 12px;
+                    }
+                }
+                @media (max-width: 600px) {
+                    .ovicore-module-header.compact {
+                        flex-wrap: wrap;
+                    }
+                }
 
 				@media (max-width: 900px) {
 					.ovicore-module-header {

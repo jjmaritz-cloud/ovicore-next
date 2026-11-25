@@ -499,3 +499,17 @@
     right: 11px;
   }
 }
+
+/* Decorative navigation cues: opt-in master layout pilot only. */
+.decorativeRail {
+  position: absolute;
+  top: 76px;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+  color: #92b7a7;
+  pointer-events: none;
+}
