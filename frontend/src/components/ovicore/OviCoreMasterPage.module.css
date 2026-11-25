@@ -1,0 +1,15 @@
+/* Preserve the existing application background (globals.css). */
+.frame {
+  min-height: 100vh;
+  min-width: 0;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+.content {
+  min-width: 0;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
