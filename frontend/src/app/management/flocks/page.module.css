@@ -41,3 +41,10 @@ textarea.input { resize:vertical; }
 .empty p { margin:0; color:#64776d; }
 @media(max-width:800px) { .workspace { grid-template-columns:1fr; } .taskFields { grid-template-columns:1fr 1fr; } }
 @media(max-width:480px) { .fields,.taskFields { grid-template-columns:1fr; } }
+
+.categoryTabs { display:flex; flex-wrap:wrap; gap:5px; border-bottom:1px solid #dce7e1; padding-bottom:9px; }
+.categoryTabs .button { padding:6px 9px; font-size:12px; }
+.count { margin-left:4px; opacity:.75; font-size:10px; }
+.search { border:1px solid #cbd9d1; border-radius:7px; padding:7px 10px; font:inherit; min-width:120px; }
+.resize { display:flex; justify-content:center; align-items:center; height:15px; background:#edf4f0; border-radius:0 0 6px 6px; cursor:ns-resize; touch-action:none; user-select:none; margin-top:-12px; }
+.resize span { width:48px; height:4px; border-radius:4px; background:#91b2a3; }
