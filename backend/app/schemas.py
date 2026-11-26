@@ -1719,6 +1719,21 @@ class BMPTaskIn(BaseModel):
     instructions: str = Field(default="", max_length=4000)
     responsible: str = Field(default="Farm Manager", min_length=1, max_length=120)
     requires_signoff: bool = True
+    reminder_enabled: bool = False
+    reminder_lead_days: int = Field(default=0, ge=0, le=365, strict=True)
+    remind_on_due: bool = True
+    remind_overdue: bool = False
+    escalation_after_days: Optional[int] = Field(default=None, ge=1, le=365, strict=True)
+    escalation_role: Optional[str] = Field(default=None, max_length=120)
+
+    @model_validator(mode="after")
+    def validate_reminders(self):
+        if self.reminder_enabled and self.escalation_after_days is not None and not self.escalation_role:
+            raise ValueError("Escalation requires a responsible escalation role")
+        if self.reminder_enabled and self.escalation_role and self.escalation_after_days is None:
+            raise ValueError("Escalation role requires an overdue threshold")
+        return self
+
 
     @model_validator(mode="after")
     def validate_schedule(self):
