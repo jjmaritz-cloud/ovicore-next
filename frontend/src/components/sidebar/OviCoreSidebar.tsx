@@ -639,6 +639,7 @@ export default function OviCoreSidebar({
     <>
       <aside
         ref={sidebarRef}
+        onClick={collapsed ? () => setCollapsed(false) : undefined}
         className={[
           styles.sidebar,
           collapsed
