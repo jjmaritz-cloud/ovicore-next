@@ -28,7 +28,7 @@ from app.routers import flock_purge
 from app.routers import company_deletion
 from app.routers import daily_data_import
 from app.routers.standards import PerformanceStandard
-from app import models
+from app import models, schemas
 from app import grading_models
 from app.routers import egg_storage
 from app.routers import ai_intelligence
@@ -991,6 +991,115 @@ def set_flock_contact_active(contact_id: int, company_id: int, active: bool = Bo
     return display_flock_contact(contact)
 
 
+BMP_MODULES = {"Broilers": "enable_broilers", "Commercial Rearing": "enable_layers",
+               "Commercial Layers": "enable_layers", "Breeder Rearing": "enable_breeders",
+               "Breeder Production": "enable_breeders"}
+
+
+def bmp_company(db, user, company_id, production_type=None):
+    if not (user.is_global_admin or user.is_company_admin) or (not user.is_global_admin and user.company_id != company_id):
+        raise HTTPException(403, "Company administrator access required")
+    company = db.query(Company).filter(Company.id == company_id, Company.active == True).first()
+    if not company or (production_type is not None and not getattr(company, BMP_MODULES.get(production_type, "invalid"), False)):
+        raise HTTPException(403, "Company or production module unavailable")
+    return company
+
+
+def bmp_types(company):
+    return [kind for kind, flag in BMP_MODULES.items() if getattr(company, flag, False)]
+
+
+def bmp_out(row):
+    return {key: getattr(row, key) for key in ("id", "company_id", "family_key", "version", "production_type", "name", "status", "tasks", "revision", "created_by", "created_at", "approved_by", "approved_at", "archived_by", "archived_at")}
+
+
+@app.get("/api/bmp/companies")
+def bmp_companies(current_user: models.AppUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not (current_user.is_global_admin or current_user.is_company_admin):
+        raise HTTPException(403, "Administrator access required")
+    query = db.query(Company).filter(Company.active == True)
+    if not current_user.is_global_admin:
+        query = query.filter(Company.id == current_user.company_id)
+    return [{"id": c.id, "name": c.company_name, "types": bmp_types(c)} for c in query.order_by(Company.company_name).all() if bmp_types(c)]
+
+
+@app.get("/api/bmp/versions")
+def bmp_versions(company_id: int, current_user: models.AppUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    company = bmp_company(db, current_user, company_id)
+    return [bmp_out(row) for row in db.query(models.BMPVersion).filter(models.BMPVersion.company_id == company.id,
+        models.BMPVersion.production_type.in_(bmp_types(company))).order_by(models.BMPVersion.name, models.BMPVersion.version.desc()).all()]
+
+
+@app.post("/api/bmp/versions", status_code=201)
+def bmp_create(company_id: int, payload: schemas.BMPDraftIn, current_user: models.AppUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    import uuid
+    company = bmp_company(db, current_user, company_id, payload.production_type)
+    row = models.BMPVersion(company_id=company.id, family_key=str(uuid.uuid4()), version=1,
+        production_type=payload.production_type, name=payload.name, tasks=[t.model_dump() for t in payload.tasks],
+        status="Draft", revision=1, created_by=current_user.full_name)
+    db.add(row); db.commit(); db.refresh(row)
+    return bmp_out(row)
+
+
+def bmp_locked(db, user, company_id, version_id):
+    company = bmp_company(db, user, company_id)
+    # Serialize version creation and status changes per company.
+    db.query(Company).filter(Company.id == company.id).with_for_update().one()
+    row = db.query(models.BMPVersion).filter(models.BMPVersion.id == version_id,
+        models.BMPVersion.company_id == company.id, models.BMPVersion.production_type.in_(bmp_types(company))).with_for_update().first()
+    if not row:
+        raise HTTPException(404, "BMP version not found")
+    return row
+
+
+@app.put("/api/bmp/versions/{version_id}")
+def bmp_update(version_id: int, company_id: int, payload: schemas.BMPDraftUpdate, current_user: models.AppUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    row = bmp_locked(db, current_user, company_id, version_id)
+    if row.status != "Draft" or row.revision != payload.revision:
+        raise HTTPException(409, "Draft changed or locked; reload before editing")
+    if row.production_type != payload.production_type:
+        raise HTTPException(422, "Production type cannot change within a version family")
+    row.name = payload.name; row.tasks = [t.model_dump() for t in payload.tasks]; row.revision += 1
+    db.commit(); db.refresh(row); return bmp_out(row)
+
+
+@app.post("/api/bmp/versions/{version_id}/{action}")
+def bmp_action(version_id: int, action: str, company_id: int, revision: int, current_user: models.AppUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    row = bmp_locked(db, current_user, company_id, version_id)
+    if row.revision != revision:
+        raise HTTPException(409, "Version changed; reload first")
+    if action == "approve" and row.status == "Draft":
+        if not row.tasks or any(not task.get("instructions", "").strip() for task in row.tasks):
+            raise HTTPException(422, "Approval requires at least one task and instructions for every task")
+        row.status = "Approved"; row.approved_by = current_user.full_name; row.approved_at = datetime.utcnow(); row.revision += 1
+    elif action == "archive" and row.status in ("Draft", "Approved"):
+        row.status = "Archived"; row.archived_by = current_user.full_name; row.archived_at = datetime.utcnow(); row.revision += 1
+    elif action == "revise" and row.status in ("Approved", "Archived"):
+        latest = db.query(models.BMPVersion).filter(models.BMPVersion.company_id == company_id,
+            models.BMPVersion.family_key == row.family_key).order_by(models.BMPVersion.version.desc()).first()
+        if latest.id != row.id:
+            raise HTTPException(409, "Create revisions from the latest version only")
+        row = models.BMPVersion(company_id=company_id, family_key=row.family_key, version=row.version+1,
+            production_type=row.production_type, name=row.name, tasks=row.tasks, status="Draft", revision=1,
+            created_by=current_user.full_name)
+        db.add(row)
+    else:
+        raise HTTPException(409, "Invalid status transition")
+    db.commit(); db.refresh(row); return bmp_out(row)
+
+
+def validate_bmp_assignment(db, company_id, version_id):
+    if version_id is None:
+        return {}
+    row = db.query(models.BMPVersion).filter(models.BMPVersion.id == version_id,
+        models.BMPVersion.company_id == company_id, models.BMPVersion.production_type == "Broilers",
+        models.BMPVersion.status == "Approved").with_for_update().first()
+    if not row:
+        raise HTTPException(422, "Select an approved Broiler BMP belonging to this company")
+    return {"bmp_name_at_creation": f"{row.name} · v{row.version}", "bmp_snapshot": {
+        "id": row.id, "name": row.name, "version": row.version, "production_type": row.production_type, "tasks": row.tasks}}
+
+
 def broiler_programme_options(db, company_id):
     # Shared published breed references are allowed; private standards remain tenant scoped.
     standards_by_key = {}
@@ -1060,7 +1169,8 @@ def list_broiler_flock_programmes(company_id: int, current_user: models.AppUser 
     company = require_broiler_flock_creator(db, current_user, company_id)
     standards, programs = broiler_programme_options(db, company.id)
     return {"standards": [{k: v for k, v in item.items() if k != "rows"} for item in standards.values()],
-            "feeding_programs": [{k: v for k, v in item.items() if k != "stages"} for item in programs.values()]}
+            "feeding_programs": [{k: v for k, v in item.items() if k != "stages"} for item in programs.values()],
+            "bmps": [{"id": str(r.id), "name": r.name, "version": r.version} for r in db.query(models.BMPVersion).filter(models.BMPVersion.company_id == company.id, models.BMPVersion.production_type == "Broilers", models.BMPVersion.status == "Approved").order_by(models.BMPVersion.name, models.BMPVersion.version.desc()).all()]}
 
 
 @app.get("/api/broilers/flock-creation-context")
@@ -1200,6 +1310,7 @@ def create_demand_plan(
         details = payload.profile.model_dump(mode="json", exclude_none=True)
         details.update(validate_flock_contacts(db, farm.company_id, payload.profile))
         details.update(validate_broiler_programmes(db, farm.company_id, payload.profile))
+        details.update(validate_bmp_assignment(db, farm.company_id, payload.profile.bmp_version_id))
         if payload.profile.feed_mill_id:
             mill = db.query(FeedMill).filter(FeedMill.id == payload.profile.feed_mill_id,
                 FeedMill.company_id == farm.company_id, FeedMill.status == "Active").first()

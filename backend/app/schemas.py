@@ -370,6 +370,7 @@ class BroilerFlockProfileIn(BaseModel):
     processor_id: Optional[int] = Field(None, gt=0)
     standard_key: Optional[str] = Field(None, max_length=160)
     feeding_program_id: Optional[str] = Field(None, max_length=64)
+    bmp_version_id: Optional[int] = Field(None, gt=0)
 
 
 class BroilerFlockCreationIn(BroilerDemandPlanCreate):
@@ -1705,3 +1706,24 @@ class HatcheryChickAvailabilityOut(BaseModel):
     last_saved_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class BMPTaskIn(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    category: str = Field(pattern="^(vaccination|lighting|nutrition|health|welfare|environment|management|biosecurity|compliance)$")
+    title: str = Field(min_length=1, max_length=160)
+    age_day: int = Field(ge=0, le=1500)
+    instructions: str = Field(default="", max_length=4000)
+    responsible: str = Field(default="Farm Manager", min_length=1, max_length=120)
+    requires_signoff: bool = True
+
+
+class BMPDraftIn(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    name: str = Field(min_length=1, max_length=160)
+    production_type: str = Field(pattern="^(Broilers|Commercial Rearing|Commercial Layers|Breeder Rearing|Breeder Production)$")
+    tasks: list[BMPTaskIn] = Field(default_factory=list, max_length=300)
+
+
+class BMPDraftUpdate(BMPDraftIn):
+    revision: int = Field(ge=1)

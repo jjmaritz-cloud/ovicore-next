@@ -1222,3 +1222,23 @@ class HatcheryChickAvailability(Base):
     created_at = Column(DateTime, server_default=func.now())
 
     hatch_result = relationship("HatcheryHatchResult", back_populates="chick_availability")
+
+
+class BMPVersion(Base):
+    __tablename__ = "bmp_versions"
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
+    family_key = Column(String(36), nullable=False)
+    version = Column(Integer, nullable=False)
+    production_type = Column(String(40), nullable=False)
+    name = Column(String(160), nullable=False)
+    status = Column(String(16), nullable=False, default="Draft")
+    tasks = Column(JSON, nullable=False)
+    revision = Column(Integer, nullable=False, default=1)
+    created_by = Column(String(255), nullable=False)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    approved_by = Column(String(255), nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    archived_by = Column(String(255), nullable=True)
+    archived_at = Column(DateTime, nullable=True)
+    __table_args__ = (UniqueConstraint("company_id", "family_key", "version", name="uq_bmp_family_version"),)
