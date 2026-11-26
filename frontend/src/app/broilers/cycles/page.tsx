@@ -196,6 +196,22 @@ export default function BroilerCycleRegisterPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [searchText, setSearchText] = useState("");
+  const [gridHeight, setGridHeight] = useState(360);
+  const resizeStart = useRef<{ y: number; height: number } | null>(null);
+  const heightKey = "ovicore_broiler_cycles_grid_height";
+
+  useEffect(() => {
+    try {
+      const saved = Number(window.localStorage.getItem(heightKey));
+      if (saved >= 180 && saved <= 1000) setGridHeight(saved);
+    } catch { /* storage may be unavailable */ }
+  }, []);
+
+  const resizeGrid = (height: number) => {
+    const next = Math.min(1000, Math.max(180, Math.round(height)));
+    setGridHeight(next);
+    try { window.localStorage.setItem(heightKey, String(next)); } catch { /* optional preference */ }
+  };
   const [newFlockOpen,setNewFlockOpen] = useState(false);
   const [profilePlanId,setProfilePlanId] = useState<number|null>(null);
 
@@ -612,7 +628,7 @@ export default function BroilerCycleRegisterPage() {
           </div>
         </section>
 
-        <section className="grid-card">
+        <section className="grid-card" style={{ height: "auto", flex: "none" }}>
           <div className="grid-card-head">
             <div>
               <h3>Broiler Cycles</h3>
@@ -643,7 +659,7 @@ export default function BroilerCycleRegisterPage() {
             </div>
           </div>
 
-          <div className="ag-theme-quartz broiler-grid">
+          <div className="ag-theme-quartz broiler-grid" style={{ height: gridHeight, minHeight: 180, flex: "none" }}>
             <AgGridReact<BroilerCycleRow>
               ref={gridRef}
               rowData={rows}
@@ -665,6 +681,60 @@ export default function BroilerCycleRegisterPage() {
               }}
             />
           </div>
+          <div
+            className="cycles-resize-handle"
+            role="separator"
+            tabIndex={0}
+            aria-label="Resize Broiler Cycles table"
+            aria-orientation="horizontal"
+            aria-valuemin={180}
+            aria-valuemax={1000}
+            aria-valuenow={gridHeight}
+            title="Drag to resize table · double-click to reset"
+            onPointerDown={(event) => {
+              if (!event.isPrimary || event.button !== 0) return;
+              event.preventDefault();
+              event.currentTarget.setPointerCapture(event.pointerId);
+              resizeStart.current = { y: event.clientY, height: gridHeight };
+            }}
+            onPointerMove={(event) => {
+              if (resizeStart.current && event.currentTarget.hasPointerCapture(event.pointerId)) {
+                resizeGrid(resizeStart.current.height + event.clientY - resizeStart.current.y);
+              }
+            }}
+            onLostPointerCapture={() => { resizeStart.current = null; }}
+            onDoubleClick={() => resizeGrid(360)}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+                event.preventDefault();
+                resizeGrid(gridHeight + (event.key === "ArrowDown" ? 24 : -24));
+              } else if (event.key === "Home" || event.key === "End") {
+                event.preventDefault();
+                resizeGrid(event.key === "Home" ? 180 : 1000);
+              }
+            }}
+          ><span /></div>
+          <style jsx>{`
+            .cycles-resize-handle {
+              flex: 0 0 14px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              cursor: ns-resize;
+              touch-action: none;
+              user-select: none;
+              background: linear-gradient(to bottom, #f8fbf9, #eef5f1);
+              border-top: 1px solid #dbe7e0;
+            }
+            .cycles-resize-handle span {
+              width: 58px;
+              height: 4px;
+              border-radius: 999px;
+              background: #9db8ab;
+            }
+            .cycles-resize-handle:hover span,
+            .cycles-resize-handle:focus-visible span { background: #4d7e68; }
+          `}</style>
         </section>
       {profilePlanId!==null && activeCompanyId && <OviCoreFlockProfile companyId={activeCompanyId} planId={profilePlanId} onClose={()=>setProfilePlanId(null)}/>}
       {newFlockOpen && activeCompanyId && <OviCoreFlockForm companyId={activeCompanyId} onClose={()=>setNewFlockOpen(false)} onCreated={fetchRows}/> }
