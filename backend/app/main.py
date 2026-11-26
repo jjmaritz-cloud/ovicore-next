@@ -44,11 +44,14 @@ from .models import (
     BroilerFarm,
     BroilerShed,
     BroilerPlacementPlan,
+    BroilerFlockProfile,
     BroilerDailyPerformance,
     BroilerPaperCapture,
 )
 from .schemas import (
     BroilerDemandPlanCreate,
+    BroilerFlockCreationIn,
+    FlockTechnicalContactIn,
     BroilerDemandPlanOut,
     BroilerDemandPlanPatch,
     BroilerFarmCreate,
@@ -928,15 +931,87 @@ def broiler_creation_sheds(db: Session, company_id: int):
     )
 
 
+FLOCK_CONTACT_ROLES = ("veterinarian", "hatchery", "nutritionist", "technical_advisor", "processor")
+
+
+def display_flock_contact(contact):
+    return {"id": contact.id, "role": contact.role, "name": contact.name, "active": contact.active}
+
+
+def validate_flock_contacts(db, company_id, profile):
+    snapshots = {}
+    for role in FLOCK_CONTACT_ROLES:
+        contact_id = getattr(profile, f"{role}_id")
+        if contact_id is None:
+            continue
+        contact = db.query(models.FlockTechnicalContact).filter(
+            models.FlockTechnicalContact.id == contact_id,
+            models.FlockTechnicalContact.company_id == company_id,
+            models.FlockTechnicalContact.role == role,
+            models.FlockTechnicalContact.active == True,
+        ).with_for_update().first()
+        if not contact:
+            raise HTTPException(status_code=422, detail=f"Select an active {role} belonging to this company")
+        snapshots[f"{role}_name_at_creation"] = contact.name
+    return snapshots
+
+
+@app.get("/api/broilers/flock-contacts")
+def list_flock_contacts(company_id: int, current_user: models.AppUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    company = require_broiler_flock_creator(db, current_user, company_id)
+    return [display_flock_contact(c) for c in db.query(models.FlockTechnicalContact).filter(
+        models.FlockTechnicalContact.company_id == company.id).order_by(models.FlockTechnicalContact.role, models.FlockTechnicalContact.name).all()]
+
+
+@app.post("/api/broilers/flock-contacts", status_code=201)
+def create_flock_contact(payload: FlockTechnicalContactIn, current_user: models.AppUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    company = require_broiler_flock_creator(db, current_user, payload.company_id)
+    contact = models.FlockTechnicalContact(company_id=company.id, role=payload.role, name=payload.name,
+        active=True, created_by=current_user.full_name)
+    db.add(contact)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="This contact already exists for this company and role")
+    db.refresh(contact)
+    return display_flock_contact(contact)
+
+
+@app.patch("/api/broilers/flock-contacts/{contact_id}/active")
+def set_flock_contact_active(contact_id: int, company_id: int, active: bool = Body(embed=True), current_user: models.AppUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    company = require_broiler_flock_creator(db, current_user, company_id)
+    contact = db.query(models.FlockTechnicalContact).filter(models.FlockTechnicalContact.id == contact_id,
+        models.FlockTechnicalContact.company_id == company.id).with_for_update().first()
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    contact.active = active
+    db.commit()
+    db.refresh(contact)
+    return display_flock_contact(contact)
+
+
 @app.get("/api/broilers/flock-creation-context")
 def broiler_flock_creation_context(company_id: int, current_user: models.AppUser = Depends(get_current_user), db: Session = Depends(get_db)):
     company = require_broiler_flock_creator(db, current_user, company_id)
     return {"company_id": company.id, "company_name": company.company_name,
-            "sheds": [build_shed_response(shed, shed.farm.farm_name) for shed in broiler_creation_sheds(db, company.id).all()]}
+            "sheds": [build_shed_response(shed, shed.farm.farm_name) for shed in broiler_creation_sheds(db, company.id).all()],
+            "mills": [{"id": m.id, "name": m.name} for m in db.query(FeedMill).filter(FeedMill.company_id == company.id, FeedMill.status == "Active").order_by(FeedMill.name).all()]}
 
 
-class ScheduledBroilerFlockCreate(BroilerDemandPlanCreate):
+class ScheduledBroilerFlockCreate(BroilerFlockCreationIn):
     company_id: int  # Explicit company is mandatory in this workflow.
+
+
+@app.get("/api/broilers/flock-creation/{plan_id}/profile")
+def get_broiler_flock_profile(plan_id: int, company_id: int, current_user: models.AppUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    company = require_broiler_flock_creator(db, current_user, company_id)
+    plan = db.query(BroilerPlacementPlan).filter(BroilerPlacementPlan.id == plan_id, BroilerPlacementPlan.company_id == company.id).first()
+    if not plan:
+        raise HTTPException(status_code=404, detail="Flock not found")
+    require_farm_access(db, current_user, plan.farm_id)
+    profile = db.query(BroilerFlockProfile).filter(BroilerFlockProfile.placement_plan_id == plan.id, BroilerFlockProfile.company_id == company.id).first()
+    return {"placement_plan_id": plan.id, "details": profile.details if profile else {}}
 
 
 @app.post("/api/broilers/flock-creation", response_model=BroilerDemandPlanOut)
@@ -974,6 +1049,12 @@ def create_scheduled_broiler_flock(payload: ScheduledBroilerFlockCreate,
             raise HTTPException(status_code=409, detail="An overdue active cycle must be reconciled before scheduling this shed")
         if payload.placement_date <= existing_end and existing.placement_date <= end:
             raise HTTPException(status_code=409, detail="Placement overlaps an existing open cycle in this shed")
+    if payload.profile.hatch_date and payload.profile.hatch_date > payload.placement_date:
+        raise HTTPException(status_code=422, detail="Hatch date cannot follow placement date")
+    if payload.profile.feed_mill_id and not db.query(FeedMill).filter(
+        FeedMill.id == payload.profile.feed_mill_id, FeedMill.company_id == company.id,
+        FeedMill.status == "Active").first():
+        raise HTTPException(status_code=422, detail="Select an active feed mill belonging to this company")
     # Use the existing authoritative record, never activate a planned placement.
     payload = payload.model_copy(update={"cycle_code": code, "status": "Planned"})
     return create_demand_plan(payload, current_user, db)
@@ -1042,6 +1123,17 @@ def create_demand_plan(
     )
 
     db.add(plan)
+    if isinstance(payload, BroilerFlockCreationIn):
+        db.flush()
+        details = payload.profile.model_dump(mode="json", exclude_none=True)
+        details.update(validate_flock_contacts(db, farm.company_id, payload.profile))
+        if payload.profile.feed_mill_id:
+            mill = db.query(FeedMill).filter(FeedMill.id == payload.profile.feed_mill_id,
+                FeedMill.company_id == farm.company_id, FeedMill.status == "Active").first()
+            if not mill:
+                raise HTTPException(status_code=422, detail="Feed mill is no longer available")
+            details["feed_mill_name_at_creation"] = mill.name
+        db.add(BroilerFlockProfile(placement_plan_id=plan.id, company_id=farm.company_id, details=details))
     db.commit()
     db.refresh(plan)
 

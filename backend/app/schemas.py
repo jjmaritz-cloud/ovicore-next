@@ -2,7 +2,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class BroilerProcessingBase(BaseModel):
@@ -342,6 +342,37 @@ class BroilerDemandPlanCreate(BaseModel):
     notes: Optional[str] = None
     status: Optional[str] = "Draft"
     last_saved_by: Optional[str] = "JJ"
+
+class FlockTechnicalContactIn(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    company_id: int = Field(gt=0)
+    role: str = Field(pattern="^(veterinarian|hatchery|nutritionist|technical_advisor|processor)$")
+    name: str = Field(min_length=1, max_length=160)
+
+
+class BroilerFlockProfileIn(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    breed: Optional[str] = Field(None, max_length=120)
+    hatch_date: Optional[date] = None
+    sex: Optional[str] = Field(None, pattern="^(Mixed|Male|Female|Unspecified)$")
+    production_system: Optional[str] = Field(None, pattern="^(Conventional|Free range|Other)$")
+    parent_flock_reference: Optional[str] = Field(None, max_length=120)
+    hatchery_batch: Optional[str] = Field(None, max_length=120)
+    expected_arrival_weight_g: Optional[float] = Field(None, gt=0, le=200, allow_inf_nan=False)
+    customer_reference: Optional[str] = Field(None, max_length=120)
+    special_requirements: Optional[str] = Field(None, max_length=2000)
+    feed_mill_id: Optional[str] = Field(None, max_length=64)
+    technical_notes: Optional[str] = Field(None, max_length=2000)
+    veterinarian_id: Optional[int] = Field(None, gt=0)
+    hatchery_id: Optional[int] = Field(None, gt=0)
+    nutritionist_id: Optional[int] = Field(None, gt=0)
+    technical_advisor_id: Optional[int] = Field(None, gt=0)
+    processor_id: Optional[int] = Field(None, gt=0)
+
+
+class BroilerFlockCreationIn(BroilerDemandPlanCreate):
+    profile: BroilerFlockProfileIn = Field(default_factory=BroilerFlockProfileIn)
+
 
 class BroilerFarmCreate(BaseModel):
     company_id: int = 1

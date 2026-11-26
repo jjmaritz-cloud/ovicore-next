@@ -1,6 +1,6 @@
 "use client";
 
-import OviCoreFlockForm from "@/components/flocks/OviCoreFlockForm";
+import OviCoreFlockForm, { OviCoreFlockProfile } from "@/components/flocks/OviCoreFlockForm";
 import OviCoreMasterPage from "@/components/ovicore/OviCoreMasterPage";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -197,6 +197,7 @@ export default function BroilerCycleRegisterPage() {
   const [saving, setSaving] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [newFlockOpen,setNewFlockOpen] = useState(false);
+  const [profilePlanId,setProfilePlanId] = useState<number|null>(null);
 
   const dirtyRowIds = useRef<Set<number>>(new Set());
 
@@ -620,6 +621,7 @@ export default function BroilerCycleRegisterPage() {
 
             <div className="grid-buttons">
               <button type="button" className="primary" disabled={!activeCompanyId || saving || loading} onClick={()=>{if(dirtyRowIds.current.size){alert("Save existing changes before creating a flock.");return;}setNewFlockOpen(true);}}>+ New flock</button>
+              <button type="button" disabled={!activeCompanyId||loading||saving} onClick={()=>{const row=gridRef.current?.api.getSelectedRows()[0];if(!row){alert("Select a flock first.");return;}setProfilePlanId(row.id);}}>Flock details</button>
               <button type="button" onClick={deleteSelectedCycle} disabled={saving}>
                 Delete selected cycle
               </button>
@@ -664,6 +666,7 @@ export default function BroilerCycleRegisterPage() {
             />
           </div>
         </section>
+      {profilePlanId!==null && activeCompanyId && <OviCoreFlockProfile companyId={activeCompanyId} planId={profilePlanId} onClose={()=>setProfilePlanId(null)}/>}
       {newFlockOpen && activeCompanyId && <OviCoreFlockForm companyId={activeCompanyId} onClose={()=>setNewFlockOpen(false)} onCreated={fetchRows}/> }
     </OviCoreMasterPage>
   );

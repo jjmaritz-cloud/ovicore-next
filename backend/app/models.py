@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, Float, UniqueConstraint, func
+from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, Float, UniqueConstraint, JSON, func
 from sqlalchemy.orm import relationship
 from .db import Base
 
@@ -385,6 +385,25 @@ class BroilerPlacementPlan(Base):
     farm = relationship("BroilerFarm")
     shed = relationship("BroilerShed", back_populates="plans")
     
+class FlockTechnicalContact(Base):
+    __tablename__ = "flock_technical_contacts"
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
+    role = Column(String(40), nullable=False)
+    name = Column(String(160), nullable=False)
+    active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, server_default=func.now())
+    created_by = Column(String(255), nullable=False)
+    __table_args__ = (UniqueConstraint("company_id", "role", "name", name="uq_flock_contact_company_role_name"),)
+
+
+class BroilerFlockProfile(Base):
+    __tablename__ = "broiler_flock_profiles"
+    placement_plan_id = Column(Integer, ForeignKey("broiler_placement_plans.id", ondelete="CASCADE"), primary_key=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
+    details = Column(JSON, nullable=False, default=dict)
+
+
 class BroilerDailyPerformance(Base):
     __tablename__ = "broiler_daily_performance"
 
