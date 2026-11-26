@@ -87,7 +87,7 @@ export default function OviCoreModuleHeader({
 					color: white;
 					background:
 						radial-gradient(circle at 84% 18%, rgba(20, 184, 166, 0.3), transparent 34%),
-						linear-gradient(135deg, #052e26 0%, #064e3b 52%, #047857 100%);
+						linear-gradient(135deg, #061a16 0%, #064e3b 52%, #047857 100%);
 					border: 1px solid rgba(255, 255, 255, 0.16);
 					box-shadow: 0 16px 38px rgba(15, 23, 42, 0.16);
 				}
