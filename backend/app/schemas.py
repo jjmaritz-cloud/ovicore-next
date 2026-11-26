@@ -368,6 +368,8 @@ class BroilerFlockProfileIn(BaseModel):
     nutritionist_id: Optional[int] = Field(None, gt=0)
     technical_advisor_id: Optional[int] = Field(None, gt=0)
     processor_id: Optional[int] = Field(None, gt=0)
+    standard_key: Optional[str] = Field(None, max_length=160)
+    feeding_program_id: Optional[str] = Field(None, max_length=64)
 
 
 class BroilerFlockCreationIn(BroilerDemandPlanCreate):

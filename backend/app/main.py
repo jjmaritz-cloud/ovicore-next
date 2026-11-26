@@ -991,6 +991,78 @@ def set_flock_contact_active(contact_id: int, company_id: int, active: bool = Bo
     return display_flock_contact(contact)
 
 
+def broiler_programme_options(db, company_id):
+    # Shared published breed references are allowed; private standards remain tenant scoped.
+    standards_by_key = {}
+    for row in db.query(PerformanceStandard).filter(
+        PerformanceStandard.module == "Broilers", PerformanceStandard.species == "Chicken",
+        PerformanceStandard.active == True, PerformanceStandard.age_day.isnot(None),
+        ((PerformanceStandard.company_id == None) & (PerformanceStandard.standard_type == "Breed")) |
+        ((PerformanceStandard.company_id == company_id) & (PerformanceStandard.standard_type == "Company")),
+    ).order_by(PerformanceStandard.age_day, PerformanceStandard.id).all():
+        key = ("breed:" if row.company_id is None else "company:") + row.standard_code
+        standards_by_key.setdefault(key, []).append(row)
+    standards = {}
+    for key, rows in standards_by_key.items():
+        first = rows[0]
+        # Reject ambiguous or internally inconsistent standard series.
+        if len({r.age_day for r in rows}) != len(rows) or len({(r.standard_name, r.breed) for r in rows}) != 1:
+            continue
+        standards[key] = {"id": key, "name": first.standard_name, "breed": first.breed,
+            "code": first.standard_code, "scope": "Breed" if first.company_id is None else "Company",
+            "rows": [{"age_day": r.age_day, "body_weight_g": r.body_weight_g,
+                      "feed_avg_g_bird_day": r.feed_avg_g_bird_day, "liveability_pct": r.liveability_pct}
+                     for r in rows]}
+    mills = {m.id for m in db.query(FeedMill).filter(FeedMill.company_id == company_id, FeedMill.status == "Active").all()}
+    rations = {r.id: r for r in db.query(FeedRation).filter(FeedRation.company_id == company_id,
+        FeedRation.status == "Approved", FeedRation.phase.in_(["Broiler Starter", "Broiler Grower", "Broiler Finisher"])).all()}
+    programs = {}
+    for program in db.query(FeedProgram).filter(FeedProgram.company_id == company_id,
+        FeedProgram.status == "Approved").order_by(FeedProgram.name, FeedProgram.version.desc()).all():
+        stages = program.stages
+        if program.mill_id not in mills or not isinstance(stages, list) or not stages:
+            continue
+        if not all(isinstance(stage, dict) and isinstance(stage.get("ration_id"), str) and
+                   stage["ration_id"] in rations and rations[stage["ration_id"]].mill_id == program.mill_id
+                   for stage in stages):
+            continue
+        programs[program.id] = {"id": program.id, "name": program.name, "version": program.version,
+            "mill_id": program.mill_id, "stages": stages}
+    return standards, programs
+
+
+def validate_broiler_programmes(db, company_id, profile):
+    if not profile.standard_key and not profile.feeding_program_id:
+        return {}
+    standards, programs = broiler_programme_options(db, company_id)
+    snapshots = {}
+    if profile.standard_key:
+        standard = standards.get(profile.standard_key)
+        if not standard:
+            raise HTTPException(422, "Select an available Broiler performance standard")
+        if profile.breed and standard["breed"] and profile.breed.casefold() != standard["breed"].casefold():
+            raise HTTPException(422, "Breed must match the selected performance standard")
+        snapshots["standard_name_at_creation"] = standard["name"] + " (" + standard["code"] + ")"
+        snapshots["standard_snapshot"] = standard
+        if standard["breed"]:
+            snapshots["breed"] = standard["breed"]
+    if profile.feeding_program_id:
+        program = programs.get(profile.feeding_program_id)
+        if not program or not profile.feed_mill_id or program["mill_id"] != profile.feed_mill_id:
+            raise HTTPException(422, "Select an approved Broiler feeding programme for the assigned mill")
+        snapshots["feeding_program_name_at_creation"] = f'{program["name"]} · v{program["version"]}'
+        snapshots["feeding_program_snapshot"] = program
+    return snapshots
+
+
+@app.get("/api/broilers/flock-programmes")
+def list_broiler_flock_programmes(company_id: int, current_user: models.AppUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    company = require_broiler_flock_creator(db, current_user, company_id)
+    standards, programs = broiler_programme_options(db, company.id)
+    return {"standards": [{k: v for k, v in item.items() if k != "rows"} for item in standards.values()],
+            "feeding_programs": [{k: v for k, v in item.items() if k != "stages"} for item in programs.values()]}
+
+
 @app.get("/api/broilers/flock-creation-context")
 def broiler_flock_creation_context(company_id: int, current_user: models.AppUser = Depends(get_current_user), db: Session = Depends(get_db)):
     company = require_broiler_flock_creator(db, current_user, company_id)
@@ -1127,6 +1199,7 @@ def create_demand_plan(
         db.flush()
         details = payload.profile.model_dump(mode="json", exclude_none=True)
         details.update(validate_flock_contacts(db, farm.company_id, payload.profile))
+        details.update(validate_broiler_programmes(db, farm.company_id, payload.profile))
         if payload.profile.feed_mill_id:
             mill = db.query(FeedMill).filter(FeedMill.id == payload.profile.feed_mill_id,
                 FeedMill.company_id == farm.company_id, FeedMill.status == "Active").first()
