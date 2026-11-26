@@ -260,6 +260,59 @@ function severityForShed(
   return { severity, score };
 }
 
+// This preview deliberately has no task API dependency. Never infer live compliance
+// from placement plans, programme definitions or the absence of task records.
+function BroilerBmpOverview({ companyId }: { companyId: number }) {
+  const [demo, setDemo] = useState(false);
+  const [filter, setFilter] = useState("All");
+  const examples = [
+    { id: 1, farm: "Example farm A", shed: "Shed 1", activity: "Lighting change", due: "2 days overdue", status: "Overdue", escalation: "Area Manager" },
+    { id: 2, farm: "Example farm B", shed: "Shed 2", activity: "Feed transition review", due: "4 days overdue", status: "Overdue", escalation: "Divisional Manager" },
+    { id: 3, farm: "Example farm A", shed: "Shed 3", activity: "Welfare assessment", due: "Today", status: "Due today", escalation: "—" },
+    { id: 4, farm: "Example farm B", shed: "Shed 1", activity: "Bodyweight recording", due: "Tomorrow", status: "Upcoming", escalation: "—" },
+    { id: 5, farm: "Example farm A", shed: "Shed 2", activity: "Lighting review", due: "In 3 days", status: "Upcoming", escalation: "—" },
+  ];
+  const metrics = [
+    { label: "Unsigned overdue", filter: "Overdue", count: examples.filter(x => x.status === "Overdue").length },
+    { label: "Due today", filter: "Due today", count: examples.filter(x => x.status === "Due today").length },
+    { label: "Upcoming", filter: "Upcoming", count: examples.filter(x => x.status === "Upcoming").length },
+    { label: "Escalated", filter: "Escalated", count: examples.filter(x => x.escalation !== "—").length },
+  ];
+  const visible = examples.filter(x => filter === "All" || (filter === "Escalated" ? x.escalation !== "—" : x.status === filter));
+  return (
+    <section className="bmp-overview" aria-label="Broiler BMP and operational compliance">
+      <header>
+        <div><small>BROILER MANAGEMENT</small><h2>BMP &amp; Operational Compliance</h2><p>Upcoming activities, unsigned changes and management escalation.</p></div>
+        <div className="bmp-actions">
+          <a href={`/compliance?company_id=${companyId}`}>Compliance</a>
+          <button type="button" aria-pressed={demo} onClick={() => { setDemo(!demo); setFilter("All"); }}>{demo ? "Hide demo" : "Preview demo"}</button>
+        </div>
+      </header>
+      <div className="bmp-note" role="status">{demo ? "DEMONSTRATION ONLY — fictional farms and activities. No alerts, sign-offs or escalations are sent." : "Live BMP tasks are not connected yet. Counts are unavailable until the operational task engine is enabled."}</div>
+      <div className="bmp-metrics">
+        {metrics.map(m => <button type="button" key={m.filter} disabled={!demo} aria-pressed={demo && filter === m.filter} onClick={() => setFilter(filter === m.filter ? "All" : m.filter)}><span>{m.label}</span><strong className={demo && (m.filter === "Overdue" || m.filter === "Escalated") ? "bmp-red" : ""}>{demo ? m.count : "—"}</strong></button>)}
+      </div>
+      {demo && <div className="bmp-table-wrap"><div className="bmp-table-title"><strong>Example priority activities</strong><button type="button" onClick={() => setFilter("All")}>Show all</button></div><table><thead><tr>{["Farm / shed", "Activity", "Due", "Sign-off", "Escalated to"].map(h => <th key={h}>{h}</th>)}</tr></thead><tbody>{visible.map(x => <tr key={x.id}><td>{x.farm} · {x.shed}</td><td>{x.activity}</td><td className={x.status === "Overdue" ? "bmp-red" : ""}>{x.due}</td><td>{x.status === "Upcoming" ? "Not yet due" : "Awaiting sign-off"}</td><td>{x.escalation}</td></tr>)}</tbody></table></div>}
+      <style jsx>{`
+        .bmp-overview { margin-top: 10px; padding: 12px; border: 1px solid #dbe8e1; border-radius: 10px; background: #fff; color: #174f3b; }
+        header { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+        header small { font-size: 9px; font-weight: 800; letter-spacing: .08em; color: #52776a; }
+        h2 { margin: 3px 0; font-size: 15px; } p { margin: 0; font-size: 11px; color: #607b70; }
+        .bmp-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+        button, a { font: inherit; font-size: 11px; font-weight: 700; color: #174f3b; border: 1px solid #cbded4; border-radius: 6px; background: white; padding: 7px 10px; text-decoration: none; cursor: pointer; }
+        button:disabled { cursor: default; } button[aria-pressed=true] { border-color: #087c59; background: #e7f2ec; }
+        .bmp-note { margin: 10px 0; padding: 8px; border-radius: 6px; background: #edf4f0; font-size: 11px; }
+        .bmp-metrics { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 8px; }
+        .bmp-metrics button { text-align: left; padding: 10px; } .bmp-metrics span { display: block; font-size: 10px; } .bmp-metrics strong { display: block; margin-top: 4px; font-size: 20px; }
+        .bmp-red { color: #b91c1c; } .bmp-table-wrap { margin-top: 10px; overflow-x: auto; }
+        .bmp-table-title { display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
+        table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 6px; } th,td { padding: 8px; text-align: left; border-bottom: 1px solid #e3ebe7; white-space: nowrap; } th { background: #f2f6f4; }
+        @media(max-width: 680px) { .bmp-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+      `}</style>
+    </section>
+  );
+}
+
 export default function BroilerHomePage() {
   const { currentUser, loadingUser, userError } = useCurrentUser();
 
@@ -784,6 +837,10 @@ export default function BroilerHomePage() {
           </div>
         )}
       </section>
+
+      {!loadingUser && currentUser && activeCompanyId && !loading && !userError && !message && (
+        <BroilerBmpOverview key={activeCompanyId} companyId={activeCompanyId} />
+      )}
 
       <section className="bf-quick-actions">
         <a href="/broilers/performance">
