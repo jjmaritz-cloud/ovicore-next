@@ -908,6 +908,77 @@ def update_demand_plan(
     return build_plan_response(plan)
 
 
+def require_broiler_flock_creator(db: Session, user, company_id: int):
+    # First pilot: only global and company administrators may schedule flocks.
+    if not (user.is_global_admin or user.is_company_admin):
+        raise HTTPException(status_code=403, detail="Flock creation requires administrator access")
+    if not user.is_global_admin and user.company_id != company_id:
+        raise HTTPException(status_code=403, detail="Company access denied")
+    company = db.query(Company).filter(Company.id == company_id, Company.active == True).first()
+    if not company or not company.enable_broilers:
+        raise HTTPException(status_code=403, detail="Broiler production is not enabled for this company")
+    return company
+
+
+def broiler_creation_sheds(db: Session, company_id: int):
+    return db.query(BroilerShed).join(BroilerFarm, BroilerFarm.id == BroilerShed.farm_id).filter(
+        BroilerShed.company_id == company_id, BroilerFarm.company_id == company_id,
+        BroilerShed.active == True, BroilerFarm.active == True,
+        BroilerFarm.farm_type == "broiler", BroilerShed.shed_type == "Broiler",
+    )
+
+
+@app.get("/api/broilers/flock-creation-context")
+def broiler_flock_creation_context(company_id: int, current_user: models.AppUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    company = require_broiler_flock_creator(db, current_user, company_id)
+    return {"company_id": company.id, "company_name": company.company_name,
+            "sheds": [build_shed_response(shed, shed.farm.farm_name) for shed in broiler_creation_sheds(db, company.id).all()]}
+
+
+class ScheduledBroilerFlockCreate(BroilerDemandPlanCreate):
+    company_id: int  # Explicit company is mandatory in this workflow.
+
+
+@app.post("/api/broilers/flock-creation", response_model=BroilerDemandPlanOut)
+def create_scheduled_broiler_flock(payload: ScheduledBroilerFlockCreate,
+    current_user: models.AppUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    company = require_broiler_flock_creator(db, current_user, payload.company_id)
+    # Lock the physical shed during validation and insertion (PostgreSQL).
+    shed = broiler_creation_sheds(db, company.id).filter(
+        BroilerShed.id == payload.shed_id, BroilerShed.farm_id == payload.farm_id
+    ).with_for_update(of=BroilerShed).first()
+    if not shed:
+        raise HTTPException(status_code=400, detail="Choose an active Broiler farm and shed in the selected company")
+    code = (payload.cycle_code or "").strip()
+    if not code or len(code) > 100 or not payload.placement_date or not payload.planned_birds or payload.planned_birds <= 0:
+        raise HTTPException(status_code=422, detail="Cycle code, placement date and positive planned birds are required")
+    import math
+    density, weight, days, allowance = payload.target_density_kg_m2, payload.target_lw_kg, payload.growout_days, payload.chick_allowance_pct
+    if density is None or weight is None or days is None or allowance is None or not all(math.isfinite(v) for v in (density, weight, allowance)) or not (0 < density < 100 and 0 < weight < 20 and 1 <= days <= 365 and 0 <= allowance <= 100):
+        raise HTTPException(status_code=422, detail="Enter valid planning targets and chick allowance")
+    if float(shed.floor_area_m2 or 0) <= 0:
+        raise HTTPException(status_code=422, detail="Configure the shed floor area first")
+    if shed.capacity_birds and payload.planned_birds > shed.capacity_birds:
+        raise HTTPException(status_code=422, detail="Planned birds exceed configured shed capacity")
+    if db.query(BroilerPlacementPlan).filter(BroilerPlacementPlan.company_id == company.id, BroilerPlacementPlan.cycle_code == code).first():
+        raise HTTPException(status_code=409, detail="This flock code already exists in the selected company")
+    end = payload.placement_date + timedelta(days=days)
+    for existing in db.query(BroilerPlacementPlan).filter(BroilerPlacementPlan.company_id == company.id, BroilerPlacementPlan.shed_id == shed.id).all():
+        state = (existing.status or "").strip().lower()
+        if state in {"closed", "processed", "completed", "cancelled", "canceled"}:
+            continue
+        if not existing.placement_date:
+            raise HTTPException(status_code=409, detail="An undated open cycle exists for this shed; review it first")
+        existing_end = existing.placement_date + timedelta(days=existing.growout_days or shed.default_growout_days or 42)
+        if state in {"active", "placed", "growing", "harvesting"} and existing_end < date.today():
+            raise HTTPException(status_code=409, detail="An overdue active cycle must be reconciled before scheduling this shed")
+        if payload.placement_date <= existing_end and existing.placement_date <= end:
+            raise HTTPException(status_code=409, detail="Placement overlaps an existing open cycle in this shed")
+    # Use the existing authoritative record, never activate a planned placement.
+    payload = payload.model_copy(update={"cycle_code": code, "status": "Planned"})
+    return create_demand_plan(payload, current_user, db)
+
+
 @app.post(
     "/api/broilers/demand-plans",
     response_model=BroilerDemandPlanOut,

@@ -1416,10 +1416,10 @@ return (
         <button
           type="button"
           className="planner-btn planner-btn-primary"
-          onClick={addNewPlacementRow}
+          onClick={()=>{if(dirtyRowIds.current.size){alert("Save existing changes before opening Flock Management.");return;}window.location.assign(`/broilers/cycles?company_id=${activeCompanyId}`);}}
           disabled={saving}
         >
-          New placement row
+          Flock Management
         </button>
       </div>
     </section>

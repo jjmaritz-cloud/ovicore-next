@@ -1,5 +1,6 @@
 "use client";
 
+import OviCoreFlockForm from "@/components/flocks/OviCoreFlockForm";
 import OviCoreMasterPage from "@/components/ovicore/OviCoreMasterPage";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -195,6 +196,7 @@ export default function BroilerCycleRegisterPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [searchText, setSearchText] = useState("");
+  const [newFlockOpen,setNewFlockOpen] = useState(false);
 
   const dirtyRowIds = useRef<Set<number>>(new Set());
 
@@ -555,7 +557,7 @@ export default function BroilerCycleRegisterPage() {
   const kpis = useMemo(() => {
     const totalCycles = rows.length;
     const plannedCycles = rows.filter((row) =>
-      ["planned", "placed", "growing"].includes(String(row.status ?? "").toLowerCase())
+      ["planned", "placed", "growing", "active"].includes(String(row.status ?? "").toLowerCase())
     ).length;
 
     const totalPlannedBirds = rows.reduce((sum, row) => sum + Number(row.plannedBirds ?? 0), 0);
@@ -617,6 +619,7 @@ export default function BroilerCycleRegisterPage() {
             </div>
 
             <div className="grid-buttons">
+              <button type="button" className="primary" disabled={!activeCompanyId || saving || loading} onClick={()=>{if(dirtyRowIds.current.size){alert("Save existing changes before creating a flock.");return;}setNewFlockOpen(true);}}>+ New flock</button>
               <button type="button" onClick={deleteSelectedCycle} disabled={saving}>
                 Delete selected cycle
               </button>
@@ -634,7 +637,7 @@ export default function BroilerCycleRegisterPage() {
           <div className="formula-bar">
             <div className="formula-name">Cycle flow</div>
             <div className="formula-text">
-              Demand Planner creates placement demand. Cycle Register tracks the operational status of each broiler cycle.
+              Create planned flocks here. Supply & Demand reads the same placement records.
             </div>
           </div>
 
@@ -661,6 +664,7 @@ export default function BroilerCycleRegisterPage() {
             />
           </div>
         </section>
+      {newFlockOpen && activeCompanyId && <OviCoreFlockForm companyId={activeCompanyId} onClose={()=>setNewFlockOpen(false)} onCreated={fetchRows}/> }
     </OviCoreMasterPage>
   );
 }
