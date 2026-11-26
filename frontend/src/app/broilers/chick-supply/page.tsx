@@ -1,13 +1,13 @@
 "use client";
 
+import OviCoreMasterPage from "@/components/ovicore/OviCoreMasterPage";
+
 import {
   useEffect,
   useMemo,
   useState,
 } from "react";
 import Link from "next/link";
-import BroilerSidebar from "@/components/BroilerSidebar";
-import OviCoreModuleHeader from "@/components/OviCoreModuleHeader";
 
 const API_BASE = "";
 
@@ -223,11 +223,7 @@ export default function ChickSupplyPage() {
     "manual";
 
   return (
-    <div className="page-shell">
-      <BroilerSidebar />
-
-      <main className="main-panel">
-        <OviCoreModuleHeader
+    <OviCoreMasterPage module="broilers"
           eyebrow="OviCore Broiler Planning"
           title="Chick Supply"
           description="Live chick supply position feeding Broiler placement planning."
@@ -242,8 +238,7 @@ export default function ChickSupplyPage() {
               type: "refresh",
               onClick: loadData,
             },
-          ]}
-        />
+          ]}>
 
         {message && (
           <div className="supply-message">
@@ -567,7 +562,6 @@ export default function ChickSupplyPage() {
             }
           }
         `}</style>
-      </main>
-    </div>
+      </OviCoreMasterPage>
   );
 }

@@ -23,6 +23,7 @@ export type DailyHouseCardAction = {
 };
 
 export type DailyHouseCardProps = {
+  masterLayout?: boolean;
   moduleLabel: string;
   description: string;
   selectorLabel: string;

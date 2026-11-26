@@ -1,5 +1,7 @@
 "use client";
 
+import OviCoreMasterPage from "@/components/ovicore/OviCoreMasterPage";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { adaptMortalityRows } from "./mortalityAdapter";
@@ -223,10 +225,9 @@ export default function MortalityInsights({ module }: { module: Module }) {
   const filteredGroups = attentionOnly ? new Set(alerts.map(a=>a.name)) : null;
   const tableRows = grouped.filter(r => !filteredGroups || [...filteredGroups].some(n => n.includes(r.group) || r.group.includes(n)));
 
-  return <main style={{ padding:"24px clamp(14px, 3vw, 36px)", background:"#f8fafc", minHeight:"100vh", color:"#0f172a" }}>
+  return <OviCoreMasterPage module="layers" eyebrow={module === "commercial" ? "OviCore Commercial Layers" : "OviCore Commercial Rearing"} title="Mortality Insights" description="Trends, drivers and attention areas."><div style={{minWidth:0,color:"#0f172a"}}>
     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:12, marginBottom:20 }}>
-      <div><h1 style={{ fontSize:26, fontWeight:750, margin:0 }}>Mortality Insights</h1>
-        <p style={{ color:"#64748b", margin:"5px 0 0" }}>{module === "commercial" ? "Commercial Layers" : "Commercial Rearing"} · Trends, drivers and attention areas</p></div>
+
       <button onClick={exportData} disabled={!grouped.length} style={{...selectStyle, cursor:"pointer", background:"#0f766e", color:"white"}}>Export table (CSV)</button>
     </div>
     <section style={{...cardStyle, marginBottom:16, display:"flex", gap:14, flexWrap:"wrap", alignItems:"end"}}>
@@ -276,5 +277,5 @@ export default function MortalityInsights({ module }: { module: Module }) {
       </tbody></table>{!tableRows.length && <p style={{color:"#64748b"}}>No matching rows.</p>}</div>
       {detail && <div style={{overflowX:"auto",marginTop:20}}><h3 style={{fontSize:14}}>Raw flock records</h3><table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}><thead><tr>{["Date","Farm","House","Flock","Breed","Mortality reason","Cull reason","Mortality","Culls"].map(x=><th key={x} style={{textAlign:"left",padding:8,background:"#f1f5f9"}}>{x}</th>)}</tr></thead><tbody>{filtered.map((r,i)=><tr key={`${r.flockId}|${r.date}|${i}`} style={{borderBottom:"1px solid #e2e8f0"}}>{[r.date,r.farm,r.house,r.flock,r.breed||"—",r.mortalityReason||"—",r.cullReason||"—",r.mortality,r.culls].map((v,j)=><td key={j} style={{padding:8}}>{v}</td>)}</tr>)}</tbody></table></div>}
     </section>
-  </main>;
+  </div></OviCoreMasterPage>;
 }

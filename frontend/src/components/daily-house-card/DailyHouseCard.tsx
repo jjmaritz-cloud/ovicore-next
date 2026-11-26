@@ -59,6 +59,7 @@ function HeaderAction({ action }: { action?: DailyHouseCardAction }) {
 }
 
 export default function DailyHouseCard({
+  masterLayout = false,
   moduleLabel,
   description,
   selectorLabel,
@@ -148,10 +149,10 @@ export default function DailyHouseCard({
   }
 
   return (
-    <div className={styles.shell}>
-      <div className={styles.content}>
-        <main className={styles.page}>
-      <section className={styles.header}>
+    <div className={styles.shell} style={masterLayout ? {minHeight:0} : undefined}>
+      <div className={styles.content} style={masterLayout ? {minHeight:0} : undefined}>
+        <main className={styles.page} style={masterLayout ? {padding:0, background:"transparent", minHeight:0} : undefined}>
+      {!masterLayout && <section className={styles.header}>
         <div className={styles.headerCopy}>
           <p className={styles.eyebrow}>{moduleLabel}</p>
           <h1>Daily House Card</h1>
@@ -162,7 +163,7 @@ export default function DailyHouseCard({
           <HeaderAction action={homeAction} />
           <HeaderAction action={secondaryAction} />
         </div>
-      </section>
+      </section>}
 
       <section className={styles.controls}>
         <label className={styles.selector}>

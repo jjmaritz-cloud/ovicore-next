@@ -1,11 +1,12 @@
 "use client";
 
+import OviCoreMasterPage from "@/components/ovicore/OviCoreMasterPage";
+
 import {
   Suspense,
   useMemo,
   useState,
 } from "react";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
@@ -18,7 +19,6 @@ import {
   Upload,
 } from "lucide-react";
 
-import BroilerSidebar from "@/components/BroilerSidebar";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 const API_BASE = "";
@@ -367,28 +367,8 @@ function PaperCaptureReviewPageContent() {
     : [];
 
   return (
-    <div className="page-shell paper-review-page">
-      <BroilerSidebar />
-
-      <main className="main-panel">
-        <section className="capture-header">
-          <div>
-            <p className="capture-eyebrow">OviCore Paper Capture</p>
-            <h1>Capture Completed Sheet</h1>
-            <p>
-              Photograph the completed Broiler Daily Sheet. OviCore reads the
-              handwritten AM / PM values, then you review them before anything
-              is saved.
-            </p>
-          </div>
-
-          <Link
-            href="/paper-capture"
-            className="capture-back"
-          >
-            Print Daily Sheets
-          </Link>
-        </section>
+    <OviCoreMasterPage module="broilers" eyebrow="OviCore Broiler Production" title="Capture Completed Sheet" description="Review captured records before saving." actions={[{ label: "Print Daily Sheets", href: "/paper-capture" }]}>
+      <div className="paper-review-page">
 
         {userError || message ? (
           <div
@@ -1343,8 +1323,8 @@ function PaperCaptureReviewPageContent() {
             }
           }
         `}</style>
-      </main>
-    </div>
+      </div>
+    </OviCoreMasterPage>
   );
 }
 

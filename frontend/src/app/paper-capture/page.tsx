@@ -1,6 +1,7 @@
 "use client";
 
-import Link from "next/link";
+import OviCoreMasterPage from "@/components/ovicore/OviCoreMasterPage";
+
 import {
   Suspense,
   useCallback,
@@ -18,7 +19,6 @@ import {
   Square,
 } from "lucide-react";
 
-import BroilerSidebar from "@/components/BroilerSidebar";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 const API_BASE = "";
@@ -292,27 +292,9 @@ function PaperCapturePageContent() {
   }
 
   return (
-    <div className="page-shell paper-capture-page">
-      <BroilerSidebar />
-
-      <main className="main-panel">
-        <section className="paper-header no-print">
-          <div>
-            <p className="paper-eyebrow">OviCore Paper Capture</p>
-            <h1>Broiler Daily Sheets</h1>
-            <p>
-              Select the date and sheds, then print one pre-filled AM / PM
-              daily sheet per active broiler cycle.
-            </p>
-          </div>
-
-          <div className="paper-header-actions">
-            <Link
-              href="/paper-capture/capture"
-              className="paper-capture-link"
-            >
-              Capture Completed Sheet
-            </Link>
+    <OviCoreMasterPage module="broilers" eyebrow="OviCore Broiler Production" title="Broiler Daily Sheets" description="Print daily sheets." actions={[{ label: "Capture Completed Sheet", href: "/paper-capture/capture" }]}>
+      <div className="paper-capture-page">
+        <div className="paper-header-actions no-print">
 
             <button
               type="button"
@@ -324,7 +306,6 @@ function PaperCapturePageContent() {
               {loading ? "Refreshing" : "Refresh"}
             </button>
           </div>
-        </section>
 
         <section className="paper-workspace no-print">
           <div className="paper-controls">
@@ -949,16 +930,23 @@ function PaperCapturePageContent() {
               background: white !important;
             }
 
+            body:has(.paper-capture-page) .ovicore-app-shell > aside,
+            body:has(.paper-capture-page) .ovicore-module-header,
             .no-print,
             .paper-capture-page > aside,
             .paper-capture-page nav {
               display: none !important;
             }
 
+            body:has(.paper-capture-page) .ovicore-app-shell,
+            body:has(.paper-capture-page) .ovicore-app-main,
+            body:has(.paper-capture-page) .ovicore-app-main > div,
+            body:has(.paper-capture-page) .ovicore-app-main > div > div,
             .paper-capture-page,
             .paper-capture-page .main-panel {
               display: block !important;
               width: auto !important;
+              min-height: 0 !important;
               min-width: 0 !important;
               margin: 0 !important;
               padding: 0 !important;
@@ -1145,8 +1133,8 @@ function PaperCapturePageContent() {
             }
           }
         `}</style>
-      </main>
-    </div>
+      </div>
+    </OviCoreMasterPage>
   );
 }
 

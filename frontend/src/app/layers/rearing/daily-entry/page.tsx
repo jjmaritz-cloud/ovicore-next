@@ -1,6 +1,7 @@
 "use client";
 
-import OviCoreShell from "@/components/ovicore/OviCoreShell";
+import OviCoreMasterPage from "@/components/ovicore/OviCoreMasterPage";
+
 
 import {
   Suspense,
@@ -742,7 +743,9 @@ function LayerRearingDailyHouseCardContent() {
 	}
 
 		return (
-			<DailyHouseCard
+			<OviCoreMasterPage module="layers" eyebrow="OviCore Egg Production · Commercial Rearing" title="Daily House Card" description="Daily flock production recording." actions={[{label:"Rearing Overview",href:"/layers/rearing",type:"home"},{label:"Refresh",type:"refresh",onClick:()=>void loadData()}]}>
+      <DailyHouseCard
+          masterLayout
           moduleLabel="Commercial Rearing"
           description="Daily pullet rearing entry for mortality, culls, feed, water, bodyweight and flock comments."
           homeAction={{
@@ -1061,16 +1064,15 @@ function LayerRearingDailyHouseCardContent() {
             </tbody>
       </table>
     </DailyHouseCard>
+    </OviCoreMasterPage>
   );
 }
 
 export default function LayerRearingDailyHouseCardPage() {
   return (
-    <OviCoreShell module="layers">
       <Suspense fallback={null}>
         <LayerRearingDailyHouseCardContent />
       </Suspense>
-    </OviCoreShell>
   );
 }
 

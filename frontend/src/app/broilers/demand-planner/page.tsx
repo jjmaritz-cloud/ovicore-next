@@ -1,5 +1,7 @@
 "use client";
 
+import OviCoreMasterPage from "@/components/ovicore/OviCoreMasterPage";
+
 import {
   Suspense,
   useCallback,
@@ -25,8 +27,6 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-quartz.css";
-import OviCoreModuleHeader from "@/components/OviCoreModuleHeader";
-import OviCoreShell from "@/components/ovicore/OviCoreShell";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 type BroilerPlanRow = {
@@ -1384,8 +1384,7 @@ function BroilerDemandPlannerPageContent() {
   );
 
 return (
-  <OviCoreShell module="broilers">
-    <OviCoreModuleHeader
+  <OviCoreMasterPage module="broilers"
       eyebrow="OviCore Broiler Planning"
       title="Supply & Demand"
       description="One connected view of chick supply, shed placements, active grow-out and forecast processing supply."
@@ -1395,8 +1394,7 @@ return (
           href: "/broilers",
           type: "home",
         },
-      ]}
-    />
+      ]}>
 
     <section className="planner-toolbar-card">
       <div>
@@ -2179,7 +2177,7 @@ return (
         }
       }
     `}</style>
-  </OviCoreShell>
+  </OviCoreMasterPage>
   );
 }
 

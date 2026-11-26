@@ -1,5 +1,7 @@
 "use client";
 
+import OviCoreMasterPage from "@/components/ovicore/OviCoreMasterPage";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgGridReact } from "ag-grid-react";
 import {
@@ -15,7 +17,6 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-quartz.css";
-import BroilerSidebar from "@/components/BroilerSidebar";
 
 type BroilerCycleRow = {
   id: number;
@@ -572,26 +573,15 @@ export default function BroilerCycleRegisterPage() {
   }, [rows]);
 
   return (
-    <main className="page-shell">
-			<BroilerSidebar />
-
-      <section className="main-panel">
-        <header className="topbar">
-          <div>
-            <p className="eyebrow">Broiler Cycle Register</p>
-            <h2>Placement cycles by farm, shed and status</h2>
-          </div>
-
-          <div className="top-actions">
+    <OviCoreMasterPage module="broilers" eyebrow="OviCore Broiler Production" title="Broiler Flock Register" description="Manage placement cycles.">
+        <div className="top-actions">
             <input
               className="search-box"
               value={searchText}
               onChange={(event) => setSearchText(event.target.value)}
               placeholder="Search farm, shed, cycle or status"
             />
-            <div className="avatar">JJ</div>
           </div>
-        </header>
 
         <section className="kpi-grid">
           <div className="kpi-card">
@@ -671,7 +661,6 @@ export default function BroilerCycleRegisterPage() {
             />
           </div>
         </section>
-      </section>
-    </main>
+    </OviCoreMasterPage>
   );
 }

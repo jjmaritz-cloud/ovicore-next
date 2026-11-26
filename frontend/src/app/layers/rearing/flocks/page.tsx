@@ -1,5 +1,7 @@
 "use client";
 
+import OviCoreMasterPage from "@/components/ovicore/OviCoreMasterPage";
+
 import {
   Suspense,
   useCallback,
@@ -27,8 +29,6 @@ import "ag-grid-community/styles/ag-theme-quartz.css";
 
 import OviCoreActionBar from "@/components/ovicore/OviCoreActionBar";
 import OviCoreKpiStrip from "@/components/ovicore/OviCoreKpiStrip";
-import OviCorePageHeader from "@/components/ovicore/OviCorePageHeader";
-import OviCoreShell from "@/components/ovicore/OviCoreShell";
 import OviCoreTableCard from "@/components/ovicore/OviCoreTableCard";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
@@ -1251,11 +1251,7 @@ function LayerRearingFlockRegisterContent() {
   }, [rows]);
 
   return (
-    <OviCoreShell module="layers">
-      <OviCorePageHeader
-        title="Commercial Rearing Flock Register"
-        subtitle="Commercial Rearing farms and sheds only. Transfer destinations are limited to Commercial Layers farms and sheds."
-      >
+    <OviCoreMasterPage module="layers" eyebrow="OviCore Egg Production" title="Commercial Rearing Flock Register" description="Commercial Rearing farms and sheds only. Transfer destinations are limited to Commercial Layers farms and sheds.">
         <div className="top-actions">
           <input
             className="search-box"
@@ -1267,7 +1263,7 @@ function LayerRearingFlockRegisterContent() {
           />
           <div className="avatar">JJ</div>
         </div>
-      </OviCorePageHeader>
+
 
       <OviCoreKpiStrip
         items={[
@@ -1497,7 +1493,7 @@ function LayerRearingFlockRegisterContent() {
           </div>
         </div>
       )}
-    </OviCoreShell>
+    </OviCoreMasterPage>
   );
 }
 

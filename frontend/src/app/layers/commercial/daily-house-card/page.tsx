@@ -1,5 +1,7 @@
 "use client";
 
+import OviCoreMasterPage from "@/components/ovicore/OviCoreMasterPage";
+
 import {
   Suspense,
   useCallback,
@@ -10,8 +12,6 @@ import {
 
 import { useSearchParams } from "next/navigation";
 import DailyHouseCard from "@/components/daily-house-card";
-import OviCoreSidebar from "@/components/sidebar/OviCoreSidebar";
-import { getSidebarMenu } from "@/components/sidebar/menuRegistry";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 const API_BASE = "";
@@ -985,11 +985,9 @@ function CommercialLayersDailyHouseCardContent() {
   }
 
   return (
-    <div className="page-shell">
-      <OviCoreSidebar menu={getSidebarMenu("layers")} />
-
-      <main className="main-panel">
+    <OviCoreMasterPage module="layers" eyebrow="OviCore Egg Production · Commercial Layers" title="Daily House Card" description="Daily flock production recording." actions={[{label:"Layers Overview",href:"/layers/commercial",type:"home"},{label:"Refresh",type:"refresh",onClick:()=>void loadData()}]}>
         <DailyHouseCard
+          masterLayout
         moduleLabel="Commercial Layers"
         description="Daily layer entry for bird position, feed, water, bodyweight, egg production and egg quality."
         homeAction={{
@@ -1414,8 +1412,7 @@ function CommercialLayersDailyHouseCardContent() {
         </table>
         </div>
         </DailyHouseCard>
-      </main>
-    </div>
+    </OviCoreMasterPage>
   );
 }
 

@@ -1,7 +1,8 @@
 "use client";
 
+import OviCoreMasterPage from "@/components/ovicore/OviCoreMasterPage";
+
 import { useEffect, useMemo, useState } from "react";
-import BroilerSidebar from "@/components/BroilerSidebar";
 
 const API_BASE = '';
 
@@ -442,20 +443,7 @@ export default function BroilerProcessingPage() {
 	}
 
 	return (
-		<div className="page-shell">
-			<BroilerSidebar />
-
-			<main className="main-panel">
-				<section className="topbar">
-					<div>
-						<p className="eyebrow">OviCore Broiler Module</p>
-						<h2>Processing</h2>
-					</div>
-
-          <button className="primary-button" type="button" onClick={loadData}>
-            Refresh
-          </button>
-        </section>
+		<OviCoreMasterPage module="broilers" eyebrow="OviCore Broiler Production" title="Processing" description="" actions={[{ label: "Refresh", type: "refresh", onClick: loadData }]}>
 
         <section className="kpi-grid">
           <div className="kpi-card">
@@ -742,8 +730,7 @@ export default function BroilerProcessingPage() {
             </table>
           </div>
         </section>
-      </main>
-    </div>
+      </OviCoreMasterPage>
   );
 }
 

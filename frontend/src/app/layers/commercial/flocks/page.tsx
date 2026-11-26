@@ -1,5 +1,7 @@
 "use client";
 
+import OviCoreMasterPage from "@/components/ovicore/OviCoreMasterPage";
+
 import {
   Suspense,
   useCallback,
@@ -27,8 +29,6 @@ import "ag-grid-community/styles/ag-theme-quartz.css";
 
 import OviCoreActionBar from "@/components/ovicore/OviCoreActionBar";
 import OviCoreKpiStrip from "@/components/ovicore/OviCoreKpiStrip";
-import OviCorePageHeader from "@/components/ovicore/OviCorePageHeader";
-import OviCoreShell from "@/components/ovicore/OviCoreShell";
 import OviCoreTableCard from "@/components/ovicore/OviCoreTableCard";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
@@ -996,11 +996,7 @@ function CommercialLayerFlockRegisterContent() {
   }, [rows]);
 
   return (
-    <OviCoreShell module="layers">
-      <OviCorePageHeader
-        title="Commercial Layer Flock Register"
-        subtitle="Commercial Layers farms and sheds only. Transferred pullets and directly housed flocks are managed in one register."
-      >
+    <OviCoreMasterPage module="layers" eyebrow="OviCore Egg Production" title="Commercial Layer Flock Register" description="Commercial Layers farms and sheds only. Transferred pullets and directly housed flocks are managed in one register.">
         <div className="top-actions">
           <input
             className="search-box"
@@ -1012,7 +1008,7 @@ function CommercialLayerFlockRegisterContent() {
           />
           <div className="avatar">JJ</div>
         </div>
-      </OviCorePageHeader>
+
 
       <OviCoreKpiStrip
         items={[
@@ -1167,7 +1163,7 @@ function CommercialLayerFlockRegisterContent() {
           />
         </div>
       </OviCoreTableCard>
-    </OviCoreShell>
+    </OviCoreMasterPage>
   );
 }
 

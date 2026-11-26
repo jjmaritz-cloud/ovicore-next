@@ -1,5 +1,7 @@
 "use client";
 
+import OviCoreMasterPage from "@/components/ovicore/OviCoreMasterPage";
+
 import {
   Suspense,
   useCallback,
@@ -9,9 +11,7 @@ import {
 } from "react";
 import { useSearchParams } from "next/navigation";
 
-import OviCoreModuleHeader from "@/components/OviCoreModuleHeader";
 import OviCoreTour from "@/components/OviCoreTour";
-import OviCoreShell from "@/components/ovicore/OviCoreShell";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 const API_BASE = "";
@@ -2705,8 +2705,7 @@ function BroilerIntelligenceContent() {
   }, [focusStory]);
 
   return (
-    <>
-      <OviCoreModuleHeader
+    <OviCoreMasterPage module="broilers"
         eyebrow="OviCore Broiler Module"
         title="Broiler Intelligence"
         description="A visual performance story: where the flock is, where it should be, what is changing and what needs action."
@@ -2721,8 +2720,7 @@ function BroilerIntelligenceContent() {
             type: "refresh",
             onClick: loadData,
           },
-        ]}
-      />
+        ]}>
 
       <div className="bi-page" data-tour="broiler-intelligence">
         <section className="bi-scope">
@@ -3618,7 +3616,7 @@ function BroilerIntelligenceContent() {
         .bi-page {
           display: grid;
           gap: 8px;
-          padding: 10px 12px 24px;
+          padding: 0;
         }
 
         .bi-scope,
@@ -6034,17 +6032,15 @@ function BroilerIntelligenceContent() {
           }
         }
       `}</style>
-    </>
+      <OviCoreTour />
+    </OviCoreMasterPage>
   );
 }
 
 export default function BroilerIntelligencePage() {
   return (
-    <OviCoreShell module="broilers">
       <Suspense fallback={null}>
         <BroilerIntelligenceContent />
-        <OviCoreTour />
       </Suspense>
-    </OviCoreShell>
   );
 }

@@ -1,7 +1,8 @@
 "use client";
 
+import OviCoreMasterPage from "@/components/ovicore/OviCoreMasterPage";
+
 import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
-import BroilerSidebar from "@/components/BroilerSidebar";
 
 type User = { company_id: number | null; is_global_admin: boolean };
 type Plan = {
@@ -212,9 +213,8 @@ export default function BroilerPerformanceWorkspacePage() {
     expanded={isExpanded} daily={showDaily} compare={mode === "compare"}
   />;
 
-  return <div className="page-shell"><BroilerSidebar /><main className="main-panel broiler-performance">
-    <header className="bp-header"><div><h1>Broiler Performance</h1><span className="bp-version">Performance V2 · Layers parity</span><p>Actual flock performance across bodyweight, mortality, feed, water and estimated feed efficiency.</p></div>
-      <button onClick={() => void loadData()} type="button">Refresh</button></header>
+  return <OviCoreMasterPage module="broilers" eyebrow="OviCore Broiler Production" title="Broiler Performance" description="Actual versus standard." actions={[{ label: "Refresh", type: "refresh", onClick: () => void loadData() }]}>
+    <div className="broiler-performance">
     <section className="bp-card bp-selectors"><div className="bp-three">
       <label>Farm<select value={effectiveFarm} onChange={e => { setFarm(e.target.value); setShed(""); setPrimaryId(""); setCompareIds([]); }}>{farms.map(n => <option key={n}>{n}</option>)}</select></label>
       <label>Shed<select value={effectiveShed} onChange={e => { setShed(e.target.value); setPrimaryId(""); setCompareIds([]); }}>{sheds.map(n => <option key={n}>{n}</option>)}</select></label>
@@ -255,7 +255,7 @@ export default function BroilerPerformanceWorkspacePage() {
     </section>
     {expanded && <div className="bp-modal" role="dialog" aria-modal="true" aria-label="Expanded broiler performance chart"><div className="bp-modal-content"><div className="bp-modal-header"><strong>Broiler Performance · {primaryPlan?.cycle_code ?? ""}</strong><div className="bp-controls"><label><input type="checkbox" checked={showDaily} onChange={e => setShowDaily(e.target.checked)} /> Show daily</label><label><input type="checkbox" checked={showStandards} disabled={!standardAvailable} onChange={e => setShowStandards(e.target.checked)} /> Show standards</label><label><input type="checkbox" checked={showComments} onChange={e => setShowComments(e.target.checked)} /> Show comments</label><button onClick={() => setExpanded(false)}>Close</button></div></div>{chart(true)}</div></div>}
     <style jsx>{`
-      .broiler-performance { min-width:0; padding:8px 10px 18px; display:grid; align-content:start; gap:7px; color:#183f2e; }
+      .broiler-performance { min-width:0; padding:0; display:grid; align-content:start; gap:7px; color:#183f2e; }
       .bp-header,.bp-card{background:#fff;border:1px solid #dce8e2;border-radius:12px;box-shadow:0 5px 18px #1346330a;}
       .bp-header{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:8px 11px;}
       .bp-version{display:inline-block;font-size:9px;font-weight:800;color:#0b7953;margin-top:2px}.bp-header h1{font-size:18px;margin:0;color:#123f2b}.bp-header p,.bp-graph-header p,.bp-report-header p,.bp-compare p{font-size:10px;margin:3px 0;color:#72847a}
@@ -278,7 +278,7 @@ export default function BroilerPerformanceWorkspacePage() {
       @media(max-width:600px){.bp-three{grid-template-columns:1fr}.bp-three label:last-child{grid-column:auto}.bp-header{align-items:flex-start;flex-direction:column}}
       @media print{.bp-header button,.bp-tabs,.bp-controls,.bp-compare,.bp-report-filters,.bp-modal{display:none!important}.bp-table-scroll{max-height:none;overflow:visible}.broiler-performance{display:block}.bp-card{break-inside:avoid}}
     `}</style>
-  </main></div>;
+  </div></OviCoreMasterPage>;
 }
 
 function BroilerChart({ series, selectedMetrics, onToggleMetric, showStandards, showComments, expanded, daily, compare }: {

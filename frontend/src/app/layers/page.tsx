@@ -1,10 +1,9 @@
 "use client";
 
+import OviCoreMasterPage from "@/components/ovicore/OviCoreMasterPage";
+
 import Link from "next/link";
 
-import OviCoreModuleHeader from "@/components/OviCoreModuleHeader";
-import OviCoreSidebar from "@/components/sidebar/OviCoreSidebar";
-import { getSidebarMenu } from "@/components/sidebar/menuRegistry";
 
 const workstreams = [
   {
@@ -67,11 +66,7 @@ const workstreams = [
 
 export default function LayersHomePage() {
   return (
-    <div className="page-shell">
-      <OviCoreSidebar menu={getSidebarMenu("layers")} />
-
-      <main className="main-panel">
-        <OviCoreModuleHeader
+    <OviCoreMasterPage module="layers"
           eyebrow="OviCore Egg Production"
           title="Egg Production Overview"
           description="Connected management of commercial pullet rearing, layer production, flock transfers and shed planning."
@@ -82,7 +77,7 @@ export default function LayersHomePage() {
               type: "home",
             },
           ]}
-        />
+        >
 
         <section className="layer-intro">
           <div>
@@ -428,7 +423,6 @@ export default function LayersHomePage() {
             }
           }
         `}</style>
-      </main>
-    </div>
+      </OviCoreMasterPage>
   );
 }

@@ -1,10 +1,9 @@
 "use client";
 
+import OviCoreMasterPage from "@/components/ovicore/OviCoreMasterPage";
+
 import Link from "next/link";
 
-import OviCoreModuleHeader from "@/components/OviCoreModuleHeader";
-import OviCoreSidebar from "@/components/sidebar/OviCoreSidebar";
-import { getSidebarMenu } from "@/components/sidebar/menuRegistry";
 
 const actions = [
   {
@@ -39,11 +38,7 @@ const actions = [
 
 export default function LayerRearingHomePage() {
   return (
-    <div className="page-shell">
-      <OviCoreSidebar menu={getSidebarMenu("layers")} />
-
-      <main className="main-panel">
-        <OviCoreModuleHeader
+    <OviCoreMasterPage module="layers"
           eyebrow="OviCore Layer Rearing"
           title="Layer Rearing Overview"
           description="Commercial pullet development from placement through transfer into the laying farm."
@@ -54,7 +49,7 @@ export default function LayerRearingHomePage() {
               type: "home",
             },
           ]}
-        />
+        >
 
         <section className="rearing-summary">
           <div>
@@ -295,7 +290,6 @@ export default function LayerRearingHomePage() {
             }
           }
         `}</style>
-      </main>
-    </div>
+      </OviCoreMasterPage>
   );
 }

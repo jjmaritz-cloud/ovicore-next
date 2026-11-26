@@ -1,5 +1,7 @@
 "use client";
 
+import OviCoreMasterPage from "@/components/ovicore/OviCoreMasterPage";
+
 import {
   Suspense,
   useCallback,
@@ -9,8 +11,6 @@ import {
 } from "react";
 import { useSearchParams } from "next/navigation";
 
-import OviCorePageHeader from "@/components/ovicore/OviCorePageHeader";
-import OviCoreShell from "@/components/ovicore/OviCoreShell";
 import FlockCompareSelector from "@/components/layers/FlockCompareSelector";
 import FlockComparisonCharts, { type ComparisonMetricChart } from "@/components/layers/FlockComparisonCharts";
 import FlockPerformanceReport from "@/components/layers/FlockPerformanceReport";
@@ -735,12 +735,8 @@ function CommercialLayerPerformanceContent() {
   };
 
   return (
-    <OviCoreShell module="layers">
+    <OviCoreMasterPage module="layers" eyebrow="OviCore Egg Production" title="Commercial Layers Performance" description="Actual-versus-standard flock performance.">
       <div className={`commercial-performance-page ${viewMode === "compare" ? "comparison-view" : ""}`}>
-      <OviCorePageHeader
-        title="Commercial Layers Performance"
-        subtitle="Actual-versus-standard flock performance across production, mortality, egg quality, feed, water and bodyweight."
-      />
 
       <section className="selector-card">
         <div className="selector-grid">
@@ -1081,7 +1077,7 @@ function CommercialLayerPerformanceContent() {
           width: 100%;
           min-width: 0;
           min-height: calc(100vh - 58px);
-          padding: 7px 10px 8px;
+          padding: 0;
           box-sizing: border-box;
           display: grid;
           grid-template-rows: auto;
@@ -1418,7 +1414,7 @@ function CommercialLayerPerformanceContent() {
         }
       `}</style>
       </div>
-    </OviCoreShell>
+    </OviCoreMasterPage>
   );
 }
 
