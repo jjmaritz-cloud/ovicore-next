@@ -2,7 +2,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class BroilerProcessingBase(BaseModel):
@@ -1712,10 +1712,28 @@ class BMPTaskIn(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     category: str = Field(pattern="^(vaccination|lighting|nutrition|health|welfare|environment|management|biosecurity|compliance)$")
     title: str = Field(min_length=1, max_length=160)
-    age_day: int = Field(ge=0, le=1500)
+    age_day: int = Field(ge=0, le=1500, strict=True)
+    schedule_type: str = Field(default="once", pattern="^(once|range|recurring)$")
+    end_age_day: Optional[int] = Field(default=None, ge=0, le=1500, strict=True)
+    interval_days: Optional[int] = Field(default=None, ge=1, le=1500, strict=True)
     instructions: str = Field(default="", max_length=4000)
     responsible: str = Field(default="Farm Manager", min_length=1, max_length=120)
     requires_signoff: bool = True
+
+    @model_validator(mode="after")
+    def validate_schedule(self):
+        if self.schedule_type == "once":
+            if self.end_age_day is not None or self.interval_days is not None:
+                raise ValueError("Once activities cannot have an end age or interval")
+        else:
+            if self.end_age_day is None or self.end_age_day < self.age_day:
+                raise ValueError("End age must be on or after start age")
+            if self.schedule_type == "recurring":
+                if self.interval_days is None:
+                    raise ValueError("Recurring activities require an interval in days")
+            elif self.interval_days is not None:
+                raise ValueError("Age ranges cannot have a recurrence interval")
+        return self
 
 
 class BMPDraftIn(BaseModel):
