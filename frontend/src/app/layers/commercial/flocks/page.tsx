@@ -1,5 +1,6 @@
 "use client";
 
+import LayerBMPAssignment from "@/components/ovicore/LayerBMPAssignment";
 import OviCoreMasterPage from "@/components/ovicore/OviCoreMasterPage";
 
 import {
@@ -52,6 +53,7 @@ type ShedOption = {
 };
 
 type CommercialLayerFlockRow = {
+  bmpName: string;
   id: number;
   companyId: number;
   farmId: number;
@@ -248,6 +250,7 @@ function CommercialLayerFlockRegisterContent() {
     searchParams,
   ]);
 
+  const [bmpTarget, setBmpTarget] = useState<CommercialLayerFlockRow | null>(null);
   const [rows, setRows] =
     useState<CommercialLayerFlockRow[]>([]);
   const [shedOptions, setShedOptions] =
@@ -365,6 +368,7 @@ function CommercialLayerFlockRegisterContent() {
         (row: any) => ({
           id: row.id,
           companyId: row.company_id,
+          bmpName: row.bmp_name ? `${row.bmp_name} · v${row.bmp_version}` : "Not assigned",
           farmId: row.farm_id,
           shedId: row.shed_id,
 
@@ -444,6 +448,7 @@ function CommercialLayerFlockRegisterContent() {
     )[]
   >(
     () => [
+      { field: "bmpName", headerName: "Assigned BMP", minWidth: 210, editable: false },
       {
         headerName: "Flock Identity",
         marryChildren: true,
@@ -1066,6 +1071,11 @@ function CommercialLayerFlockRegisterContent() {
               New layer flock
             </button>
 
+            {(currentUser?.is_global_admin || currentUser?.is_company_admin) && <button
+              type="button" className="ovicore-btn" disabled={saving || dirtyCount > 0}
+              onClick={() => { const row = gridRef.current?.api.getSelectedRows()[0]; if (!row) { alert("Select a flock first."); return; } setBmpTarget(row); }}>
+              Assign / review BMP
+            </button>}
             <button
               type="button"
               className="ovicore-btn"
@@ -1117,6 +1127,8 @@ function CommercialLayerFlockRegisterContent() {
           </>
         }
       />
+
+      {bmpTarget && bmpTarget.companyId === activeCompanyId && <LayerBMPAssignment key={`${bmpTarget.companyId}:${bmpTarget.id}`} kind="commercial" companyId={bmpTarget.companyId} flockId={bmpTarget.id} flockCode={bmpTarget.flockCode} onClose={() => setBmpTarget(null)} onSaved={fetchRows} />}
 
       <OviCoreTableCard
         title="Commercial Layer Flock Entry"

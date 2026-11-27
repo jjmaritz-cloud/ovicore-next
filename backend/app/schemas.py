@@ -857,6 +857,7 @@ class AppNoteCommentOut(AppNoteCommentBase):
 # ---------------------------------------------------------------------
 
 class LayerRearingFlockCreate(BaseModel):
+    bmp_version_id: Optional[int] = Field(None, gt=0)
     company_id: int
     farm_id: int
     shed_id: int
@@ -898,6 +899,9 @@ class LayerRearingFlockPatch(BaseModel):
 
 
 class LayerRearingFlockOut(BaseModel):
+    bmp_name: Optional[str] = None
+    bmp_version: Optional[int] = None
+    bmp_version_id: Optional[int] = None
     id: int
     company_id: int
 
@@ -1287,6 +1291,7 @@ class BreederProductionDailyPerformanceOut(BaseModel):
 # ---------------------------------------------------------------------
 
 class CommercialLayerFlockCreate(BaseModel):
+    bmp_version_id: Optional[int] = Field(None, gt=0)
     company_id: int
     farm_id: int
     shed_id: int
@@ -1320,6 +1325,9 @@ class CommercialLayerFlockPatch(BaseModel):
 
 
 class CommercialLayerFlockOut(BaseModel):
+    bmp_name: Optional[str] = None
+    bmp_version: Optional[int] = None
+    bmp_version_id: Optional[int] = None
     id: int
     source_rearing_flock_id: Optional[int] = None
     source_rearing_flock_code: Optional[str] = None
@@ -1762,3 +1770,10 @@ class BMPDraftIn(BaseModel):
 
 class BMPDraftUpdate(BMPDraftIn):
     revision: int = Field(ge=1)
+
+
+class LayerBMPAssignmentIn(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    version_id: int = Field(gt=0)
+    expected_version_id: Optional[int] = Field(..., gt=0)
+    reason: str = Field(min_length=1, max_length=1000)

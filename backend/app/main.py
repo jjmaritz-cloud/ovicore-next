@@ -10,6 +10,7 @@ from .feed_catalog.router import make_feed_catalog_router
 from .feed_catalog.energy import declare_energy_model, make_energy_router, estimate_ration_amen
 from .feed_catalog.programs import declare_program_models, make_program_router
 from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from io import BytesIO
 from fastapi import Body, Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -1073,7 +1074,7 @@ def bmp_action(version_id: int, action: str, company_id: int, revision: int, cur
     if action == "approve" and row.status == "Draft":
         if not row.tasks or any(not task.get("instructions", "").strip() for task in row.tasks):
             raise HTTPException(422, "Approval requires at least one task and instructions for every task")
-        if row.effective_date is None or row.effective_date > date.today():
+        if row.effective_date is None or row.effective_date > bmp_today():
             raise HTTPException(422, "Approval requires an effective date on or before today; future versions must remain drafts")
         if not (row.change_summary or "").strip():
             raise HTTPException(422, "Approval requires a change summary")
@@ -1107,18 +1108,115 @@ def bmp_action(version_id: int, action: str, company_id: int, revision: int, cur
     db.commit(); db.refresh(row); return bmp_out(row)
 
 
-def validate_bmp_assignment(db, company_id, version_id):
+def bmp_today():
+    # Australian sandbox default. Other installations can configure the business timezone.
+    try:
+        return datetime.now(ZoneInfo(os.getenv("OVICORE_BMP_TIMEZONE", "Australia/Sydney"))).date()
+    except ZoneInfoNotFoundError:
+        raise HTTPException(503, "BMP timezone unavailable; configure OVICORE_BMP_TIMEZONE and timezone data")
+
+
+def validate_bmp_assignment(db, company_id, version_id, production_type="Broilers"):
     if version_id is None:
         return {}
     row = db.query(models.BMPVersion).filter(models.BMPVersion.id == version_id,
-        models.BMPVersion.company_id == company_id, models.BMPVersion.production_type == "Broilers",
+        models.BMPVersion.company_id == company_id, models.BMPVersion.production_type == production_type,
         models.BMPVersion.status == "Approved").with_for_update().first()
-    if not row:
-        raise HTTPException(422, "Select an approved Broiler BMP belonging to this company")
+    if not row or (row.effective_date is not None and row.effective_date > bmp_today()):
+        raise HTTPException(422, "Select an effective, approved BMP for this company and production type")
     return {"bmp_name_at_creation": f"{row.name} · v{row.version}", "bmp_snapshot": {
         "id": row.id, "name": row.name, "version": row.version, "production_type": row.production_type, "tasks": row.tasks,
         "effective_date": row.effective_date.isoformat() if row.effective_date else None,
-        "change_summary": row.change_summary}}
+        "change_summary": row.change_summary, "family_key": row.family_key}}
+
+
+LAYER_BMP_TYPES = {
+    "rearing": (models.LayerRearingFlock, "Commercial Rearing", "layer_rearing"),
+    "commercial": (models.CommercialLayerFlock, "Commercial Layers", "commercial_layers"),
+}
+
+
+def set_layer_bmp(db, user, flock, production_type, version_id, expected_version_id, reason):
+    # Caller serializes programme approval and assignment on the company row.
+    previous = flock.bmp_snapshot
+    previous_id = previous.get("id") if previous else None
+    if previous_id != expected_version_id:
+        raise HTTPException(409, "Flock BMP has changed; reload before assigning")
+    selected = validate_bmp_assignment(db, flock.company_id, version_id, production_type)["bmp_snapshot"]
+    if previous:
+        if selected["id"] == previous_id:
+            raise HTTPException(409, "This version is already assigned")
+        if selected["family_key"] != previous.get("family_key") or selected["version"] <= previous["version"]:
+            raise HTTPException(422, "Only a newer approved version of the assigned programme can replace it")
+    history = list(flock.bmp_assignment_history or [])
+    history.append({"previous": previous, "assigned": selected, "reason": reason,
+                    "user_id": user.id, "user_name": user.full_name,
+                    "assigned_at_utc": datetime.utcnow().isoformat() + "Z"})
+    flock.bmp_snapshot = selected
+    flock.bmp_assignment_history = history
+
+
+def initial_layer_bmp(db, user, flock, production_type, version_id):
+    if version_id is not None:
+        company = bmp_company(db, user, flock.company_id, production_type)
+        farm_type = "layer_rearing" if production_type == "Commercial Rearing" else "commercial_layers"
+        farm = db.query(BroilerFarm).filter(BroilerFarm.id == flock.farm_id,
+            BroilerFarm.company_id == company.id, BroilerFarm.active == True,
+            BroilerFarm.farm_type == farm_type).first()
+        if not farm or not access.user_has_farm_access(db, user, flock.farm_id):
+            raise HTTPException(403, "Access to an active farm of this production type is required")
+        if (flock.status or "").strip().lower() in {"transferred", "depleted", "closed", "cancelled", "canceled"}:
+            raise HTTPException(409, "Completed or cancelled flocks cannot be assigned")
+        db.query(Company).filter(Company.id == company.id).with_for_update().one()
+        set_layer_bmp(db, user, flock, production_type, version_id, None, "Assigned at flock creation")
+
+
+def layer_bmp_target(db, user, company_id, kind, flock_id, lock=False):
+    if kind not in LAYER_BMP_TYPES:
+        raise HTTPException(404, "Unknown flock production type")
+    model, production_type, farm_type = LAYER_BMP_TYPES[kind]
+    company = bmp_company(db, user, company_id, production_type)
+    if lock:
+        db.query(Company).filter(Company.id == company.id).with_for_update().one()
+    query = db.query(model).filter(model.id == flock_id, model.company_id == company.id)
+    flock = (query.with_for_update() if lock else query).first()
+    if not flock:
+        raise HTTPException(404, "Flock not found")
+    if not access.user_has_farm_access(db, user, flock.farm_id):
+        raise HTTPException(403, "Farm access required")
+    farm = db.query(BroilerFarm).filter(BroilerFarm.id == flock.farm_id,
+        BroilerFarm.company_id == company.id, BroilerFarm.active == True,
+        BroilerFarm.farm_type == farm_type).first()
+    if not farm:
+        raise HTTPException(422, "Flock is not on an active farm of the selected production type")
+    return flock, production_type
+
+
+@app.get("/api/bmp/layer-flocks/{kind}/{flock_id}")
+def layer_bmp_options(kind: str, flock_id: int, company_id: int,
+        current_user: models.AppUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    flock, production_type = layer_bmp_target(db, current_user, company_id, kind, flock_id)
+    current = flock.bmp_snapshot
+    today = bmp_today()
+    rows = db.query(models.BMPVersion).filter(models.BMPVersion.company_id == company_id,
+        models.BMPVersion.production_type == production_type, models.BMPVersion.status == "Approved").order_by(
+        models.BMPVersion.name, models.BMPVersion.version.desc()).all()
+    options = [bmp_out(row) for row in rows if (row.effective_date is None or row.effective_date <= today)
+               and (not current or (row.family_key == current.get("family_key") and row.version > current["version"]))]
+    return {"current": current, "history": flock.bmp_assignment_history or [], "options": options,
+            "locked": (flock.status or "").strip().lower() in {"transferred", "depleted", "closed", "cancelled", "canceled"}}
+
+
+@app.post("/api/bmp/layer-flocks/{kind}/{flock_id}")
+def layer_bmp_assign(kind: str, flock_id: int, company_id: int, payload: schemas.LayerBMPAssignmentIn,
+        current_user: models.AppUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    flock, production_type = layer_bmp_target(db, current_user, company_id, kind, flock_id, lock=True)
+    if (flock.status or "").strip().lower() in {"transferred", "depleted", "closed", "cancelled", "canceled"}:
+        raise HTTPException(409, "Completed or cancelled flocks cannot be reassigned")
+    set_layer_bmp(db, current_user, flock, production_type, payload.version_id,
+                  payload.expected_version_id, payload.reason)
+    db.commit()
+    return {"current": flock.bmp_snapshot, "history": flock.bmp_assignment_history}
 
 
 def broiler_programme_options(db, company_id):
@@ -4650,6 +4748,9 @@ def build_layer_rearing_flock_response(
     days_to_transfer = _layer_rearing_days_to_transfer(flock)
 
     return LayerRearingFlockOut(
+        bmp_name=(flock.bmp_snapshot or {}).get("name"),
+        bmp_version=(flock.bmp_snapshot or {}).get("version"),
+        bmp_version_id=(flock.bmp_snapshot or {}).get("id"),
         id=flock.id,
         company_id=flock.company_id,
         farm_id=flock.farm_id,
@@ -4972,6 +5073,7 @@ def create_layer_rearing_flock(
         last_saved_at=datetime.utcnow(),
     )
 
+    initial_layer_bmp(db, current_user, flock, "Commercial Rearing", payload.bmp_version_id)
     db.add(flock)
 
     try:
@@ -6695,6 +6797,9 @@ def _commercial_layer_flock_response(
     )
 
     return CommercialLayerFlockOut(
+        bmp_name=(flock.bmp_snapshot or {}).get("name"),
+        bmp_version=(flock.bmp_snapshot or {}).get("version"),
+        bmp_version_id=(flock.bmp_snapshot or {}).get("id"),
         id=flock.id,
         source_rearing_flock_id=(
             flock.source_rearing_flock_id
@@ -6951,6 +7056,7 @@ def create_commercial_layer_flock(
         last_saved_at=datetime.utcnow(),
     )
 
+    initial_layer_bmp(db, current_user, flock, "Commercial Layers", payload.bmp_version_id)
     db.add(flock)
 
     try:
