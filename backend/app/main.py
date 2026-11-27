@@ -1010,7 +1010,7 @@ def bmp_types(company):
 
 
 def bmp_out(row):
-    return {key: getattr(row, key) for key in ("id", "company_id", "family_key", "version", "production_type", "name", "status", "tasks", "revision", "created_by", "created_at", "approved_by", "approved_at", "archived_by", "archived_at")}
+    return {key: getattr(row, key) for key in ("id", "company_id", "family_key", "version", "production_type", "name", "status", "tasks", "revision", "created_by", "created_at", "approved_by", "approved_at", "archived_by", "archived_at", "effective_date", "change_summary", "superseded_at", "superseded_by_id")}
 
 
 @app.get("/api/bmp/companies")
@@ -1036,7 +1036,8 @@ def bmp_create(company_id: int, payload: schemas.BMPDraftIn, current_user: model
     company = bmp_company(db, current_user, company_id, payload.production_type)
     row = models.BMPVersion(company_id=company.id, family_key=str(uuid.uuid4()), version=1,
         production_type=payload.production_type, name=payload.name, tasks=[t.model_dump() for t in payload.tasks],
-        status="Draft", revision=1, created_by=current_user.full_name)
+        status="Draft", revision=1, created_by=current_user.full_name,
+        effective_date=payload.effective_date, change_summary=payload.change_summary)
     db.add(row); db.commit(); db.refresh(row)
     return bmp_out(row)
 
@@ -1060,6 +1061,7 @@ def bmp_update(version_id: int, company_id: int, payload: schemas.BMPDraftUpdate
     if row.production_type != payload.production_type:
         raise HTTPException(422, "Production type cannot change within a version family")
     row.name = payload.name; row.tasks = [t.model_dump() for t in payload.tasks]; row.revision += 1
+    row.effective_date = payload.effective_date; row.change_summary = payload.change_summary
     db.commit(); db.refresh(row); return bmp_out(row)
 
 
@@ -1071,6 +1073,23 @@ def bmp_action(version_id: int, action: str, company_id: int, revision: int, cur
     if action == "approve" and row.status == "Draft":
         if not row.tasks or any(not task.get("instructions", "").strip() for task in row.tasks):
             raise HTTPException(422, "Approval requires at least one task and instructions for every task")
+        if row.effective_date is None or row.effective_date > date.today():
+            raise HTTPException(422, "Approval requires an effective date on or before today; future versions must remain drafts")
+        if not (row.change_summary or "").strip():
+            raise HTTPException(422, "Approval requires a change summary")
+        if any(not task.get("requires_signoff", True) for task in row.tasks):
+            raise HTTPException(422, "All activities must require operational sign-off")
+        prior = db.query(models.BMPVersion).filter(
+            models.BMPVersion.company_id == company_id,
+            models.BMPVersion.family_key == row.family_key,
+            models.BMPVersion.status == "Approved").all()
+        if any(p.version >= row.version for p in prior):
+            raise HTTPException(409, "A newer version is already approved")
+        for previous in prior:
+            previous.status = "Superseded"
+            previous.superseded_at = datetime.utcnow()
+            previous.superseded_by_id = row.id
+            previous.revision += 1
         row.status = "Approved"; row.approved_by = current_user.full_name; row.approved_at = datetime.utcnow(); row.revision += 1
     elif action == "archive" and row.status in ("Draft", "Approved"):
         row.status = "Archived"; row.archived_by = current_user.full_name; row.archived_at = datetime.utcnow(); row.revision += 1
@@ -1097,7 +1116,9 @@ def validate_bmp_assignment(db, company_id, version_id):
     if not row:
         raise HTTPException(422, "Select an approved Broiler BMP belonging to this company")
     return {"bmp_name_at_creation": f"{row.name} · v{row.version}", "bmp_snapshot": {
-        "id": row.id, "name": row.name, "version": row.version, "production_type": row.production_type, "tasks": row.tasks}}
+        "id": row.id, "name": row.name, "version": row.version, "production_type": row.production_type, "tasks": row.tasks,
+        "effective_date": row.effective_date.isoformat() if row.effective_date else None,
+        "change_summary": row.change_summary}}
 
 
 def broiler_programme_options(db, company_id):

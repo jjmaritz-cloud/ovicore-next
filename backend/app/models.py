@@ -1226,6 +1226,10 @@ class HatcheryChickAvailability(Base):
 
 class BMPVersion(Base):
     __tablename__ = "bmp_versions"
+    effective_date = Column(Date, nullable=True)
+    change_summary = Column(Text, nullable=True)
+    superseded_at = Column(DateTime, nullable=True)
+    superseded_by_id = Column(Integer, ForeignKey("bmp_versions.id"), nullable=True)
     id = Column(Integer, primary_key=True)
     company_id = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
     family_key = Column(String(36), nullable=False)
