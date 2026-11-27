@@ -448,7 +448,6 @@ function CommercialLayerFlockRegisterContent() {
     )[]
   >(
     () => [
-      { field: "bmpName", headerName: "Assigned BMP", minWidth: 210, editable: false },
       {
         headerName: "Flock Identity",
         marryChildren: true,
@@ -550,6 +549,7 @@ function CommercialLayerFlockRegisterContent() {
             editable: false,
             cellClass: "calculated-cell",
           },
+          { field: "bmpName", headerName: "Assigned BMP", minWidth: 210, editable: false },
         ],
       },
       {

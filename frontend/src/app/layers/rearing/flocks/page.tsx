@@ -508,7 +508,6 @@ function LayerRearingFlockRegisterContent() {
     )[]
   >(
     () => [
-      { field: "bmpName", headerName: "Assigned BMP", minWidth: 210, editable: false },
       {
         headerName: "Flock Identity",
         marryChildren: true,
@@ -599,6 +598,7 @@ function LayerRearingFlockRegisterContent() {
             editable: true,
             cellClass: "editable-cell",
           },
+          { field: "bmpName", headerName: "Assigned BMP", minWidth: 210, editable: false },
         ],
       },
       {
