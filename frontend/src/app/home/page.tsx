@@ -293,6 +293,18 @@ type LiveResponse = { today: string; items: LiveActivity[]; issues: {flock_code:
 type LiveCompany = { id: number; company_name: string; active: boolean };
 const statusLabels: Record<NotificationKind, string> = {overdue: "Overdue", today: "Due / in progress", upcoming: "Upcoming", signoff: "Awaiting sign-off"};
 const notificationKind = (item: LiveActivity): Exclude<NotificationKind,"signoff"> => item.display_status === "due" ? "today" : item.display_status;
+// Use the API's operational date, not the browser's local timezone.
+function notificationBannerStatus(live: LiveResponse | null, error: string) {
+  if (!live || error) return { tone: "neutral", dueSoon: 0 };
+  const end = new Date(`${live.today}T00:00:00Z`);
+  end.setUTCDate(end.getUTCDate() + 7);
+  const cutoff = end.toISOString().slice(0, 10);
+  const dueSoon = live.items.filter(item => item.display_status === "due" ||
+    (item.display_status === "upcoming" && item.start_date <= cutoff)).length;
+  const tone = live.items.some(item => item.display_status === "overdue") ? "urgent" :
+    live.issues.length ? "neutral" : dueSoon > 0 ? "warning" : "clear";
+  return { tone, dueSoon };
+}
 const auDate = (value: string) => value.split("-").reverse().join("/");
 async function liveRequest<T>(url: string, method = "GET", body?: object, signal?: AbortSignal): Promise<T> {
   const r = await fetch(url, {method, credentials:"include",cache:"no-store", signal, ...(body ? {headers:{"Content-Type":"application/json"},body:JSON.stringify(body)} : {})});
@@ -412,7 +424,7 @@ function ModuleCardView({
 }
 
 export default function HomePage() {
-  const [notificationsOpen, setNotificationsOpen] = useState(true);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationFilter, setNotificationFilter] = useState<"all" | NotificationKind>("all");
   const [showAllNotifications, setShowAllNotifications] = useState(false);
   const [companies,setCompanies] = useState<LiveCompany[]>([]);
@@ -459,6 +471,7 @@ export default function HomePage() {
   function changeCompany(id:number|null){setLive(null);setError("");setSignError("");setSuccess("");setSelected(null);setCompanyId(id);setLoading(!!id);setNotificationFilter("all");setShowAllNotifications(false);if(id)window.localStorage.setItem("ovicore_selected_company_id",String(id));}
   const notifications=live?.items ?? [];
   const counts={overdue:notifications.filter(x=>x.display_status==="overdue").length,today:notifications.filter(x=>x.display_status==="due").length,upcoming:notifications.filter(x=>x.display_status==="upcoming").length,signoff:notifications.filter(x=>x.display_status!=="upcoming").length};
+  const banner = notificationBannerStatus(live, error);
   const matching=notifications.filter(x=>notificationFilter==="all" || (notificationFilter==="signoff" ? x.display_status!=="upcoming" : notificationKind(x)===notificationFilter));
   const visibleNotifications=showAllNotifications?matching:matching.slice(0,5);
   function review(item:LiveActivity){setSelected(item);setActual(live?.today??"");setComments("");setConfirmed(false);setSignError("");setSuccess("");}
@@ -561,21 +574,21 @@ export default function HomePage() {
         <section className="home-notifications" aria-label="Live notifications and action centre">
           <button
             type="button"
-            className={`home-notification-banner${counts.overdue ? " home-notification-banner-urgent" : ""}`}
+            className={`home-notification-banner home-notification-banner-${banner.tone}`}
             aria-expanded={notificationsOpen}
             aria-controls="home-notification-details"
             onClick={() => setNotificationsOpen((open) => !open)}
           >
             <span className="home-notification-banner-bell"><Bell size={24} aria-hidden="true" /></span>
-            <span className="home-notification-banner-title">{live ? `${notifications.length} Active Notifications` : loading ? "Loading notifications…" : error ? "Notifications unavailable" : companies.length ? "Select a company to view notifications" : "No accessible companies"}</span>
+            <span className="home-notification-banner-title">{live ? `${notifications.length} Active Notifications${live.issues.length ? " · Check required" : ""}` : loading ? "Loading notifications…" : error ? "Notifications unavailable" : companies.length ? "Select a company to view notifications" : "No accessible companies"}</span>
             <span className="home-notification-banner-counts">
               <span>{live ? counts.overdue : "—"} Overdue</span>
-              <span>{live ? counts.today : "—"} Due / in progress</span>
+              <span>{live ? banner.dueSoon : "—"} Due within 7 days</span>
               <span>{live ? counts.upcoming : "—"} Upcoming</span>
               <span>{live ? counts.signoff : "—"} Sign-offs</span>
             </span>
             <span className="home-notification-banner-action">
-              {notificationsOpen ? "Hide notifications" : "View notifications"}
+              {notificationsOpen ? "Hide notifications" : "Show notifications"}
               <ChevronDown size={17} className={notificationsOpen ? "home-notification-chevron-up" : ""} aria-hidden="true" />
             </span>
           </button>
@@ -651,7 +664,7 @@ export default function HomePage() {
                       </div>;
                     })}
                     {matching.length>5 && <button type="button" className="home-notification-show-more" onClick={()=>setShowAllNotifications(v=>!v)}>{showAllNotifications?"Show fewer activities":`Show all ${matching.length} activities`} <ChevronDown size={15}/></button>}
-                    <p className="home-notification-disclaimer">Sign-offs are the due and overdue subset, not additional notifications. Activities refresh automatically while this page is open. Completion records the authenticated account. External escalation delivery is not yet enabled.</p>
+                    <p className="home-notification-disclaimer">Due within 7 days includes activities in progress and upcoming activities starting within the next seven days. Summary counts may overlap. Sign-offs are the due and overdue subset, not additional notifications. Activities refresh automatically while this page is open. Completion records the authenticated account. External escalation delivery is not yet enabled.</p>
                   </div>
                 </div>
               </div>
@@ -847,7 +860,12 @@ export default function HomePage() {
         .home-notification-row-signoff .home-notification-row-due {color:#7240c1;}
         .home-notification-row-signoff .home-notification-row-status {background:#f1e8ff;color:#7240c1;}
         .home-notification-show-more {display:flex;align-items:center;justify-content:center;gap:7px;width:100%;padding:9px;border:0;background:transparent;color:#08735a;font-size:12px;font-weight:850;cursor:pointer;}
-        .home-notification-banner:not(.home-notification-banner-urgent){background:linear-gradient(105deg,#084f41,#087860);border-color:#8ab9a8;box-shadow:none;}
+        .home-notification-banner-clear{background:linear-gradient(105deg,#084f41,#087860);border-color:#8ab9a8;box-shadow:none;}
+        .home-notification-banner-warning{background:linear-gradient(105deg,#984207,#b45309 55%,#a34408);border-color:#e7ac37;box-shadow:0 5px 17px rgba(154,86,29,.16);}
+        .home-notification-banner-neutral{background:linear-gradient(105deg,#43565a,#53696c);border-color:#a1b1b3;box-shadow:none;}
+        .home-notification-banner-clear .home-notification-banner-action{color:#07543f;}
+        .home-notification-banner-warning .home-notification-banner-action{color:#984207;}
+        .home-notification-banner-neutral .home-notification-banner-action{color:#43565a;}
         .home-live-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:10px 5px;color:#174a3d;font-size:12px;}
         .home-live-toolbar label{display:flex;align-items:center;gap:8px;font-weight:800;}
         .home-live-toolbar select,.home-live-signoff input:not([type=checkbox]),.home-live-signoff textarea{border:1px solid #bfd5cc;border-radius:8px;padding:8px 10px;background:#fff;color:#164638;font:inherit;}
