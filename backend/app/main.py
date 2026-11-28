@@ -1154,6 +1154,8 @@ def set_layer_bmp(db, user, flock, production_type, version_id, expected_version
                     "assigned_at_utc": datetime.utcnow().isoformat() + "Z"})
     flock.bmp_snapshot = selected
     flock.bmp_assignment_history = history
+    # Assignment and schedule generation share the same transaction. Draft flocks wait for operational status.
+    bmp_auto_sync(flock, user)
 
 
 def initial_layer_bmp(db, user, flock, production_type, version_id):
@@ -1231,12 +1233,42 @@ def layer_bmp_assign(kind: str, flock_id: int, company_id: int, payload: schemas
 
 
 
+def bmp_lock_lifecycle(db, user, flock, model):
+    db.query(Company).filter(Company.id == flock.company_id).with_for_update().one()
+    locked = db.query(model).filter(model.id == flock.id, model.company_id == flock.company_id).populate_existing().with_for_update(of=model).first()
+    if not locked:
+        raise HTTPException(404, "Flock not found")
+    if not access.user_has_farm_access(db, user, locked.farm_id):
+        raise HTTPException(403, "Farm access required")
+    return locked
+
+
 def bmp_operational_open(flock):
     return (flock.status or "").strip().lower() in {"placed", "growing", "transfer due", "housed", "active", "depletion due"}
 
 
 def bmp_actor(user):
     return {"user_id": user.id, "account_name": user.full_name}
+
+
+def bmp_auto_sync(flock, user):
+    """Safe first activation or version reconciliation; caller holds company/flock locks."""
+    if not bmp_operational_open(flock) or not flock.bmp_snapshot:
+        return False
+    today = bmp_today()
+    if not flock.hatch_date or flock.hatch_date > today:
+        return False
+    state = flock.bmp_activity_state or {}
+    if state.get("version_id") == flock.bmp_snapshot.get("id"):
+        return False
+    try:
+        flock.bmp_activity_state = bmp_ops.activate(
+            flock.bmp_snapshot, flock.hatch_date, today, state,
+            {"account_name": "OviCore automatic scheduling", "triggered_by_user_id": user.id},
+            datetime.utcnow().isoformat() + "Z")
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return True
 
 
 def bmp_activity_response(flock, user):
@@ -1250,7 +1282,7 @@ def bmp_activity_response(flock, user):
             status = "overdue" if record["due_date"] < today else "due" if record["start_date"] <= today else "upcoming"
         records.append({**record, "display_status": status})
     return {"records": records, "today": today, "activated_version_id": state.get("version_id"),
-            "can_activate": bool(version and bmp_operational_open(flock) and (user.is_global_admin or user.is_company_admin) and state.get("version_id") != version),
+            "can_activate": False,
             "can_complete": bmp_operational_open(flock), "version_changed": bool(state and state.get("version_id") != version)}
 
 
@@ -1261,17 +1293,72 @@ def bmp_layer_activities(kind: str, flock_id: int, company_id: int,
     return bmp_activity_response(flock, current_user)
 
 
+@app.post("/api/bmp/layer-activities/{kind}/{flock_id}/sync")
+def bmp_sync_layer(kind: str, flock_id: int, company_id: int,
+        current_user: models.AppUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    flock, _ = layer_bmp_target(db, current_user, company_id, kind, flock_id, lock=True, admin_only=False)
+    bmp_auto_sync(flock, current_user)
+    db.commit()
+    return bmp_activity_response(flock, current_user)
+
+
+@app.post("/api/bmp/action-centre")
+def bmp_action_centre(company_id: int,
+        current_user: models.AppUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    # Explicit tenant context, including for global administrators. Never return cross-company tasks.
+    if not current_user.is_global_admin and current_user.company_id != company_id:
+        raise HTTPException(403, "Company access required")
+    company = db.query(Company).filter(Company.id == company_id, Company.active == True).with_for_update().first()
+    if not company:
+        raise HTTPException(404, "Company unavailable")
+    today = bmp_today().isoformat()
+    items, issues = [], []
+    for kind, (model, production_type, farm_type) in LAYER_BMP_TYPES.items():
+        if not getattr(company, BMP_MODULES[production_type], False):
+            continue
+        farms = db.query(BroilerFarm).filter(BroilerFarm.company_id == company_id,
+            BroilerFarm.active == True, BroilerFarm.farm_type == farm_type).all()
+        allowed = {farm.id: farm.farm_name for farm in farms
+                   if access.user_has_farm_access(db, current_user, farm.id)}
+        if not allowed:
+            continue
+        sheds = {shed.id: shed.shed_name for shed in db.query(models.BroilerShed).filter(
+            models.BroilerShed.company_id == company_id, models.BroilerShed.farm_id.in_(list(allowed))).all()}
+        flocks = db.query(model).filter(model.company_id == company_id,
+            model.farm_id.in_(list(allowed))).order_by(model.id).with_for_update(of=model).all()
+        for flock in flocks:
+            if not bmp_operational_open(flock) or not flock.bmp_snapshot:
+                continue
+            try:
+                bmp_auto_sync(flock, current_user)
+            except HTTPException as exc:
+                if exc.status_code != 422:
+                    raise
+                issues.append({"flock_code": flock.flock_code, "message": "Programme schedule needs administrator review"})
+            state = flock.bmp_activity_state or {}
+            if state.get("version_id") != flock.bmp_snapshot.get("id"):
+                if not any(i["flock_code"] == flock.flock_code for i in issues):
+                    issues.append({"flock_code": flock.flock_code, "message": "Valid hatch date or schedule required"})
+            for record in bmp_activity_response(flock, current_user)["records"]:
+                if record["display_status"] not in ("due", "overdue", "upcoming"):
+                    continue
+                items.append({**record, "company_id": company_id, "flock_id": flock.id,
+                    "flock_code": flock.flock_code, "kind": kind, "production_type": production_type,
+                    "farm_name": allowed[flock.farm_id], "shed_name": sheds.get(flock.shed_id, "Shed unavailable")})
+    db.commit()
+    items.sort(key=lambda r: (r["due_date"], r["start_date"], r["id"]))
+    return {"today": today, "items": items, "issues": issues}
+
+
 @app.post("/api/bmp/layer-activities/{kind}/{flock_id}/activate")
 def bmp_activate_layer(kind: str, flock_id: int, company_id: int, payload: schemas.BMPActivityActivationIn,
         current_user: models.AppUser = Depends(get_current_user), db: Session = Depends(get_db)):
     flock, _ = layer_bmp_target(db, current_user, company_id, kind, flock_id, lock=True)
     if not bmp_operational_open(flock) or not flock.bmp_snapshot or flock.bmp_snapshot.get("id") != payload.version_id:
         raise HTTPException(409, "Active flock and current BMP version required; reload")
-    try:
-        flock.bmp_activity_state = bmp_ops.activate(flock.bmp_snapshot, flock.hatch_date, bmp_today(),
-            flock.bmp_activity_state, bmp_actor(current_user), datetime.utcnow().isoformat() + "Z")
-    except ValueError as exc:
-        raise HTTPException(422, str(exc)) from exc
+    bmp_auto_sync(flock, current_user)
+    if (flock.bmp_activity_state or {}).get("version_id") != payload.version_id:
+        raise HTTPException(422, "Valid hatch date required")
     db.commit()
     return bmp_activity_response(flock, current_user)
 
@@ -1282,6 +1369,7 @@ def bmp_complete_layer(kind: str, flock_id: int, company_id: int, payload: schem
     flock, _ = layer_bmp_target(db, current_user, company_id, kind, flock_id, lock=True, admin_only=False)
     if not bmp_operational_open(flock) or not payload.confirmed:
         raise HTTPException(409, "Active flock and explicit completion confirmation required")
+    bmp_auto_sync(flock, current_user)
     try:
         flock.bmp_activity_state = bmp_ops.complete(flock.bmp_activity_state, payload.activity_id,
             payload.actual_date, bmp_today(), bmp_actor(current_user), datetime.utcnow().isoformat() + "Z", payload.comments)
@@ -5309,6 +5397,8 @@ def update_layer_rearing_flock(
             detail="You do not have access to this rearing farm",
         )
 
+    flock = bmp_lock_lifecycle(db, current_user, flock, models.LayerRearingFlock)
+
     data = payload.model_dump(exclude_unset=True)
 
     if flock.bmp_activity_state and "hatch_date" in data and data["hatch_date"] != flock.hatch_date:
@@ -5413,6 +5503,8 @@ def update_layer_rearing_flock(
     for field, value in data.items():
         setattr(flock, field, value)
 
+    bmp_auto_sync(flock, current_user)
+
     flock.last_saved_by = current_user.full_name
     flock.last_saved_at = datetime.utcnow()
 
@@ -5465,6 +5557,8 @@ def delete_layer_rearing_flock(
             status_code=403,
             detail="You do not have access to this rearing farm",
         )
+
+    flock = bmp_lock_lifecycle(db, current_user, flock, models.LayerRearingFlock)
 
     if (flock.status or "").strip().lower() not in {
         "draft",
@@ -7200,6 +7294,8 @@ def update_commercial_layer_flock(
             ),
         )
 
+    flock = bmp_lock_lifecycle(db, current_user, flock, models.CommercialLayerFlock)
+
     data = payload.model_dump(
         exclude_unset=True
     )
@@ -7286,6 +7382,8 @@ def update_commercial_layer_flock(
     for field, value in data.items():
         setattr(flock, field, value)
 
+    bmp_auto_sync(flock, current_user)
+
     flock.last_saved_by = current_user.full_name
     flock.last_saved_at = datetime.utcnow()
 
@@ -7358,6 +7456,8 @@ def delete_commercial_layer_flock(
                 "Commercial Layers farm."
             ),
         )
+
+    flock = bmp_lock_lifecycle(db, current_user, flock, models.CommercialLayerFlock)
 
     if flock.source_rearing_flock_id is not None:
         raise HTTPException(
@@ -8097,6 +8197,8 @@ def transfer_layer_rearing_flock(
             status_code=403,
             detail="You do not have access to this Commercial Rearing farm",
         )
+
+    flock = bmp_lock_lifecycle(db, current_user, flock, models.LayerRearingFlock)
 
     if (flock.status or "").strip().lower() == "transferred":
         raise HTTPException(

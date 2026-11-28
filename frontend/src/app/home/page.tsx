@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   Bird,
@@ -287,32 +287,18 @@ const modules: ModuleCard[] = [
   },
 ];
 
-type DemoNotificationKind = "overdue" | "today" | "upcoming" | "signoff";
-type DemoNotification = {
-  id: string;
-  title: string;
-  location: string;
-  due: string;
-  kind: DemoNotificationKind;
-  icon: LucideIcon;
-};
-
-// Demo-only information: no real flock records, tasks, notifications, or approvals.
-const demoNotifications: DemoNotification[] = [
-  { id: "nd", title: "ND vaccination overdue", location: "Commercial Rearing · Example Farm / Shed 3", due: "2 days overdue", kind: "overdue", icon: Syringe },
-  { id: "house", title: "House preparation checklist overdue", location: "Breeder Rearing · Example Farm / Shed 1", due: "1 day overdue", kind: "overdue", icon: ClipboardCheck },
-  { id: "ib", title: "IB vaccination due today", location: "Commercial Rearing · Example Farm / Shed 5", due: "Due today", kind: "today", icon: Syringe },
-  { id: "review", title: "Feed transition review", location: "Commercial Layers · Example Farm / Shed 2", due: "Due today", kind: "today", icon: Wheat },
-  { id: "qc", title: "Flock quality-control checklist", location: "Breeder Production · Example Farm / Shed 4", due: "Due today", kind: "today", icon: ClipboardCheck },
-  { id: "lights", title: "Lighting program adjustment", location: "Commercial Layers · Example Farm / Shed 4", due: "Due tomorrow", kind: "upcoming", icon: Sun },
-  { id: "feed", title: "Next ration transition review", location: "Commercial Layers · Example Farm / Shed 6", due: "Due in 3 days", kind: "upcoming", icon: Wheat },
-  { id: "vacc-sign", title: "Vaccination verification required", location: "Breeder Rearing · Example Farm / Shed 1", due: "Awaiting sign-off", kind: "signoff", icon: CheckCircle2 },
-  { id: "treat-sign", title: "Treatment record verification", location: "Commercial Rearing · Example Farm / Shed 2", due: "Awaiting sign-off", kind: "signoff", icon: ClipboardCheck },
-];
-
-const demoStatusLabels: Record<DemoNotificationKind, string> = {
-  overdue: "Overdue", today: "Due today", upcoming: "Upcoming", signoff: "Sign-off",
-};
+type NotificationKind = "overdue" | "today" | "upcoming" | "signoff";
+type LiveActivity = { id: string; title: string; category: string; instructions: string; responsible: string; version: number; start_date: string; due_date: string; display_status: "overdue" | "due" | "upcoming"; company_id: number; flock_id: number; flock_code: string; kind: "rearing" | "commercial"; production_type: string; farm_name: string; shed_name: string };
+type LiveResponse = { today: string; items: LiveActivity[]; issues: {flock_code: string; message: string}[] };
+type LiveCompany = { id: number; company_name: string; active: boolean };
+const statusLabels: Record<NotificationKind, string> = {overdue: "Overdue", today: "Due / in progress", upcoming: "Upcoming", signoff: "Awaiting sign-off"};
+const notificationKind = (item: LiveActivity): Exclude<NotificationKind,"signoff"> => item.display_status === "due" ? "today" : item.display_status;
+const auDate = (value: string) => value.split("-").reverse().join("/");
+async function liveRequest<T>(url: string, method = "GET", body?: object, signal?: AbortSignal): Promise<T> {
+  const r = await fetch(url, {method, credentials:"include",cache:"no-store", signal, ...(body ? {headers:{"Content-Type":"application/json"},body:JSON.stringify(body)} : {})});
+  if (!r.ok) {const error = await r.json().catch(()=>null);throw new Error(r.status===401 ? "Your session expired. Sign in again to load activities." : typeof error?.detail==="string" ? error.detail : `Request failed (${r.status})`);}
+  return r.json();
+}
 
 const groupOrder: ModuleGroup[] = [
   "Egg Production",
@@ -426,18 +412,62 @@ function ModuleCardView({
 }
 
 export default function HomePage() {
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [notificationFilter, setNotificationFilter] = useState<"all" | DemoNotificationKind>("all");
-  const [showAllDemoNotifications, setShowAllDemoNotifications] = useState(false);
-  const demoCounts = {
-    overdue: demoNotifications.filter((item) => item.kind === "overdue").length,
-    today: demoNotifications.filter((item) => item.kind === "today").length,
-    upcoming: demoNotifications.filter((item) => item.kind === "upcoming").length,
-    signoff: demoNotifications.filter((item) => item.kind === "signoff").length,
-  };
-  const visibleDemoNotifications = demoNotifications
-    .filter((item) => notificationFilter === "all" || item.kind === notificationFilter)
-    .slice(0, notificationFilter === "all" && !showAllDemoNotifications ? 5 : undefined);
+  const [notificationsOpen, setNotificationsOpen] = useState(true);
+  const [notificationFilter, setNotificationFilter] = useState<"all" | NotificationKind>("all");
+  const [showAllNotifications, setShowAllNotifications] = useState(false);
+  const [companies,setCompanies] = useState<LiveCompany[]>([]);
+  const [companyId,setCompanyId] = useState<number|null>(null);
+  const [live,setLive] = useState<LiveResponse|null>(null);
+  const [error,setError] = useState("");
+  const [refresh,setRefresh] = useState(0);
+  const [loading,setLoading] = useState(true);
+  const [selected,setSelected] = useState<LiveActivity|null>(null);
+  const [actual,setActual] = useState("");
+  const [comments,setComments] = useState("");
+  const [confirmed,setConfirmed] = useState(false);
+  const [saving,setSaving] = useState(false);
+  const [signError,setSignError] = useState("");
+  const [success,setSuccess] = useState("");
+  useEffect(()=>{if(selected)document.getElementById("home-live-signoff")?.scrollIntoView({behavior:"smooth",block:"nearest"});},[selected]);
+  useEffect(()=>{
+    const controller = new AbortController();
+    liveRequest<LiveCompany[]>("/api/access/companies","GET",undefined,controller.signal).then(rows=>{
+      if(controller.signal.aborted)return;
+      const active=rows.filter(c=>c.active);setCompanies(active);
+      const requested=Number(new URLSearchParams(window.location.search).get("company_id"));
+      const preferred=Number(window.localStorage.getItem("ovicore_selected_company_id"));
+      setCompanyId(active.find(c=>c.id===requested)?.id ?? active.find(c=>c.id===preferred)?.id ?? (active.length===1 ? active[0].id : null));
+    }).catch(e=>{if(!controller.signal.aborted)setError(e.message);}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});
+    return ()=>controller.abort();
+  },[]);
+  useEffect(()=>{
+    if(!companyId)return;
+    const controller=new AbortController();
+    let pending=false;
+    async function load(){
+      if(pending || controller.signal.aborted)return;
+      pending=true;
+      try {const result=await liveRequest<LiveResponse>(`/api/bmp/action-centre?company_id=${companyId}`,"POST",undefined,controller.signal);if(!controller.signal.aborted){setLive(result);setError("");}}
+      catch(e){if(!controller.signal.aborted){setLive(null);setSelected(null);setError(e instanceof Error?e.message:"Could not load activities");}}
+      finally{pending=false;if(!controller.signal.aborted)setLoading(false);}
+    }
+    setLoading(true);void load();
+    const interval=window.setInterval(()=>{if(document.visibilityState==="visible")void load();},60000);
+    const focus=()=>void load();window.addEventListener("focus",focus);
+    return ()=>{controller.abort();window.clearInterval(interval);window.removeEventListener("focus",focus);};
+  },[companyId,refresh]);
+  function changeCompany(id:number|null){setLive(null);setError("");setSignError("");setSuccess("");setSelected(null);setCompanyId(id);setLoading(!!id);setNotificationFilter("all");setShowAllNotifications(false);if(id)window.localStorage.setItem("ovicore_selected_company_id",String(id));}
+  const notifications=live?.items ?? [];
+  const counts={overdue:notifications.filter(x=>x.display_status==="overdue").length,today:notifications.filter(x=>x.display_status==="due").length,upcoming:notifications.filter(x=>x.display_status==="upcoming").length,signoff:notifications.filter(x=>x.display_status!=="upcoming").length};
+  const matching=notifications.filter(x=>notificationFilter==="all" || (notificationFilter==="signoff" ? x.display_status!=="upcoming" : notificationKind(x)===notificationFilter));
+  const visibleNotifications=showAllNotifications?matching:matching.slice(0,5);
+  function review(item:LiveActivity){setSelected(item);setActual(live?.today??"");setComments("");setConfirmed(false);setSignError("");setSuccess("");}
+  async function signOff(){
+    if(!selected||!live||saving||!confirmed||actual<selected.start_date||actual>live.today||selected.company_id!==companyId)return;
+    setSaving(true);setSignError("");
+    try{await liveRequest(`/api/bmp/layer-activities/${selected.kind}/${selected.flock_id}/complete?company_id=${selected.company_id}`,"POST",{activity_id:selected.id,actual_date:actual,comments,confirmed:true});setLive(old=>old?{...old,items:old.items.filter(x=>x.id!==selected.id)}:old);setSuccess(`${selected.title} signed off.`);setSelected(null);setRefresh(v=>v+1);}
+    catch(e){setSignError(e instanceof Error?e.message:"Sign-off failed");}finally{setSaving(false);}
+  }
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] =
     useState<FilterKey>("All");
@@ -528,21 +558,21 @@ export default function HomePage() {
           ))}
         </nav>
 
-        <section className="home-notifications" aria-label="Demo notifications and action centre">
+        <section className="home-notifications" aria-label="Live notifications and action centre">
           <button
             type="button"
-            className={`home-notification-banner${demoCounts.overdue ? " home-notification-banner-urgent" : ""}`}
+            className={`home-notification-banner${counts.overdue ? " home-notification-banner-urgent" : ""}`}
             aria-expanded={notificationsOpen}
             aria-controls="home-notification-details"
             onClick={() => setNotificationsOpen((open) => !open)}
           >
             <span className="home-notification-banner-bell"><Bell size={24} aria-hidden="true" /></span>
-            <span className="home-notification-banner-title">{demoNotifications.length} Active Notifications <span className="home-notification-demo-label">DEMO</span></span>
+            <span className="home-notification-banner-title">{live ? `${notifications.length} Active Notifications` : loading ? "Loading notifications…" : error ? "Notifications unavailable" : companies.length ? "Select a company to view notifications" : "No accessible companies"}</span>
             <span className="home-notification-banner-counts">
-              <span>{demoCounts.overdue} Overdue</span>
-              <span>{demoCounts.today} Due today</span>
-              <span>{demoCounts.upcoming} Upcoming</span>
-              <span>{demoCounts.signoff} Sign-offs</span>
+              <span>{live ? counts.overdue : "—"} Overdue</span>
+              <span>{live ? counts.today : "—"} Due / in progress</span>
+              <span>{live ? counts.upcoming : "—"} Upcoming</span>
+              <span>{live ? counts.signoff : "—"} Sign-offs</span>
             </span>
             <span className="home-notification-banner-action">
               {notificationsOpen ? "Hide notifications" : "View notifications"}
@@ -560,17 +590,29 @@ export default function HomePage() {
                   <div className="home-notification-frame-heading">
                     <span className="home-notification-frame-icon"><Bell size={23} aria-hidden="true" /></span>
                     <div>
-                      <h2>Notifications &amp; Action Centre <span className="home-notification-demo-heading">Demo</span></h2>
-                      <p>Upcoming tasks, overdue activities and approvals across your flocks.</p>
+                      <h2>Notifications &amp; Action Centre</h2>
+                      <p>Live scheduled activities for your authorised farms.</p>
                     </div>
                   </div>
-                  <span className="home-notification-frame-caption">Illustrative examples only — no live BMP tasks</span>
+                  <span className="home-notification-frame-caption">Commercial Layers & Rearing</span>
                 </header>
+                <div className="home-live-toolbar"><label>Working company <select value={companyId??""} disabled={saving} onChange={e=>changeCompany(e.target.value?Number(e.target.value):null)}><option value="">Select company</option>{companies.map(c=><option key={c.id} value={c.id}>{c.company_name}</option>)}</select></label><button type="button" disabled={!companyId||saving} onClick={()=>setRefresh(v=>v+1)}>Refresh activities</button></div>
+                {error && <p className="home-live-error" role="alert">{error}</p>}
+                {success && <p className="home-live-success" role="status">{success}</p>}
+                {live?.issues.map((issue,i)=><p className="home-live-error" key={i}>{issue.flock_code}: {issue.message}</p>)}
+                {selected && <section id="home-live-signoff" className="home-live-signoff" aria-label="Activity sign-off">
+                  <h3>{selected.title}</h3><p>{selected.farm_name} / {selected.shed_name} · {selected.flock_code} · BMP v{selected.version}</p><p>{selected.instructions}</p><p>Scheduled: {auDate(selected.start_date)}{selected.start_date!==selected.due_date?` – ${auDate(selected.due_date)}`:""}</p>
+                  {signError && <p className="home-live-error" role="alert">{signError}</p>}
+                  <label>Actual completion date<input type="date" value={actual} min={selected.start_date} max={live?.today} disabled={saving} onChange={e=>setActual(e.target.value)}/></label>
+                  <label>Comments / actual results<textarea value={comments} maxLength={4000} rows={3} disabled={saving} onChange={e=>setComments(e.target.value)}/></label>
+                  <label className="home-live-confirm"><input type="checkbox" checked={confirmed} disabled={saving} onChange={e=>setConfirmed(e.target.checked)}/> I confirm this activity has been completed.</label>
+                  <div className="home-live-row-actions"><button type="button" disabled={saving||!live||!confirmed||!actual||actual<selected.start_date||actual>live.today} onClick={()=>void signOff()}>{saving?"Saving…":"Complete and sign off"}</button><button type="button" disabled={saving} onClick={()=>setSelected(null)}>Cancel</button></div>
+                </section>}
                 <div className="home-notification-frame-body">
-                  <div className="home-notification-summary" aria-label="Filter demo notifications">
+                  <div className="home-notification-summary" aria-label="Filter live notifications">
                     {([
                       { key: "overdue", label: "Overdue", icon: AlertTriangle },
-                      { key: "today", label: "Due today", icon: CalendarDays },
+                      { key: "today", label: "Due / in progress", icon: CalendarDays },
                       { key: "upcoming", label: "Upcoming", icon: Clock3 },
                       { key: "signoff", label: "Sign-offs", icon: CheckCircle2 },
                     ] as const).map(({ key, label, icon: Icon }) => (
@@ -579,9 +621,9 @@ export default function HomePage() {
                         key={key}
                         className={`home-notification-stat home-notification-stat-${key}${notificationFilter === key ? " is-selected" : ""}`}
                         aria-pressed={notificationFilter === key}
-                        onClick={() => { setNotificationFilter((current) => current === key ? "all" : key); setShowAllDemoNotifications(false); }}
+                        onClick={() => { setNotificationFilter((current) => current === key ? "all" : key); setShowAllNotifications(false); }}
                       >
-                        <strong>{demoCounts[key]}</strong>
+                        <strong>{live ? counts[key] : "—"}</strong>
                         <Icon size={20} aria-hidden="true" />
                         <span>{label}</span>
                       </button>
@@ -589,32 +631,27 @@ export default function HomePage() {
                   </div>
                   <div className="home-notification-list">
                     <div className="home-notification-list-heading">
-                      <strong>{notificationFilter === "all" ? "All example notifications" : demoStatusLabels[notificationFilter]}</strong>
+                      <strong>{notificationFilter === "all" ? "All active activities" : statusLabels[notificationFilter]}</strong>
                       {notificationFilter !== "all" && <button type="button" onClick={() => setNotificationFilter("all")}>Show all categories</button>}
                     </div>
-                    {visibleDemoNotifications.map((item) => {
-                      const Icon = item.icon;
-                      return (
-                        <div className={`home-notification-row home-notification-row-${item.kind}`} key={item.id}>
-                          <span className="home-notification-row-icon"><Icon size={17} aria-hidden="true" /></span>
-                          <strong>{item.title}</strong>
-                          <span className="home-notification-row-location">{item.location}</span>
-                          <span className="home-notification-row-due">{item.due}</span>
-                          <span className="home-notification-row-status">{demoStatusLabels[item.kind]}</span>
+                    {!live && !error && <p className="home-notification-disclaimer">{loading ? "Loading authorised activities…" : "Select a company to view its activities."}</p>}
+                    {live && !matching.length && <p className="home-live-success">No activities in this view.</p>}
+                    {visibleNotifications.map(item=>{
+                      const kind=notificationKind(item);
+                      const Icon=item.category==="vaccination"?Syringe:item.category==="lighting"?Sun:item.category==="nutrition"?Wheat:ClipboardCheck;
+                      return <div key={item.id}>
+                        <div className={`home-notification-row home-notification-row-${kind}`}>
+                          <span className="home-notification-row-icon"><Icon size={17} aria-hidden="true"/></span>
+                          <strong>{item.title}<small className="home-live-meta">BMP v{item.version} · {item.flock_code}</small></strong>
+                          <span className="home-notification-row-location">{item.farm_name} / {item.shed_name}<small className="home-live-meta">{item.production_type}</small></span>
+                          <span className="home-notification-row-due">{auDate(item.due_date)}</span>
+                          <span className="home-notification-row-status">{kind==="today" && item.due_date===live?.today ? "Due today" : statusLabels[kind]}</span>
                         </div>
-                      );
+                        <div className="home-live-row-actions">{item.display_status!=="upcoming" && <button type="button" disabled={saving} onClick={()=>review(item)}>Sign off</button>}<Link href={`/layers/${item.kind}/flocks?company_id=${item.company_id}`}>Flock register</Link></div>
+                      </div>;
                     })}
-                    {notificationFilter === "all" && !showAllDemoNotifications && (
-                      <button type="button" className="home-notification-show-more" onClick={() => setShowAllDemoNotifications(true)}>
-                        Show all {demoNotifications.length} demo notifications <ChevronDown size={15} aria-hidden="true" />
-                      </button>
-                    )}
-                    {notificationFilter === "all" && showAllDemoNotifications && (
-                      <button type="button" className="home-notification-show-more" onClick={() => setShowAllDemoNotifications(false)}>
-                        Show fewer notifications
-                      </button>
-                    )}
-                    <p className="home-notification-disclaimer">Demo data only. These are not live tasks, vaccination records, alerts or approvals. Actions and sign-off will be connected when BMP management is implemented.</p>
+                    {matching.length>5 && <button type="button" className="home-notification-show-more" onClick={()=>setShowAllNotifications(v=>!v)}>{showAllNotifications?"Show fewer activities":`Show all ${matching.length} activities`} <ChevronDown size={15}/></button>}
+                    <p className="home-notification-disclaimer">Sign-offs are the due and overdue subset, not additional notifications. Activities refresh automatically while this page is open. Completion records the authenticated account. External escalation delivery is not yet enabled.</p>
                   </div>
                 </div>
               </div>
@@ -810,6 +847,18 @@ export default function HomePage() {
         .home-notification-row-signoff .home-notification-row-due {color:#7240c1;}
         .home-notification-row-signoff .home-notification-row-status {background:#f1e8ff;color:#7240c1;}
         .home-notification-show-more {display:flex;align-items:center;justify-content:center;gap:7px;width:100%;padding:9px;border:0;background:transparent;color:#08735a;font-size:12px;font-weight:850;cursor:pointer;}
+        .home-notification-banner:not(.home-notification-banner-urgent){background:linear-gradient(105deg,#084f41,#087860);border-color:#8ab9a8;box-shadow:none;}
+        .home-live-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:10px 5px;color:#174a3d;font-size:12px;}
+        .home-live-toolbar label{display:flex;align-items:center;gap:8px;font-weight:800;}
+        .home-live-toolbar select,.home-live-signoff input:not([type=checkbox]),.home-live-signoff textarea{border:1px solid #bfd5cc;border-radius:8px;padding:8px 10px;background:#fff;color:#164638;font:inherit;}
+        .home-live-toolbar button,.home-live-row-actions button{border:1px solid #b6d1c5;border-radius:8px;background:#07543f;color:white;padding:7px 12px;font-size:12px;font-weight:800;cursor:pointer;}
+        .home-live-toolbar button:disabled,.home-live-row-actions button:disabled{opacity:.45;cursor:not-allowed;}
+        .home-live-meta{display:block;font-size:10px;font-weight:400;color:#60756d;margin-top:3px;}
+        .home-live-row-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:5px 8px 9px;font-size:11px;}
+        .home-live-row-actions a{color:#07543f;font-weight:700;text-decoration:underline;}
+        .home-live-signoff{border:1px solid #bfd5cc;border-radius:12px;padding:14px;margin:6px 5px 12px;background:#fff;color:#153d33;display:grid;gap:9px;font-size:12px;}
+        .home-live-signoff h3{font-size:16px;margin:0;}.home-live-signoff p{margin:0;}.home-live-signoff label{display:grid;gap:4px;font-weight:700;}.home-live-signoff .home-live-confirm{display:flex;align-items:center;gap:6px;}.home-live-signoff textarea{width:100%;resize:vertical;}
+        .home-live-error,.home-live-success{margin:6px 5px;padding:10px;border-radius:8px;font-size:12px;background:#fce8e8;color:#9d2525;}.home-live-success{background:#e5f2e9;color:#16593f;}
         .home-notification-disclaimer {margin:8px 5px 0;font-size:10px;color:#6f7980;}
         @media (max-width:950px) { .home-notification-banner {flex-wrap:wrap;gap:10px;} .home-notification-banner-counts{order:3;width:100%;padding-left:47px;} .home-notification-frame-body{grid-template-columns:1fr;} .home-notification-row{grid-template-columns:28px minmax(120px,1fr) 84px;} .home-notification-row-location{grid-column:2 / 3;} .home-notification-row-due{grid-column:3;grid-row:1;} .home-notification-row-status{grid-column:3;grid-row:2;} }
         @media (max-width:600px) { .home-notifications{margin:10px 0;} .home-notification-banner{padding:11px;} .home-notification-banner-bell{flex-basis:34px;width:34px;height:34px;} .home-notification-banner-title{font-size:15px;} .home-notification-banner-action{margin-left:0;padding:8px;font-size:11px;} .home-notification-banner-counts{padding-left:0;font-size:10px;} .home-notification-banner-counts span{padding:0 8px 0 0;border-left:0;} .home-notification-frame{padding:12px;} .home-notification-frame-heading h2{font-size:16px;} .home-notification-frame-caption{display:none;} .home-notification-summary{gap:7px;} .home-notification-stat{min-height:69px;} }
