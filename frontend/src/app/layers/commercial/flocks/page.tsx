@@ -549,7 +549,7 @@ function CommercialLayerFlockRegisterContent() {
             editable: false,
             cellClass: "calculated-cell",
           },
-          { field: "bmpName", headerName: "Assigned BMP", minWidth: 210, editable: false },
+          { field: "bmpName", headerName: "Assigned BMP", pinned: "left", minWidth: 210, editable: false },
         ],
       },
       {
@@ -1071,10 +1071,10 @@ function CommercialLayerFlockRegisterContent() {
               New layer flock
             </button>
 
-            {(currentUser?.is_global_admin || currentUser?.is_company_admin) && <button
+            {currentUser && <button
               type="button" className="ovicore-btn" disabled={saving || dirtyCount > 0}
               onClick={() => { const row = gridRef.current?.api.getSelectedRows()[0]; if (!row) { alert("Select a flock first."); return; } setBmpTarget(row); }}>
-              Assign / review BMP
+              {currentUser?.is_global_admin || currentUser?.is_company_admin ? "Assign / review BMP" : "BMP activities"}
             </button>}
             <button
               type="button"

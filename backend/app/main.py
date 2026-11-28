@@ -29,7 +29,7 @@ from app.routers import flock_purge
 from app.routers import company_deletion
 from app.routers import daily_data_import
 from app.routers.standards import PerformanceStandard
-from app import models, schemas
+from app import models, schemas, bmp_activities as bmp_ops
 from app import grading_models
 from app.routers import egg_storage
 from app.routers import ai_intelligence
@@ -1171,11 +1171,18 @@ def initial_layer_bmp(db, user, flock, production_type, version_id):
         set_layer_bmp(db, user, flock, production_type, version_id, None, "Assigned at flock creation")
 
 
-def layer_bmp_target(db, user, company_id, kind, flock_id, lock=False):
+def layer_bmp_target(db, user, company_id, kind, flock_id, lock=False, admin_only=True):
     if kind not in LAYER_BMP_TYPES:
         raise HTTPException(404, "Unknown flock production type")
     model, production_type, farm_type = LAYER_BMP_TYPES[kind]
-    company = bmp_company(db, user, company_id, production_type)
+    if admin_only:
+        company = bmp_company(db, user, company_id, production_type)
+    else:
+        if not user.is_global_admin and user.company_id != company_id:
+            raise HTTPException(403, "Company access required")
+        company = db.query(Company).filter(Company.id == company_id, Company.active == True).first()
+        if not company or not getattr(company, BMP_MODULES[production_type], False):
+            raise HTTPException(403, "Company or production module unavailable")
     if lock:
         db.query(Company).filter(Company.id == company.id).with_for_update().one()
     query = db.query(model).filter(model.id == flock_id, model.company_id == company.id)
@@ -1195,8 +1202,11 @@ def layer_bmp_target(db, user, company_id, kind, flock_id, lock=False):
 @app.get("/api/bmp/layer-flocks/{kind}/{flock_id}")
 def layer_bmp_options(kind: str, flock_id: int, company_id: int,
         current_user: models.AppUser = Depends(get_current_user), db: Session = Depends(get_db)):
-    flock, production_type = layer_bmp_target(db, current_user, company_id, kind, flock_id)
+    flock, production_type = layer_bmp_target(db, current_user, company_id, kind, flock_id, admin_only=False)
     current = flock.bmp_snapshot
+    if not (current_user.is_global_admin or current_user.is_company_admin):
+        return {"current": current, "history": [], "options": [], "locked": True, "can_manage": False}
+
     today = bmp_today()
     rows = db.query(models.BMPVersion).filter(models.BMPVersion.company_id == company_id,
         models.BMPVersion.production_type == production_type, models.BMPVersion.status == "Approved").order_by(
@@ -1204,7 +1214,7 @@ def layer_bmp_options(kind: str, flock_id: int, company_id: int,
     options = [bmp_out(row) for row in rows if (row.effective_date is None or row.effective_date <= today)
                and (not current or (row.family_key == current.get("family_key") and row.version > current["version"]))]
     return {"current": current, "history": flock.bmp_assignment_history or [], "options": options,
-            "locked": (flock.status or "").strip().lower() in {"transferred", "depleted", "closed", "cancelled", "canceled"}}
+            "can_manage": True, "locked": (flock.status or "").strip().lower() in {"transferred", "depleted", "closed", "cancelled", "canceled"}}
 
 
 @app.post("/api/bmp/layer-flocks/{kind}/{flock_id}")
@@ -1217,6 +1227,68 @@ def layer_bmp_assign(kind: str, flock_id: int, company_id: int, payload: schemas
                   payload.expected_version_id, payload.reason)
     db.commit()
     return {"current": flock.bmp_snapshot, "history": flock.bmp_assignment_history}
+
+
+
+
+def bmp_operational_open(flock):
+    return (flock.status or "").strip().lower() in {"placed", "growing", "transfer due", "housed", "active", "depletion due"}
+
+
+def bmp_actor(user):
+    return {"user_id": user.id, "account_name": user.full_name}
+
+
+def bmp_activity_response(flock, user):
+    state = flock.bmp_activity_state or {}
+    today = bmp_today().isoformat()
+    version = (flock.bmp_snapshot or {}).get("id")
+    records = []
+    for record in state.get("records", []):
+        status = record["status"]
+        if status == "pending":
+            status = "overdue" if record["due_date"] < today else "due" if record["start_date"] <= today else "upcoming"
+        records.append({**record, "display_status": status})
+    return {"records": records, "today": today, "activated_version_id": state.get("version_id"),
+            "can_activate": bool(version and bmp_operational_open(flock) and (user.is_global_admin or user.is_company_admin) and state.get("version_id") != version),
+            "can_complete": bmp_operational_open(flock), "version_changed": bool(state and state.get("version_id") != version)}
+
+
+@app.get("/api/bmp/layer-activities/{kind}/{flock_id}")
+def bmp_layer_activities(kind: str, flock_id: int, company_id: int,
+        current_user: models.AppUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    flock, _ = layer_bmp_target(db, current_user, company_id, kind, flock_id, admin_only=False)
+    return bmp_activity_response(flock, current_user)
+
+
+@app.post("/api/bmp/layer-activities/{kind}/{flock_id}/activate")
+def bmp_activate_layer(kind: str, flock_id: int, company_id: int, payload: schemas.BMPActivityActivationIn,
+        current_user: models.AppUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    flock, _ = layer_bmp_target(db, current_user, company_id, kind, flock_id, lock=True)
+    if not bmp_operational_open(flock) or not flock.bmp_snapshot or flock.bmp_snapshot.get("id") != payload.version_id:
+        raise HTTPException(409, "Active flock and current BMP version required; reload")
+    try:
+        flock.bmp_activity_state = bmp_ops.activate(flock.bmp_snapshot, flock.hatch_date, bmp_today(),
+            flock.bmp_activity_state, bmp_actor(current_user), datetime.utcnow().isoformat() + "Z")
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    db.commit()
+    return bmp_activity_response(flock, current_user)
+
+
+@app.post("/api/bmp/layer-activities/{kind}/{flock_id}/complete")
+def bmp_complete_layer(kind: str, flock_id: int, company_id: int, payload: schemas.BMPActivityCompletionIn,
+        current_user: models.AppUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    flock, _ = layer_bmp_target(db, current_user, company_id, kind, flock_id, lock=True, admin_only=False)
+    if not bmp_operational_open(flock) or not payload.confirmed:
+        raise HTTPException(409, "Active flock and explicit completion confirmation required")
+    try:
+        flock.bmp_activity_state = bmp_ops.complete(flock.bmp_activity_state, payload.activity_id,
+            payload.actual_date, bmp_today(), bmp_actor(current_user), datetime.utcnow().isoformat() + "Z", payload.comments)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    db.commit()
+    return bmp_activity_response(flock, current_user)
 
 
 def broiler_programme_options(db, company_id):
@@ -5239,6 +5311,9 @@ def update_layer_rearing_flock(
 
     data = payload.model_dump(exclude_unset=True)
 
+    if flock.bmp_activity_state and "hatch_date" in data and data["hatch_date"] != flock.hatch_date:
+        raise HTTPException(409, "Hatch date cannot change after BMP activities are activated")
+
     target_farm_id = data.get("farm_id", flock.farm_id)
     target_shed_id = data.get("shed_id", flock.shed_id)
 
@@ -5405,6 +5480,9 @@ def delete_layer_rearing_flock(
 
     deleted_id = flock.id
     deleted_code = flock.flock_code
+
+    if flock.bmp_activity_state:
+        raise HTTPException(409, "Close this flock to preserve its BMP activity audit history")
 
     db.delete(flock)
     db.commit()
@@ -7126,6 +7204,9 @@ def update_commercial_layer_flock(
         exclude_unset=True
     )
 
+    if flock.bmp_activity_state and "hatch_date" in data and data["hatch_date"] != flock.hatch_date:
+        raise HTTPException(409, "Hatch date cannot change after BMP activities are activated")
+
     target_farm_id = data.get(
         "farm_id",
         flock.farm_id,
@@ -7322,6 +7403,9 @@ def delete_commercial_layer_flock(
 
     deleted_id = flock.id
     deleted_code = flock.flock_code
+
+    if flock.bmp_activity_state:
+        raise HTTPException(409, "Close this flock to preserve its BMP activity audit history")
 
     db.delete(flock)
     db.commit()

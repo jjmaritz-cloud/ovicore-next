@@ -1777,3 +1777,16 @@ class LayerBMPAssignmentIn(BaseModel):
     version_id: int = Field(gt=0)
     expected_version_id: Optional[int] = Field(..., gt=0)
     reason: str = Field(min_length=1, max_length=1000)
+
+
+class BMPActivityActivationIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    version_id: int = Field(gt=0)
+
+
+class BMPActivityCompletionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    activity_id: str = Field(min_length=36, max_length=36)
+    actual_date: date
+    confirmed: bool
+    comments: str = Field(default="", max_length=4000)

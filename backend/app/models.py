@@ -523,6 +523,7 @@ class AppNoteComment(Base):
 class LayerRearingFlock(Base):
     bmp_snapshot = Column(JSON, nullable=True)
     bmp_assignment_history = Column(JSON, nullable=True)
+    bmp_activity_state = Column(JSON, nullable=True)
     __tablename__ = "layer_rearing_flocks"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -902,6 +903,7 @@ class BreederProductionDailyPerformance(Base):
 class CommercialLayerFlock(Base):
     bmp_snapshot = Column(JSON, nullable=True)
     bmp_assignment_history = Column(JSON, nullable=True)
+    bmp_activity_state = Column(JSON, nullable=True)
     __tablename__ = "commercial_layer_flocks"
 
     id = Column(Integer, primary_key=True, index=True)
